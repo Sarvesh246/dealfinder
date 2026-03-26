@@ -1,12 +1,13 @@
 # Deploy PricePulse (Deal Finder) on Railway (free tier)
 
-This app is a Flask server started with `python app.py`. It uses SQLite (`price_tracker.db`) and benefits from **persistent storage** on Railway.
+This app is a Flask server started with `python3 app.py`. It uses SQLite (`price_tracker.db`) and benefits from **persistent storage** on Railway.
 
 ## 1. Create the service
 
 1. Sign up at [Railway](https://railway.app) and **New Project** → **Deploy from GitHub** (or upload the repo).
-2. Select this repository. Railway will detect Python via Nixpacks.
-3. Confirm **Start command** is `python app.py` (see [`railway.toml`](railway.toml)).
+2. Select this repository. Railway will build with **Railpack** (see [`railway.toml`](railway.toml)).
+3. Chromium for Selenium is declared in [`railpack.toml`](railpack.toml).
+4. Confirm **Start command** is `python3 app.py` (see [`railway.toml`](railway.toml)).
 
 ## 2. Environment variables
 

@@ -1,0 +1,5 @@
+[build]
+providers = ["python"]
+
+[build.python]
+packages = ["chromium"]
