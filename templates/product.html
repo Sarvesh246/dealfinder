@@ -3,122 +3,190 @@
 
 {% block head %}
 <style>
-  /* ── Product detail page ─────────────────────────────────────────── */
   .detail-back {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 13px; color: var(--text-secondary);
-    margin-bottom: 20px; transition: color 180ms ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    transition: color 180ms ease;
   }
   .detail-back:hover { color: var(--text-primary); }
-
   .detail-header { margin-bottom: 24px; }
   .detail-title {
-    font-family: 'Space Grotesk', sans-serif; font-size: 24px;
-    font-weight: 700; color: var(--text-primary); line-height: 1.3;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.3;
     margin-bottom: 6px;
   }
   .detail-meta {
-    font-size: 13px; color: var(--text-secondary);
-    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
   }
-  .detail-target {
-    font-family: 'Space Grotesk', sans-serif; font-weight: 600;
+  .detail-strong {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
     color: var(--text-primary);
   }
-
-  /* Action buttons row */
   .detail-actions {
-    display: flex; gap: 10px; margin-bottom: 28px; flex-wrap: wrap;
+    display: flex;
+    gap: 10px;
+    margin-bottom: 26px;
+    flex-wrap: wrap;
   }
   .detail-btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 13px; font-weight: 500; padding: 8px 16px;
-    border-radius: var(--radius-sm); cursor: pointer;
-    transition: all 180ms ease; text-decoration: none;
-    border: none; font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 180ms ease;
+    text-decoration: none;
+    border: none;
+    font-family: inherit;
   }
   .detail-btn-secondary {
-    background: var(--glass-bg); color: var(--text-secondary);
+    background: var(--glass-bg);
+    color: var(--text-secondary);
     border: 1px solid var(--glass-border);
   }
   .detail-btn-secondary:hover {
-    background: var(--glass-hover); color: var(--text-primary);
+    background: var(--glass-hover);
+    color: var(--text-primary);
     border-color: rgba(255,255,255,0.15);
   }
   .detail-btn-danger {
-    background: rgba(255,79,106,0.08); color: var(--price-bad);
+    background: rgba(255,79,106,0.08);
+    color: var(--price-bad);
     border: 1px solid rgba(255,79,106,0.2);
   }
   .detail-btn-danger:hover {
-    background: rgba(255,79,106,0.15); border-color: rgba(255,79,106,0.35);
+    background: rgba(255,79,106,0.15);
+    border-color: rgba(255,79,106,0.35);
   }
-
-  /* ── Source cards grid ───────────────────────────────────────────── */
-  .sources-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 12px; margin-bottom: 28px;
-  }
-  .source-card { padding: 16px; border-radius: var(--radius-sm); }
-  .source-card-header {
-    display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
-  }
-  .source-card-dot {
-    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-  }
-  .source-card-name {
-    font-size: 14px; font-weight: 600; color: var(--text-primary);
-  }
-  .source-card-status {
-    font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
-    text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
-    margin-left: auto;
-  }
-  .status-watching     { background: rgba(58,159,255,0.1);  color: var(--accent-blue); }
-  .status-deal_found   { background: rgba(0,229,160,0.12);  color: var(--price-good); }
-  .status-not_found    { background: rgba(255,79,106,0.1);  color: var(--price-bad); }
-  .status-error        { background: rgba(255,79,106,0.1);  color: var(--price-bad); }
-
-  .source-card-price {
-    font-family: 'Space Grotesk', sans-serif; font-size: 22px;
-    font-weight: 700; line-height: 1; margin-bottom: 6px;
-  }
-  .source-card-url {
-    font-size: 11px; color: var(--text-muted); white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; display: block; margin-bottom: 4px;
-  }
-  .source-card-url:hover { color: var(--accent-blue); }
-  .source-card-checked { font-size: 11px; color: var(--text-muted); }
-  .source-card-none {
-    font-size: 14px; color: var(--text-muted); font-style: italic;
-    margin-bottom: 6px;
-  }
-
-  /* ── Summary chips ───────────────────────────────────────────────── */
   .detail-summary {
-    display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+    display: flex;
+    gap: 12px;
+    margin-bottom: 22px;
+    flex-wrap: wrap;
   }
   .summary-chip {
-    display: inline-flex; flex-direction: column; gap: 2px;
-    padding: 12px 16px; border-radius: var(--radius-sm);
-    background: var(--glass-bg); border: 1px solid var(--glass-border);
-    min-width: 110px;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    min-width: 128px;
   }
   .summary-chip-label {
-    font-size: 10px; font-weight: 600; letter-spacing: 1px;
-    text-transform: uppercase; color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
   }
   .summary-chip-value {
-    font-family: 'Space Grotesk', sans-serif; font-size: 18px;
-    font-weight: 700; color: var(--text-primary);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
   }
-
-  /* ── History table ───────────────────────────────────────────────── */
+  .sources-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 26px;
+  }
+  .source-card {
+    padding: 16px;
+    border-radius: var(--radius-sm);
+  }
+  .source-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+  .source-card-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .source-card-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+  .pill-status-watching { background: rgba(58,159,255,0.1); color: var(--accent-blue); }
+  .pill-status-deal_found { background: rgba(0,229,160,0.12); color: var(--price-good); }
+  .pill-status-not_found, .pill-status-quarantined { background: rgba(255,79,106,0.1); color: var(--price-bad); }
+  .pill-status-pending_confirmation { background: rgba(255,181,71,0.12); color: var(--price-warn); }
+  .pill-mode {
+    background: rgba(124,92,252,0.12);
+    color: #b9acff;
+    border: 1px solid rgba(124,92,252,0.2);
+  }
+  .source-card-price {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 6px;
+  }
+  .source-card-none {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 6px;
+  }
+  .source-card-link {
+    font-size: 11px;
+    color: var(--accent-blue);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    display: inline-block;
+    margin-bottom: 5px;
+  }
+  .source-card-copy {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
   .table-card { padding: 0; overflow: hidden; }
   table { width: 100%; border-collapse: collapse; }
   thead tr { border-bottom: 1px solid var(--glass-border); }
   thead th {
-    padding: 14px 20px; text-align: left; font-size: 11px;
-    font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase;
+    padding: 14px 20px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
     color: var(--text-muted);
   }
   tbody tr {
@@ -126,46 +194,38 @@
     transition: background 180ms ease;
   }
   tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
-  tbody tr:hover           { background: rgba(255,255,255,0.04); }
-  tbody tr:last-child      { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.04); }
+  tbody tr:last-child { border-bottom: none; }
   tbody td {
-    padding: 13px 20px; font-size: 14px; color: var(--text-secondary);
+    padding: 13px 20px;
+    font-size: 14px;
+    color: var(--text-secondary);
     vertical-align: middle;
   }
   .td-price {
-    font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
   }
-  .td-source { display: flex; align-items: center; gap: 6px; }
-  .td-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
   .price-good { color: var(--price-good); }
   .price-warn { color: var(--price-warn); }
-  .price-bad  { color: var(--price-bad); }
-  .target-badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
-    text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
-    margin-left: 8px; background: rgba(0,229,160,0.12);
-    color: var(--price-good); border: 1px solid rgba(0,229,160,0.25);
-    vertical-align: middle;
-  }
+  .price-bad { color: var(--price-bad); }
   .history-empty {
-    padding: 48px 24px; text-align: center;
-    color: var(--text-secondary); font-size: 14px;
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
   }
-
-  /* ── Responsive ──────────────────────────────────────────────────── */
   @media (max-width: 639px) {
-    .sources-grid { grid-template-columns: 1fr; }
-    .detail-summary { flex-direction: column; }
     .detail-actions { flex-direction: column; }
     .detail-btn { justify-content: center; }
+    .detail-summary { flex-direction: column; }
+    .sources-grid { grid-template-columns: 1fr; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-
-  <!-- Back link -->
   <a href="{{ url_for('index') }}" class="detail-back">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <line x1="19" y1="12" x2="5" y2="12"></line>
@@ -174,11 +234,20 @@
     Back to Dashboard
   </a>
 
-  <!-- Header -->
+  {% set is_any_drop = product.alert_mode == 'any_drop' %}
+  {% set ps_list = product_sources | default([], true) %}
+  {% set priced_sources = ps_list | selectattr('current_price') | map(attribute='current_price') | list %}
+
   <div class="detail-header">
     <h1 class="detail-title">{{ product.name or 'Unnamed Product' }}</h1>
     <div class="detail-meta">
-      Target: <span class="detail-target">{{ product.target_price | format_price }}</span>
+      {% if is_any_drop %}
+        Alert: <span class="detail-strong">Any drop</span>
+      {% else %}
+        Target: <span class="detail-strong">{{ product.target_price | format_price }}</span>
+      {% endif %}
+      <span>·</span>
+      <span>{{ 'Direct link tracker' if product.origin_type == 'direct_link' else 'Search tracker' }}</span>
       {% if product.created_at %}
         <span>·</span>
         <span>Added {{ product.created_at | relative_time }}</span>
@@ -186,40 +255,49 @@
     </div>
   </div>
 
-  <!-- Action buttons -->
   <div class="detail-actions">
-    <a href="{{ url_for('product_sources_page', product_id=product.id) }}" class="detail-btn detail-btn-secondary">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 20h9"></path>
-        <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-      </svg>
-      Edit Sources
-    </a>
+    <a href="{{ url_for('product_sources_page', product_id=product.id) }}" class="detail-btn detail-btn-secondary">Edit Sources</a>
     <form method="POST" action="{{ url_for('rediscover_route', product_id=product.id) }}" style="display:inline">
       <button type="submit" class="detail-btn detail-btn-secondary">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="23 4 23 10 17 10"></polyline>
-          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-        </svg>
-        Re-discover All
+        {{ 'Re-check Tracked Links' if product.origin_type == 'direct_link' else 'Re-discover All' }}
       </button>
     </form>
-    <form method="POST" action="{{ url_for('delete_product_route', product_id=product.id) }}"
-          onsubmit="return confirm('Remove this product and all tracking data?')" style="display:inline">
-      <button type="submit" class="detail-btn detail-btn-danger">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6l-1 14H6L5 6"></path>
-          <path d="M10 11v6M14 11v6"></path>
-          <path d="M9 6V4h6v2"></path>
-        </svg>
-        Delete Product
-      </button>
+    {% if pending_candidates_count %}
+    <a href="{{ url_for('product_confirmations_page', product_id=product.id) }}" class="detail-btn detail-btn-secondary">
+      Confirm Matches ({{ pending_candidates_count }})
+    </a>
+    {% endif %}
+    <form method="POST" action="{{ url_for('delete_product_route', product_id=product.id) }}" onsubmit="return confirm('Remove this product and all tracking data?')" style="display:inline">
+      <button type="submit" class="detail-btn detail-btn-danger">Delete Product</button>
     </form>
   </div>
 
-  <!-- Source cards -->
-  {% set ps_list = product_sources | default([], true) %}
+  <div class="detail-summary fade-in">
+    <div class="summary-chip">
+      <span class="summary-chip-label">Status</span>
+      <span class="summary-chip-value">
+        {% if product.current_price is none %}No price
+        {% elif is_any_drop %}Watching
+        {% elif product.match_status == 'deal_found' %}Deal found
+        {% else %}Watching{% endif %}
+      </span>
+    </div>
+    <div class="summary-chip">
+      <span class="summary-chip-label">Current Best</span>
+      <span class="summary-chip-value">{{ product.current_price | format_price }}</span>
+    </div>
+    <div class="summary-chip">
+      <span class="summary-chip-label">Verified Sources</span>
+      <span class="summary-chip-value">{{ priced_sources | length }} / {{ ps_list | length }}</span>
+    </div>
+    {% if priced_sources %}
+    <div class="summary-chip">
+      <span class="summary-chip-label">Price Range</span>
+      <span class="summary-chip-value">{{ (priced_sources | min) | format_price }} – {{ (priced_sources | max) | format_price }}</span>
+    </div>
+    {% endif %}
+  </div>
+
   {% if ps_list %}
   <div class="section-label">Sources</div>
   <div class="sources-grid">
@@ -228,63 +306,40 @@
       <div class="source-card-header">
         <span class="source-card-dot" style="background:{{ ps.logo_color | default('#7C5CFC') }}"></span>
         <span class="source-card-name">{{ ps.source_name }}</span>
-        <span class="source-card-status status-{{ ps.status | default('not_found') }}">
-          {{ (ps.status | default('unknown')) | replace('_', ' ') }}
-        </span>
+        <span class="pill pill-status-{{ ps.status | default('not_found') }}">{{ (ps.status | default('unknown')) | replace('_', ' ') }}</span>
+        {% if ps.tracking_mode == 'direct_url' %}
+          <span class="pill pill-mode">{{ 'best effort' if ps.source_label_override else 'direct link' }}</span>
+        {% endif %}
       </div>
 
-      {% if ps.current_price and ps.status not in ['not_found','error'] %}
-        <div class="source-card-price" style="color:{{ price_color(ps.current_price, product.target_price) }}">
+      {% if ps.current_price is not none and ps.status not in ['not_found', 'error'] %}
+        <div class="source-card-price" style="color:{{ price_color(ps.current_price, product.target_price, product.alert_mode) }}">
           {{ ps.current_price | format_price }}
         </div>
+      {% elif ps.status == 'pending_confirmation' %}
+        <div class="source-card-none">Needs confirmation before tracking can continue.</div>
+      {% elif ps.status == 'quarantined' %}
+        <div class="source-card-none">Verification drifted. Re-check or confirm before trusting this source.</div>
       {% elif ps.status == 'error' %}
-        <div class="source-card-none">Blocked — try again later</div>
+        <div class="source-card-none">Blocked — try again later.</div>
       {% else %}
-        <div class="source-card-none">Not found</div>
+        <div class="source-card-none">No verified price right now.</div>
       {% endif %}
 
       {% if ps.discovered_url %}
-        <a href="{{ ps.discovered_url }}" target="_blank" rel="noopener noreferrer"
-           class="source-card-url" title="{{ ps.discovered_url }}">
-          {{ ps.discovered_url }}
-        </a>
+        <a href="{{ ps.discovered_url }}" target="_blank" rel="noopener noreferrer" class="source-card-link">{{ ps.discovered_url }}</a>
       {% endif %}
 
-      {% if ps.last_checked %}
-        <div class="source-card-checked">Checked {{ ps.last_checked | relative_time }}</div>
-      {% endif %}
+      <div class="source-card-copy">
+        {% if ps.last_checked %}Checked {{ ps.last_checked | relative_time }}{% else %}Not checked yet{% endif %}
+        {% if ps.verification_reason %}<br>{{ ps.verification_reason | replace('_', ' ') }}{% endif %}
+      </div>
     </div>
     {% endfor %}
   </div>
   {% endif %}
 
-  <!-- Summary chips -->
-  {% set all_prices = ps_list | selectattr('current_price') | map(attribute='current_price') | list %}
-  {% if all_prices %}
-  <div class="detail-summary fade-in">
-    <div class="summary-chip">
-      <span class="summary-chip-label">Sources Found</span>
-      <span class="summary-chip-value">{{ all_prices | length }} / {{ ps_list | length }}</span>
-    </div>
-    <div class="summary-chip">
-      <span class="summary-chip-label">Best Price</span>
-      <span class="summary-chip-value" style="color:var(--price-good)">${{ "%.2f" | format(all_prices | min) }}</span>
-    </div>
-    <div class="summary-chip">
-      <span class="summary-chip-label">Highest Price</span>
-      <span class="summary-chip-value" style="color:var(--price-bad)">${{ "%.2f" | format(all_prices | max) }}</span>
-    </div>
-    {% if price_history %}
-    <div class="summary-chip">
-      <span class="summary-chip-label">Total Checks</span>
-      <span class="summary-chip-value">{{ price_history | length }}</span>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-
-  <!-- Price history table -->
-  <div class="section-label" style="margin-top:8px">Price History</div>
+  <div class="section-label">Price History</div>
   <div class="card table-card fade-in" style="animation-delay:100ms">
     {% if price_history %}
     <table>
@@ -293,38 +348,46 @@
           <th>Date</th>
           <th>Source</th>
           <th>Price</th>
-          <th>vs Target</th>
+          <th>{{ 'Price Change' if is_any_drop else 'vs Target' }}</th>
         </tr>
       </thead>
       <tbody>
         {% for row in price_history %}
-        {% set diff = row.price - product.target_price %}
         <tr>
           <td>{{ row.checked_at[:19].replace('T', ' ') if row.checked_at else '—' }}</td>
+          <td>{{ row.source_name | default('—') }}</td>
           <td>
-            <div class="td-source">
-              {% if row.logo_color is defined and row.logo_color %}
-                <span class="td-dot" style="background:{{ row.logo_color }}"></span>
-              {% endif %}
-              {{ row.source_name | default('—') }}
-            </div>
-          </td>
-          <td>
-            <span class="td-price
-              {% if row.price <= product.target_price %}price-good
-              {% elif row.price <= product.target_price * 1.10 %}price-warn
-              {% else %}price-bad{% endif %}">
-              ${{ "%.2f" | format(row.price) }}
-            </span>
-            {% if row.price <= product.target_price %}
-              <span class="target-badge">✓ Deal</span>
+            {% if is_any_drop %}
+              <span class="td-price price-good">${{ "%.2f" | format(row.price) }}</span>
+            {% elif row.price <= product.target_price %}
+              <span class="td-price price-good">${{ "%.2f" | format(row.price) }}</span>
+            {% elif row.price <= product.target_price * 1.10 %}
+              <span class="td-price price-warn">${{ "%.2f" | format(row.price) }}</span>
+            {% else %}
+              <span class="td-price price-bad">${{ "%.2f" | format(row.price) }}</span>
             {% endif %}
           </td>
           <td>
-            {% if diff <= 0 %}
-              <span style="color:var(--price-good)">↓ ${{ "%.2f" | format(diff | abs) }} below</span>
+            {% if is_any_drop %}
+              {% if loop.previtem %}
+                {% set change = row.price - loop.previtem.price %}
+                {% if change < 0 %}
+                  <span style="color:var(--price-good)">↓ ${{ "%.2f" | format(change | abs) }}</span>
+                {% elif change > 0 %}
+                  <span style="color:var(--price-bad)">↑ ${{ "%.2f" | format(change) }}</span>
+                {% else %}
+                  <span style="color:var(--text-muted)">Unchanged</span>
+                {% endif %}
+              {% else %}
+                <span style="color:var(--text-muted)">Baseline</span>
+              {% endif %}
             {% else %}
-              <span style="color:var(--text-muted)">${{ "%.2f" | format(diff) }} above</span>
+              {% set diff = row.price - product.target_price %}
+              {% if diff <= 0 %}
+                <span style="color:var(--price-good)">↓ ${{ "%.2f" | format(diff | abs) }} below</span>
+              {% else %}
+                <span style="color:var(--text-muted)">${{ "%.2f" | format(diff) }} above</span>
+              {% endif %}
             {% endif %}
           </td>
         </tr>
@@ -335,11 +398,9 @@
     <div class="history-empty">
       <p>No price history yet.</p>
       <p style="margin-top:8px;font-size:13px;color:var(--text-muted)">
-        Use <a href="{{ manual_check_url }}" style="color:var(--accent-blue)">Check Now</a>
-        to run the first scan.
+        Use <a href="{{ manual_check_url }}" style="color:var(--accent-blue)">Check Now</a> to run the first scan.
       </p>
     </div>
     {% endif %}
   </div>
-
 {% endblock %}

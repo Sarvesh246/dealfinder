@@ -20,11 +20,13 @@ from database import (
     set_alert_sent,
     update_product_source,
 )
-from scraper import revalidate_product_source
+from scraper import SearchExecutionContext, revalidate_product_source
 
 
 def _status_from_price(price, target_price):
     if price is None:
+        return "watching"
+    if target_price is None:
         return "watching"
     return "deal_found" if float(price) <= float(target_price) else "watching"
 
@@ -39,7 +41,7 @@ def _persist_revalidation_result(ps, result, now: str) -> bool:
             ps["id"],
             discovered_url=best["url"],
             current_price=best.get("price"),
-            status=_status_from_price(best.get("price"), ps["target_price"]),
+            status=_status_from_price(best.get("price"), ps.get("target_price")),
             verification_state="verified",
             verification_reason=best.get("verification_reason"),
             health_state=best.get("health_state", "healthy"),
@@ -109,23 +111,52 @@ def _persist_revalidation_result(ps, result, now: str) -> bool:
 
 def _finalize_checked_products(checked_products, *, allow_alerts: bool) -> None:
     for pid in checked_products:
+        before = get_product_by_id(pid)
         best = compute_best_price(pid)
         product = get_product_by_id(pid)
         if not product:
             continue
 
+        alert_mode = product["alert_mode"] or "target_threshold"
         target = product["target_price"]
         alert_sent = product["alert_sent"]
         name = product["name"]
+        previous_price = before["current_price"] if before else None
 
-        if best is not None and best <= target and allow_alerts:
+        if alert_mode == "any_drop":
+            if allow_alerts and best is not None and previous_price is not None and float(best) < float(previous_price):
+                from database import get_best_source_url
+
+                best_url = get_best_source_url(pid)
+                alert_delivered = send_alerts(
+                    name,
+                    best,
+                    alert_mode="any_drop",
+                    previous_price=previous_price,
+                    url=best_url,
+                )
+                if alert_delivered:
+                    logging.info(
+                        f"[{datetime.now()}] ANY-DROP ALERT - sent for {name}: "
+                        f"${previous_price:.2f} -> ${best:.2f}"
+                    )
+            continue
+
+        if best is not None and target is not None and best <= target and allow_alerts:
             if alert_sent == 0:
                 from database import get_best_source_url
 
                 best_url = get_best_source_url(pid)
-                send_alerts(name, best, target, best_url)
-                set_alert_sent(pid, 1)
-                logging.info(f"[{datetime.now()}] DEAL FOUND - alert sent for: {name}")
+                alert_delivered = send_alerts(
+                    name,
+                    best,
+                    alert_mode="target_threshold",
+                    target_price=target,
+                    url=best_url,
+                )
+                if alert_delivered:
+                    set_alert_sent(pid, 1)
+                    logging.info(f"[{datetime.now()}] DEAL FOUND - alert sent for: {name}")
             continue
 
         if alert_sent == 1:
@@ -142,18 +173,26 @@ def _run_revalidation_pass(rows, *, label: str, allow_alerts: bool) -> None:
         return
 
     checked_products = set()
+    context = SearchExecutionContext()
     for ps in rows:
+        ps = dict(ps)
         now = datetime.now().isoformat()
         logging.info(f"[{datetime.now()}] {label}: {ps['product_name']} on {ps['source_name']}")
-        result = revalidate_product_source(dict(ps))
+        result = revalidate_product_source(ps, context=context)
         ok = _persist_revalidation_result(ps, result, now)
         if ok and result.get("verified"):
             price = result["verified"][0].get("price")
             if price is not None:
-                logging.info(
-                    f"[{datetime.now()}] {ps['product_name']} @ {ps['source_name']}: "
-                    f"${price:.2f} (target ${ps['target_price']:.2f})"
-                )
+                if ps.get("alert_mode") == "any_drop" or ps.get("target_price") is None:
+                    logging.info(
+                        f"[{datetime.now()}] {ps['product_name']} @ {ps['source_name']}: "
+                        f"${price:.2f} (any-drop tracking)"
+                    )
+                else:
+                    logging.info(
+                        f"[{datetime.now()}] {ps['product_name']} @ {ps['source_name']}: "
+                        f"${price:.2f} (target ${ps['target_price']:.2f})"
+                    )
         else:
             logging.info(
                 f"[{datetime.now()}] {ps['product_name']} on {ps['source_name']} -> "

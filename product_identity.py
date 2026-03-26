@@ -19,6 +19,7 @@ from typing import Any, Pattern
 
 class QueryType(str, Enum):
     EXACT_MODEL = "exact_model"
+    NAMED_PRODUCT = "named_product"
     PRODUCT_LINE = "product_line"
     CATEGORY = "category"
 
@@ -30,6 +31,10 @@ class QueryIntent:
     family: dict[str, Any] | None
     accessory_intent: bool
     model_token: str | None
+    brand: str | None = None
+    required_tokens: tuple[str, ...] = ()
+    soft_variant_tokens: tuple[str, ...] = ()
+    hard_variant_tokens: tuple[str, ...] = ()
 
     @property
     def family_def(self) -> dict[str, Any] | None:
@@ -37,7 +42,69 @@ class QueryIntent:
 
 
 def normalize_user_query(raw_user_query: str) -> str:
-    return re.sub(r"\s+", " ", (raw_user_query or "").lower().strip())
+    text = (raw_user_query or "").lower().strip()
+    text = text.replace("×", "x")
+    text = re.sub(r"(\d+)\s*[- ]\s*in\s*[- ]\s*(\d+)", r"\1in\2", text)
+    text = re.sub(r"(\d+)\s*mm\b", r"\1mm", text)
+    text = re.sub(r"(\d+(?:\.\d+)?)\s*(?:quart|quarts)\b", r"\1qt", text)
+    text = re.sub(r"(\d+)\s*x\s*(\d+)", r"\1x\2", text)
+    return re.sub(r"\s+", " ", text)
+
+
+_STRUCTURED_TOKEN_PATTERNS: tuple[Pattern[str], ...] = (
+    re.compile(r"\b\d+in\d+\b", re.I),
+    re.compile(r"\b\d{2,3}mm\b", re.I),
+    re.compile(r"\b\d+(?:\.\d+)?qt\b", re.I),
+    re.compile(r"\b\d{2,3}x\d{2,3}\b", re.I),
+)
+
+_SOFT_VARIANT_QUERY_PATTERNS: tuple[Pattern[str], ...] = (
+    re.compile(
+        r"\b(?:black|white|silver|blue|red|green|pink|gray|grey|midnight|"
+        r"starlight|purple|gold|graphite|ivory|navy|beige|orange|yellow)\b",
+        re.I,
+    ),
+)
+
+_NON_ALNUM = re.compile(r"[^a-z0-9]+", re.I)
+
+
+def _normalize_identity_token(value: str | None) -> str | None:
+    if not value:
+        return None
+    out = _NON_ALNUM.sub("", value.lower())
+    return out or None
+
+
+def _dedupe_tokens(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    seen: list[str] = []
+    for raw in values:
+        token = normalize_user_query(raw).strip()
+        if token and token not in seen:
+            seen.append(token)
+    return tuple(seen)
+
+
+def _extract_structured_tokens(text: str) -> tuple[str, ...]:
+    normalized = normalize_user_query(text)
+    found: list[str] = []
+    for pattern in _STRUCTURED_TOKEN_PATTERNS:
+        for match in pattern.finditer(normalized):
+            token = normalize_user_query(match.group(0))
+            if token not in found:
+                found.append(token)
+    return tuple(found)
+
+
+def _extract_soft_variant_tokens(text: str) -> tuple[str, ...]:
+    normalized = normalize_user_query(text)
+    found: list[str] = []
+    for pattern in _SOFT_VARIANT_QUERY_PATTERNS:
+        for match in pattern.finditer(normalized):
+            token = normalize_user_query(match.group(0))
+            if token not in found:
+                found.append(token)
+    return tuple(found)
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +208,27 @@ def _strip_bundle_case_phrases(title_lower: str) -> str:
     )
 
 
+_WATCH_PRIMARY_SIGNALS = re.compile(
+    r"\bsmartwatch\b|\bgps\b|\bcellular\b|\b\d{2}\s*mm\b|"
+    r"\b(?:aluminum|titanium|stainless\s+steel)\s+case\b",
+    re.I,
+)
+
+
+def _strip_watch_primary_phrases(title_lower: str) -> str:
+    if not _WATCH_PRIMARY_SIGNALS.search(title_lower or ""):
+        return title_lower
+    return re.sub(
+        r"\b(?:aluminum|titanium|stainless\s+steel)\s+case\b|"
+        r"\b(?:sport|solo|magnetic|milanese|ocean|trail|nike(?:\s+sport)?)\s+"
+        r"(?:band|loop)\b|"
+        r"\b(?:s/m|m/l|s\b|m\b|l\b)\b",
+        " ",
+        title_lower,
+        flags=re.I,
+    )
+
+
 _ACCESSORY_WORDS = re.compile(
     r"\b("
     r"case|cases|cover|covers|skin|skins|ear\s*tips?|eartips?|\btips\b|"
@@ -200,7 +288,7 @@ _UNIVERSAL_MODEL_PATTERNS: tuple[Pattern[str], ...] = (
 
 
 def _norm_model(s: str) -> str:
-    return re.sub(r"[\s\-_/]+", "", s.lower())
+    return _normalize_identity_token(s) or ""
 
 
 def _extract_model_token(q: str, family: dict[str, Any] | None) -> str | None:
@@ -234,7 +322,7 @@ def _model_mismatch_exact(
             if _norm_model(m.group(0)) == qn:
                 return False
     # Fallback: substring
-    if qn and qn in re.sub(r"[\s\-_/]+", "", title_lower):
+    if qn and qn in (_normalize_identity_token(title_lower) or ""):
         return False
     return True
 
@@ -249,6 +337,12 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "match_query": re.compile(r"\bairpods?\b|\bair\s*pods?\b", re.I),
         "title_core": re.compile(r"\bairpods?\b|\bair\s*pods?\b", re.I),
         "brand_tokens": ("apple",),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": (),
+        "accessory_signals": (),
+        "negative_signals": (),
+        "search_alias_templates": (),
         "model_patterns": [
             re.compile(r"\bairpods?\s*pro\s*\d\b", re.I),
             re.compile(r"\bairpods?\s*\d\b", re.I),
@@ -297,6 +391,20 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
             r"\bapple\s*watch\b|\bwatch\s*series\b|\bwatch\s*ultra\b", re.I
         ),
         "brand_tokens": ("apple",),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("smartwatch", "gps", "cellular", "40mm", "44mm"),
+        "accessory_signals": ("band", "strap", "charger", "case"),
+        "negative_signals": (),
+        "search_alias_templates": (
+            "{brand} {raw}",
+            "{raw}",
+        ),
+        "model_patterns": [
+            re.compile(r"\b(?:apple\s*)?watch\s*se(?:\s*(?:\(?\d(?:nd|rd|th)?\s*gen\)?|\d))?\b", re.I),
+            re.compile(r"\b(?:apple\s*)?watch\s*series\s*\d{1,2}\b", re.I),
+            re.compile(r"\b(?:apple\s*)?watch\s*ultra\s*\d?\b", re.I),
+        ],
         "hard_block": None,
         "other_brand_earbuds": None,
         "category_accessory_words": ("band", "strap", "charger", "case"),
@@ -344,6 +452,15 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
             "sony", "bose", "sennheiser", "audio-technica", "beyerdynamic",
             "shure", "akg", "jabra", "plantronics", "steelseries", "hyperx",
         ),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": (),
+        "accessory_signals": ("ear pad", "earpad", "cushion", "hanger", "stand"),
+        "negative_signals": (),
+        "search_alias_templates": (
+            "{brand} {model_token} headphones",
+            "{model_token}",
+        ),
         "model_patterns": [
             re.compile(r"\bwh[- ]?1000xm[45]\b", re.I),
             re.compile(r"\bqc\s*\d{2,3}\b", re.I),
@@ -367,7 +484,20 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
             r"\brtx\b|\bgtx\b|\bradeon\b|\bgraphics\s*card\b|\bgpu\b",
             re.I,
         ),
-        "brand_tokens": ("nvidia", "geforce", "amd", "radeon", "msi", "asus", "gigabyte"),
+        "brand_tokens": (
+            "nvidia", "geforce", "amd", "radeon", "msi", "asus", "gigabyte",
+            "zotac", "pny", "evga",
+        ),
+        "brand_policy": "platform_plus_partner",
+        "partner_brands": ("msi", "asus", "gigabyte", "zotac", "pny", "evga"),
+        "primary_signals": ("graphics card", "gpu", "geforce", "radeon"),
+        "accessory_signals": ("riser", "cable", "bracket", "vertical mount"),
+        "negative_signals": ("riser", "cable", "bracket", "water block"),
+        "search_alias_templates": (
+            "{brand} {model_token} graphics card",
+            "{model_token} graphics card",
+            "{raw}",
+        ),
         "model_patterns": [
             re.compile(r"\brtx\s*\d{3,4}\s*(?:ti|super)?\b", re.I),
             re.compile(r"\brx\s*\d{3,4}\s*(?:xt)?\b", re.I),
@@ -375,6 +505,108 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "hard_block": None,
         "other_brand_earbuds": None,
         "category_accessory_words": ("riser", "cable", "bracket"),
+    },
+    {
+        "id": "pressure_cooker",
+        "match_query": re.compile(
+            r"\binstant\s*pot\b|\bpressure\s*cooker\b|\bmulticooker\b|\bmulti\s*cooker\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\binstant\s*pot\b|\bpressure\s*cooker\b|\bmulticooker\b|\bmulti\s*cooker\b",
+            re.I,
+        ),
+        "brand_tokens": ("instant pot", "ninja", "crock-pot", "crockpot"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("pressure cooker", "multicooker", "multi cooker", "7in1", "9in1"),
+        "accessory_signals": (
+            "replacement lid", "lid", "seal ring", "gasket", "cookbook",
+            "steamer basket", "steam rack",
+        ),
+        "negative_signals": (
+            "replacement lid", "cookbook", "seal ring", "gasket", "steamer basket",
+            "air fryer oven",
+        ),
+        "search_alias_templates": (
+            "{brand} {required_tokens} pressure cooker",
+            "{raw}",
+        ),
+        "hard_block": re.compile(
+            r"\bcookbook\b|\breplacement\s*lid\b|\bseal\s*ring\b|\bgasket\b|"
+            r"\bsteam(?:er)?\s*basket\b|\bair\s*fryer\s*oven\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": (
+            "lid", "seal ring", "gasket", "basket", "cookbook",
+        ),
+    },
+    {
+        "id": "air_fryer",
+        "match_query": re.compile(
+            r"\bair\s*fryer\b|\bairfryer\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\bair\s*fryer\b|\bairfryer\b",
+            re.I,
+        ),
+        "brand_tokens": ("ninja", "instant", "instant pot", "cosori", "philips", "gourmia"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("air fryer", "basket", "qt", "quart"),
+        "accessory_signals": ("liner", "paper", "rack", "tray", "replacement basket"),
+        "negative_signals": ("liner", "paper", "rack", "tray", "replacement basket", "toaster oven"),
+        "search_alias_templates": (
+            "{raw}",
+            "{brand} air fryer",
+        ),
+        "hard_block": re.compile(
+            r"\bliner\b|\bpaper\b|\brack\b|\btray\b|\breplacement\s*basket\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("liner", "paper", "rack", "tray", "basket"),
+        "brand_plus_family_named": True,
+    },
+    {
+        "id": "standing_desk",
+        "match_query": re.compile(
+            r"\bstanding\s*desk\b|\bsit[- ]?stand\s*desk\b|\bheight\s*adjustable\s*desk\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\bstanding\s*desk\b|\bsit[- ]?stand\s*desk\b|\belectric\s*desk\b|"
+            r"\bheight\s*adjustable\s*desk\b",
+            re.I,
+        ),
+        "brand_tokens": ("flexispot", "fezibo", "vari", "uplift", "branch", "huanuo"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("standing desk", "sit stand desk", "electric desk", "height adjustable desk"),
+        "accessory_signals": (
+            "converter", "frame", "desk frame", "leg", "monitor arm",
+            "keyboard tray", "caster", "drawer",
+        ),
+        "negative_signals": (
+            "converter", "frame", "desk frame", "monitor arm",
+            "keyboard tray", "caster", "drawer",
+        ),
+        "search_alias_templates": (
+            "{brand} standing desk {hard_variant_tokens}",
+            "{raw}",
+        ),
+        "hard_block": re.compile(
+            r"\bconverter\b|\bdesk\s*frame\b|\bmonitor\s*arm\b|\bkeyboard\s*tray\b|"
+            r"\bcasters?\b|\bdrawer\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": (
+            "converter", "frame", "monitor arm", "keyboard tray", "caster", "drawer",
+        ),
+        "brand_plus_family_named": True,
     },
     {
         "id": "tv",
@@ -551,7 +783,76 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
 
 
 def family_defs_list() -> list[dict[str, Any]]:
-    return _FAMILY_DEFS
+    out: list[dict[str, Any]] = []
+    for family in _FAMILY_DEFS:
+        merged = dict(family)
+        merged.setdefault("brand_policy", "exact")
+        merged.setdefault("partner_brands", ())
+        merged.setdefault("primary_signals", ())
+        merged.setdefault("accessory_signals", ())
+        merged.setdefault("negative_signals", ())
+        merged.setdefault("search_alias_templates", ())
+        merged.setdefault("brand_plus_family_named", False)
+        out.append(merged)
+    return out
+
+
+def _family_phrase_present(query_norm: str, phrases: tuple[str, ...]) -> list[str]:
+    found: list[str] = []
+    for phrase in phrases:
+        phrase_norm = normalize_user_query(phrase)
+        if phrase_norm and re.search(rf"\b{re.escape(phrase_norm)}\b", query_norm, re.I):
+            found.append(phrase_norm)
+    return found
+
+
+def _extract_brand_from_query(
+    query_norm: str,
+    family: dict[str, Any] | None,
+) -> str | None:
+    if not family:
+        return None
+    for brand in family.get("brand_tokens", ()):
+        if re.search(rf"\b{re.escape(normalize_user_query(brand))}\b", query_norm, re.I):
+            return normalize_user_query(brand)
+    return None
+
+
+def _extract_named_required_tokens(
+    query_norm: str,
+    family: dict[str, Any] | None,
+    brand: str | None,
+) -> tuple[str, ...]:
+    if not family:
+        return ()
+    required: list[str] = []
+    if family.get("id") == "pressure_cooker":
+        for phrase in ("duo plus", "duo", "rio", "pro crisp", "vortex"):
+            if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
+                required.append(phrase)
+    required.extend(tok for tok in _extract_structured_tokens(query_norm) if tok not in required)
+    if brand and family.get("brand_plus_family_named") and not required:
+        family_label = family.get("id", "").replace("_", " ")
+        if family_label and family_label not in required:
+            required.append(family_label)
+    return _dedupe_tokens(required)
+
+
+def _supports_named_product(
+    query_norm: str,
+    family: dict[str, Any] | None,
+    brand: str | None,
+    required_tokens: tuple[str, ...],
+) -> bool:
+    if not family:
+        return False
+    if required_tokens:
+        return True
+    if brand and family.get("brand_plus_family_named"):
+        return True
+    if brand and family.get("id") in {"pressure_cooker", "air_fryer"}:
+        return True
+    return False
 
 
 def match_family_from_query(query_norm: str) -> dict[str, Any] | None:
@@ -572,11 +873,15 @@ def parse_query_intent(raw_user_query: str) -> QueryIntent:
     qn = normalize_user_query(raw_user_query)
     acc = query_has_accessory_intent(qn)
     family = match_family_from_query(qn)
+    brand = _extract_brand_from_query(qn, family)
     model_token = _extract_model_token(qn, family)
+    required_tokens = _extract_named_required_tokens(qn, family, brand)
+    soft_variant_tokens = _extract_soft_variant_tokens(qn)
+    hard_variant_tokens = _extract_structured_tokens(qn)
     if family and model_token:
         qtype = QueryType.EXACT_MODEL
-    elif family:
-        qtype = QueryType.PRODUCT_LINE
+    elif _supports_named_product(qn, family, brand, required_tokens):
+        qtype = QueryType.NAMED_PRODUCT
     else:
         qtype = QueryType.CATEGORY
     return QueryIntent(
@@ -585,6 +890,10 @@ def parse_query_intent(raw_user_query: str) -> QueryIntent:
         family=family,
         accessory_intent=acc,
         model_token=model_token,
+        brand=brand,
+        required_tokens=required_tokens,
+        soft_variant_tokens=soft_variant_tokens,
+        hard_variant_tokens=hard_variant_tokens,
     )
 
 
@@ -625,7 +934,7 @@ def compute_identity_match(
         if has_core or brand_in_title:
             return 0.72
         return 0.35
-    if qt == QueryType.PRODUCT_LINE:
+    if qt in (QueryType.NAMED_PRODUCT, QueryType.PRODUCT_LINE):
         if has_core and brand_in_title:
             return 0.9
         if has_core:
@@ -870,7 +1179,12 @@ def classify_with_intent(
         penalty_total += 0.55
         struct -= 0.35
 
-    tl_acc = _strip_bundle_case_phrases(tl) if fam_id == "airpods" else tl
+    if fam_id == "airpods":
+        tl_acc = _strip_bundle_case_phrases(tl)
+    elif fam_id in ("apple_watch", "smartwatch"):
+        tl_acc = _strip_watch_primary_phrases(tl)
+    else:
+        tl_acc = tl
     if not accessory_intent and _ACCESSORY_WORDS.search(tl_acc):
         product_kind = "accessory"
         listing_role = "accessory"
@@ -919,7 +1233,8 @@ def has_core_generic(title_lower: str) -> bool:
     return bool(
         re.search(
             r"\b(phone|tablet|laptop|headphone|headset|monitor|keyboard|mouse|"
-            r"camera|speaker|router|console|watch|tv\b|gpu|graphics)",
+            r"camera|speaker|router|console|watch|tv\b|gpu|graphics|desk|"
+            r"pressure\s*cooker|multicooker|air\s*fryer)",
             title_lower,
             re.I,
         )
@@ -935,7 +1250,7 @@ def _brand_match_generic(title_lower: str, intent: QueryIntent) -> bool:
 def identity_threshold_for_query(intent: QueryIntent) -> float:
     if intent.query_type == QueryType.EXACT_MODEL:
         return 0.5
-    if intent.query_type == QueryType.PRODUCT_LINE:
+    if intent.query_type in (QueryType.NAMED_PRODUCT, QueryType.PRODUCT_LINE):
         return 0.35
     return 0.2
 

@@ -13,6 +13,7 @@ from product_verifier import parse_product_spec, product_spec_to_fields
 
 _DEFAULT_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_tracker.db")
 DB_PATH = os.environ.get("DB_PATH", _DEFAULT_DB).strip() or _DEFAULT_DB
+GENERIC_DIRECT_SOURCE_DOMAIN = "generic.direct.link"
 
 DEFAULT_CATEGORIES = [
     {"name": "Computers & Components", "slug": "computers", "icon": "🖥️", "parent": None,
@@ -148,6 +149,13 @@ DEFAULT_SOURCES = [
         "enabled": 0,
         "logo_color": "#004990",
     },
+    {
+        "name": "Direct Link",
+        "domain": GENERIC_DIRECT_SOURCE_DOMAIN,
+        "search_url_template": "",
+        "enabled": 0,
+        "logo_color": "#7C5CFC",
+    },
 ]
 
 
@@ -221,7 +229,66 @@ def _ensure_columns(cursor, table_name: str, additions: list[tuple[str, str]]) -
             cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {decl}")
 
 
+def _ensure_products_target_nullable(cursor) -> None:
+    try:
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='products'")
+        if not cursor.fetchone():
+            return
+        cursor.execute("PRAGMA table_info(products)")
+        cols = cursor.fetchall()
+        target_col = next((row for row in cols if row[1] == "target_price"), None)
+        if not target_col or not target_col[3]:
+            return
+    except sqlite3.OperationalError:
+        return
+
+    cursor.execute("PRAGMA foreign_keys = OFF")
+    cursor.execute(
+        """
+        CREATE TABLE products__new (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT    NOT NULL,
+            target_price    REAL,
+            current_price   REAL,
+            alert_sent      INTEGER DEFAULT 0,
+            created_at      TEXT,
+            raw_query       TEXT,
+            canonical_query TEXT,
+            brand           TEXT,
+            family          TEXT,
+            model_token     TEXT,
+            variant_tokens  TEXT,
+            match_mode      TEXT DEFAULT 'strict',
+            query_type      TEXT DEFAULT 'category',
+            match_status    TEXT DEFAULT 'awaiting_match',
+            alert_mode      TEXT DEFAULT 'target_threshold',
+            origin_type     TEXT DEFAULT 'query_search'
+        )
+        """
+    )
+    cursor.execute(
+        """
+        INSERT INTO products__new (
+            id, name, target_price, current_price, alert_sent, created_at,
+            raw_query, canonical_query, brand, family, model_token, variant_tokens,
+            match_mode, query_type, match_status, alert_mode, origin_type
+        )
+        SELECT
+            id, name, target_price, current_price, alert_sent, created_at,
+            raw_query, canonical_query, brand, family, model_token, variant_tokens,
+            match_mode, query_type, match_status,
+            'target_threshold',
+            'query_search'
+        FROM products
+        """
+    )
+    cursor.execute("DROP TABLE products")
+    cursor.execute("ALTER TABLE products__new RENAME TO products")
+    cursor.execute("PRAGMA foreign_keys = ON")
+
+
 def _upgrade_products_schema(cursor) -> None:
+    _ensure_products_target_nullable(cursor)
     _ensure_columns(
         cursor,
         "products",
@@ -235,8 +302,20 @@ def _upgrade_products_schema(cursor) -> None:
             ("match_mode", "TEXT DEFAULT 'strict'"),
             ("query_type", "TEXT DEFAULT 'category'"),
             ("match_status", "TEXT DEFAULT 'awaiting_match'"),
+            ("alert_mode", "TEXT DEFAULT 'target_threshold'"),
+            ("origin_type", "TEXT DEFAULT 'query_search'"),
         ],
     )
+    try:
+        cursor.execute(
+            """
+            UPDATE products
+            SET alert_mode = COALESCE(NULLIF(alert_mode, ''), 'target_threshold'),
+                origin_type = COALESCE(NULLIF(origin_type, ''), 'query_search')
+            """
+        )
+    except sqlite3.OperationalError:
+        return
 
 
 def _upgrade_product_sources_schema(cursor) -> None:
@@ -254,6 +333,9 @@ def _upgrade_product_sources_schema(cursor) -> None:
             ("fingerprint_json", "TEXT"),
             ("match_label", "TEXT DEFAULT 'related'"),
             ("last_verified", "TEXT"),
+            ("tracking_mode", "TEXT DEFAULT 'search_verified'"),
+            ("source_label_override", "TEXT"),
+            ("source_domain_override", "TEXT"),
         ],
     )
     try:
@@ -271,9 +353,16 @@ def _upgrade_product_sources_schema(cursor) -> None:
                 match_label = CASE
                     WHEN match_label IS NULL OR TRIM(match_label) = '' THEN 'related'
                     ELSE match_label
-                END
+                END,
+                tracking_mode = COALESCE(NULLIF(tracking_mode, ''), 'search_verified')
             WHERE discovered_url IS NOT NULL
               AND (last_verified IS NULL OR TRIM(last_verified) = '')
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE product_sources
+            SET tracking_mode = COALESCE(NULLIF(tracking_mode, ''), 'search_verified')
             """
         )
     except sqlite3.OperationalError:
@@ -337,7 +426,7 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS products (
                     id              INTEGER PRIMARY KEY AUTOINCREMENT,
                     name            TEXT    NOT NULL,
-                    target_price    REAL    NOT NULL,
+                    target_price    REAL,
                     current_price   REAL,
                     alert_sent      INTEGER DEFAULT 0,
                     created_at      TEXT,
@@ -349,7 +438,9 @@ def init_db():
                     variant_tokens  TEXT,
                     match_mode      TEXT DEFAULT 'strict',
                     query_type      TEXT DEFAULT 'category',
-                    match_status    TEXT DEFAULT 'awaiting_match'
+                    match_status    TEXT DEFAULT 'awaiting_match',
+                    alert_mode      TEXT DEFAULT 'target_threshold',
+                    origin_type     TEXT DEFAULT 'query_search'
                 )
             """)
 
@@ -373,6 +464,9 @@ def init_db():
                 fingerprint_json    TEXT,
                 match_label         TEXT    DEFAULT 'related',
                 last_verified       TEXT,
+                tracking_mode       TEXT    DEFAULT 'search_verified',
+                source_label_override TEXT,
+                source_domain_override TEXT,
                 FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
                 FOREIGN KEY (source_id)  REFERENCES sources(id)  ON DELETE CASCADE
             )
@@ -664,7 +758,7 @@ def _sync_product_specs(cursor) -> None:
 def _recompute_all_product_best_prices(cursor) -> None:
     try:
         products = cursor.execute(
-            "SELECT id, target_price FROM products"
+            "SELECT id, target_price, alert_mode FROM products"
         ).fetchall()
     except sqlite3.OperationalError:
         return
@@ -684,11 +778,14 @@ def _recompute_all_product_best_prices(cursor) -> None:
         best = best_row["best"] if best_row else None
         match_status = "awaiting_match"
         if best is not None:
-            match_status = (
-                "deal_found"
-                if float(best) <= float(product["target_price"])
-                else "watching"
-            )
+            if product["alert_mode"] == "any_drop" or product["target_price"] is None:
+                match_status = "watching"
+            else:
+                match_status = (
+                    "deal_found"
+                    if float(best) <= float(product["target_price"])
+                    else "watching"
+                )
         cursor.execute(
             "UPDATE products SET current_price = ?, match_status = ? WHERE id = ?",
             (best, match_status, product["id"]),
@@ -721,7 +818,13 @@ def get_product_by_id(product_id):
         return None
 
 
-def add_product(name, target_price):
+def add_product(
+    name,
+    target_price,
+    *,
+    alert_mode: str = "target_threshold",
+    origin_type: str = "query_search",
+):
     """Insert a product (name-only, no URL). Returns the new row ID or None."""
     try:
         spec = parse_product_spec(name)
@@ -730,8 +833,9 @@ def add_product(name, target_price):
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO products (name, target_price, created_at, raw_query, canonical_query, "
-            "brand, family, model_token, variant_tokens, match_mode, query_type, match_status) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "brand, family, model_token, variant_tokens, match_mode, query_type, match_status, "
+            "alert_mode, origin_type) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 name,
                 target_price,
@@ -745,6 +849,8 @@ def add_product(name, target_price):
                 fields["match_mode"],
                 fields["query_type"],
                 "awaiting_match",
+                alert_mode,
+                origin_type,
             ),
         )
         conn.commit()
@@ -762,7 +868,7 @@ def update_product(product_id, **fields):
         "name", "target_price", "current_price", "alert_sent",
         "raw_query", "canonical_query", "brand", "family",
         "model_token", "variant_tokens", "match_mode",
-        "query_type", "match_status",
+        "query_type", "match_status", "alert_mode", "origin_type",
     }
     filtered = {k: v for k, v in fields.items() if k in allowed}
     if not filtered:
@@ -824,7 +930,10 @@ def set_alert_sent(product_id, value):
 def get_all_sources():
     try:
         conn = get_connection()
-        rows = conn.execute("SELECT * FROM sources ORDER BY id").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM sources WHERE domain <> ? ORDER BY id",
+            (GENERIC_DIRECT_SOURCE_DOMAIN,),
+        ).fetchall()
         conn.close()
         return rows
     except Exception as exc:
@@ -846,7 +955,10 @@ def get_source_by_id(source_id):
 def get_enabled_sources():
     try:
         conn = get_connection()
-        rows = conn.execute("SELECT * FROM sources WHERE enabled = 1 ORDER BY id").fetchall()
+        rows = conn.execute(
+            "SELECT * FROM sources WHERE enabled = 1 AND domain <> ? ORDER BY id",
+            (GENERIC_DIRECT_SOURCE_DOMAIN,),
+        ).fetchall()
         conn.close()
         return rows
     except Exception as exc:
@@ -865,6 +977,61 @@ def update_source_enabled(source_id, enabled):
         logging.error(f"[{datetime.now()}] update_source_enabled({source_id}) error: {exc}")
 
 
+def get_source_by_domain(domain: str):
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT * FROM sources WHERE domain = ? LIMIT 1",
+            (domain.lower().replace("www.", ""),),
+        ).fetchone()
+        conn.close()
+        return row
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] get_source_by_domain({domain}) error: {exc}")
+        return None
+
+
+def ensure_generic_direct_source():
+    row = get_source_by_domain(GENERIC_DIRECT_SOURCE_DOMAIN)
+    if row:
+        return row
+    try:
+        conn = get_connection()
+        conn.execute(
+            "INSERT INTO sources (name, domain, search_url_template, enabled, logo_color) VALUES (?, ?, ?, ?, ?)",
+            ("Direct Link", GENERIC_DIRECT_SOURCE_DOMAIN, "", 0, "#7C5CFC"),
+        )
+        conn.commit()
+        conn.close()
+        return get_source_by_domain(GENERIC_DIRECT_SOURCE_DOMAIN)
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] ensure_generic_direct_source error: {exc}")
+        return None
+
+
+def find_source_for_url(url: str):
+    try:
+        domain = urlparse(url).netloc.lower().replace("www.", "")
+        if not domain:
+            return None
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT * FROM sources WHERE domain <> ? ORDER BY LENGTH(domain) DESC, id ASC",
+            (GENERIC_DIRECT_SOURCE_DOMAIN,),
+        ).fetchall()
+        conn.close()
+        for row in rows:
+            source_domain = (row["domain"] or "").lower().replace("www.", "")
+            if not source_domain:
+                continue
+            if domain == source_domain or domain.endswith(f".{source_domain}") or source_domain in domain:
+                return row
+        return None
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] find_source_for_url({url}) error: {exc}")
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Product-Sources CRUD
 # ---------------------------------------------------------------------------
@@ -881,7 +1048,10 @@ def add_product_source(product_id, source_id, enabled=1,
                        fingerprint_model=None,
                        fingerprint_json=None,
                        match_label="related",
-                       last_verified=None):
+                       last_verified=None,
+                       tracking_mode="search_verified",
+                       source_label_override=None,
+                       source_domain_override=None):
     try:
         conn = get_connection()
         cur = conn.cursor()
@@ -890,14 +1060,15 @@ def add_product_source(product_id, source_id, enabled=1,
             "(product_id, source_id, enabled, discovered_url, current_price, last_checked, status, "
             "verification_state, verification_reason, health_state, matched_product_name, "
             "fingerprint_brand, fingerprint_family, fingerprint_model, fingerprint_json, "
-            "match_label, last_verified) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "match_label, last_verified, tracking_mode, source_label_override, source_domain_override) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 product_id, source_id, int(enabled), discovered_url, current_price,
                 datetime.now().isoformat(), status, verification_state,
                 verification_reason, health_state, matched_product_name,
                 fingerprint_brand, fingerprint_family, fingerprint_model,
                 fingerprint_json, match_label, last_verified,
+                tracking_mode, source_label_override, source_domain_override,
             ),
         )
         conn.commit()
@@ -914,11 +1085,12 @@ def get_product_sources(product_id):
     try:
         conn = get_connection()
         rows = conn.execute("""
-            SELECT ps.*, s.name AS source_name, s.domain, s.logo_color,
+            SELECT ps.*, COALESCE(ps.source_label_override, s.name) AS source_name,
+                   COALESCE(ps.source_domain_override, s.domain) AS domain, s.logo_color,
                    s.search_url_template, p.name AS product_name, p.target_price,
                    p.raw_query, p.canonical_query, p.brand, p.family,
                    p.model_token, p.variant_tokens, p.match_mode, p.query_type,
-                   p.match_status
+                   p.match_status, p.alert_mode, p.origin_type
             FROM product_sources ps
             JOIN sources s ON ps.source_id = s.id
             JOIN products p ON ps.product_id = p.id
@@ -942,7 +1114,10 @@ def get_all_active_product_sources():
             SELECT ps.*, p.name AS product_name, p.target_price, p.alert_sent,
                    p.raw_query, p.canonical_query, p.brand, p.family,
                    p.model_token, p.variant_tokens, p.match_mode, p.query_type,
-                   s.name AS source_name, s.domain, s.search_url_template
+                   p.alert_mode, p.origin_type,
+                   COALESCE(ps.source_label_override, s.name) AS source_name,
+                   COALESCE(ps.source_domain_override, s.domain) AS domain,
+                   s.search_url_template
             FROM product_sources ps
             JOIN products p ON ps.product_id = p.id
             JOIN sources s  ON ps.source_id  = s.id
@@ -967,6 +1142,7 @@ def update_product_source(ps_id, **fields):
         "verification_state", "verification_reason", "health_state",
         "matched_product_name", "fingerprint_brand", "fingerprint_family",
         "fingerprint_model", "fingerprint_json", "match_label", "last_verified",
+        "tracking_mode", "source_label_override", "source_domain_override",
     }
     filtered = {k: v for k, v in fields.items() if k in allowed}
     if not filtered:
@@ -989,7 +1165,10 @@ def get_product_source_by_id(ps_id):
             SELECT ps.*, p.name AS product_name, p.target_price, p.alert_sent,
                    p.raw_query, p.canonical_query, p.brand, p.family,
                    p.model_token, p.variant_tokens, p.match_mode, p.query_type,
-                   s.name AS source_name, s.domain, s.search_url_template, s.logo_color
+                   p.alert_mode, p.origin_type,
+                   COALESCE(ps.source_label_override, s.name) AS source_name,
+                   COALESCE(ps.source_domain_override, s.domain) AS domain,
+                   s.search_url_template, s.logo_color
             FROM product_sources ps
             JOIN products p ON ps.product_id = p.id
             JOIN sources s  ON ps.source_id  = s.id
@@ -1143,7 +1322,10 @@ def get_all_product_sources_for_revalidation():
             SELECT ps.*, p.name AS product_name, p.target_price, p.alert_sent,
                    p.raw_query, p.canonical_query, p.brand, p.family,
                    p.model_token, p.variant_tokens, p.match_mode, p.query_type,
-                   s.name AS source_name, s.domain, s.search_url_template
+                   p.alert_mode, p.origin_type,
+                   COALESCE(ps.source_label_override, s.name) AS source_name,
+                   COALESCE(ps.source_domain_override, s.domain) AS domain,
+                   s.search_url_template
             FROM product_sources ps
             JOIN products p ON ps.product_id = p.id
             JOIN sources s  ON ps.source_id = s.id
@@ -1163,7 +1345,10 @@ def get_product_sources_needing_backfill():
             SELECT ps.*, p.name AS product_name, p.target_price, p.alert_sent,
                    p.raw_query, p.canonical_query, p.brand, p.family,
                    p.model_token, p.variant_tokens, p.match_mode, p.query_type,
-                   s.name AS source_name, s.domain, s.search_url_template
+                   p.alert_mode, p.origin_type,
+                   COALESCE(ps.source_label_override, s.name) AS source_name,
+                   COALESCE(ps.source_domain_override, s.domain) AS domain,
+                   s.search_url_template
             FROM product_sources ps
             JOIN products p ON ps.product_id = p.id
             JOIN sources s  ON ps.source_id = s.id
@@ -1203,7 +1388,9 @@ def get_price_history(product_id):
     try:
         conn = get_connection()
         rows = conn.execute("""
-            SELECT ph.price, ph.checked_at, s.name AS source_name, s.logo_color
+            SELECT ph.price, ph.checked_at,
+                   COALESCE(ps.source_label_override, s.name) AS source_name,
+                   s.logo_color
             FROM price_history ph
             JOIN product_sources ps ON ph.product_source_id = ps.id
             JOIN sources s          ON ps.source_id         = s.id
@@ -1251,7 +1438,7 @@ def compute_best_price(product_id):
     try:
         conn = get_connection()
         product = conn.execute(
-            "SELECT target_price FROM products WHERE id = ?",
+            "SELECT target_price, alert_mode FROM products WHERE id = ?",
             (product_id,),
         ).fetchone()
         row = conn.execute("""
@@ -1266,7 +1453,10 @@ def compute_best_price(product_id):
         best = row["best"] if row else None
         match_status = "awaiting_match"
         if best is not None and product is not None:
-            match_status = "deal_found" if float(best) <= float(product["target_price"]) else "watching"
+            if product["alert_mode"] == "any_drop" or product["target_price"] is None:
+                match_status = "watching"
+            else:
+                match_status = "deal_found" if float(best) <= float(product["target_price"]) else "watching"
         conn.execute(
             "UPDATE products SET current_price = ?, match_status = ? WHERE id = ?",
             (best, match_status, product_id),
@@ -1518,7 +1708,17 @@ def get_discovery_results(search_id):
             FROM discovery_results dr
             LEFT JOIN sources s ON dr.source_id = s.id
             WHERE dr.search_id = ?
-            ORDER BY dr.deal_score DESC, dr.discount_percent DESC, dr.current_price ASC
+            ORDER BY
+                CASE dr.verification_label
+                    WHEN 'verified_exact' THEN 0
+                    WHEN 'verified_named' THEN 1
+                    WHEN 'category_primary' THEN 2
+                    WHEN 'verified_related' THEN 3
+                    ELSE 4
+                END ASC,
+                dr.deal_score DESC,
+                dr.discount_percent DESC,
+                dr.current_price ASC
         """, (search_id,)).fetchall()
         conn.close()
         return rows

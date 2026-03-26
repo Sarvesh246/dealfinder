@@ -50,6 +50,56 @@ def _verified_result(url, title, price):
     )
 
 
+def _verified_named_result(url, title, price, *, family="pressure_cooker", brand="instant pot"):
+    fingerprint = ListingFingerprint(
+        url=url,
+        domain="example.com",
+        title=title,
+        brand=brand,
+        family=family,
+        model_tokens=(),
+        normalized_model_tokens=(),
+        variant_tokens=(),
+        current_price=price,
+        accessory_signal=False,
+        compatibility_signal=False,
+        bundle_signal=False,
+        hard_block_signal=False,
+        raw_text=title,
+    )
+    return VerificationResult(
+        status="verified",
+        reason="named_product_verified",
+        health_state="healthy",
+        product_name=title,
+        current_price=price,
+        brand=brand,
+        family=family,
+        model_token=None,
+        match_label="verified_named",
+        fingerprint=fingerprint,
+    )
+
+
+def _inspection(url, title, price, verification, *, domain="example.com"):
+    return {
+        "ok": verification.status in {"verified", "ambiguous"},
+        "reason": verification.reason,
+        "url": url,
+        "domain": domain,
+        "title": title,
+        "price": price,
+        "spec": app_spec(title),
+        "verification": verification,
+    }
+
+
+def app_spec(title):
+    from product_verifier import parse_product_spec
+
+    return parse_product_spec(title)
+
+
 def test_discover_track_uses_clicked_result_without_rerunning_search(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
 
@@ -174,3 +224,198 @@ def test_discover_track_reuses_verified_discovery_result_if_live_verify_fails(tm
     assert source["verification_state"] == "verified"
     assert source["verification_reason"] == "reused_discovery_verification"
     assert source["discovered_url"] == "https://example.com/airpods-pro-3"
+
+
+def test_add_route_redirects_broad_category_queries_to_discovery(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    client = app_module.app.test_client()
+
+    response = client.post(
+        "/add",
+        data={
+            "name": "standing desk",
+            "target_price": "300",
+            "source_ids": ["1", "2"],
+        },
+    )
+
+    assert response.status_code == 302
+    location = response.headers["Location"]
+    assert "/discover?" in location
+    assert "query=standing+desk" in location
+    assert "max_price=300" in location
+    assert database.get_all_products() == []
+
+
+def test_discover_track_promotes_category_result_to_specific_tracker(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    search_id = database.create_discovery_search("standing desk", None, 300.0)
+    database.add_discovery_result(
+        search_id,
+        1,
+        "FlexiSpot EN1 Electric Standing Desk 48 x 24",
+        279.99,
+        349.99,
+        20.0,
+        "https://example.com/flexispot-standing-desk",
+        relevance_score=91,
+        deal_score=52,
+        discount_confirmed=1,
+        verification_label="category_primary",
+    )
+    result_id = database.get_discovery_results(search_id)[0]["id"]
+
+    seen_specs = []
+
+    def _verify(spec, source, candidate):
+        seen_specs.append(spec)
+        return _verified_named_result(
+            candidate["product_url"],
+            candidate["product_name"],
+            279.99,
+            family="standing_desk",
+            brand="flexispot",
+        )
+
+    monkeypatch.setattr(app_module, "verify_candidate_listing", _verify)
+
+    client = app_module.app.test_client()
+    response = client.post(f"/discover/track/{result_id}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+    assert seen_specs
+    assert seen_specs[0].query_type != "category"
+    assert seen_specs[0].family == "standing_desk"
+
+    products = database.get_all_products()
+    assert len(products) == 1
+    product = products[0]
+    assert product["name"] == "FlexiSpot EN1 Electric Standing Desk 48 x 24"
+    assert product["query_type"] == "named_product"
+    assert product["target_price"] == 300.0
+
+
+def test_add_page_renders_search_and_link_tabs(tmp_path, monkeypatch):
+    _database, app_module = _load_test_app(tmp_path, monkeypatch)
+    client = app_module.app.test_client()
+
+    response = client.get("/add")
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "Search Stores" in body
+    assert "Paste Link" in body
+    assert "Track This Link" in body
+
+
+def test_track_link_success_with_target_price(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    source = database.get_source_by_id(1)
+    verification = _verified_result(
+        "https://example.com/airpods-pro-3",
+        "Apple AirPods Pro 3 Wireless Earbuds",
+        189.0,
+    )
+    monkeypatch.setattr(app_module, "find_source_for_url", lambda url: source)
+    monkeypatch.setattr(
+        app_module,
+        "inspect_direct_link",
+        lambda url, source=None, context=None: _inspection(
+            "https://example.com/airpods-pro-3",
+            "Apple AirPods Pro 3 Wireless Earbuds",
+            189.0,
+            verification,
+        ),
+    )
+
+    client = app_module.app.test_client()
+    response = client.post(
+        "/track/link",
+        data={"product_url": "https://example.com/airpods-pro-3", "target_price": "190"},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+    products = database.get_all_products()
+    assert len(products) == 1
+    product = products[0]
+    assert product["origin_type"] == "direct_link"
+    assert product["alert_mode"] == "target_threshold"
+    assert product["target_price"] == 190.0
+    assert product["current_price"] == 189.0
+
+    sources = database.get_product_sources(product["id"])
+    assert len(sources) == 1
+    row = sources[0]
+    assert row["tracking_mode"] == "direct_url"
+    assert row["verification_state"] == "verified"
+    assert row["discovered_url"] == "https://example.com/airpods-pro-3"
+
+
+def test_track_link_blank_target_uses_any_drop_and_generic_source(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    generic = database.ensure_generic_direct_source()
+    verification = _verified_named_result(
+        "https://shop.example.net/product/instant-pot",
+        "Instant Pot Duo 7-in-1 Electric Pressure Cooker",
+        89.99,
+    )
+    monkeypatch.setattr(app_module, "find_source_for_url", lambda url: None)
+    monkeypatch.setattr(app_module, "ensure_generic_direct_source", lambda: generic)
+    monkeypatch.setattr(
+        app_module,
+        "inspect_direct_link",
+        lambda url, source=None, context=None: _inspection(
+            "https://shop.example.net/product/instant-pot",
+            "Instant Pot Duo 7-in-1 Electric Pressure Cooker",
+            89.99,
+            verification,
+            domain="shop.example.net",
+        ),
+    )
+
+    client = app_module.app.test_client()
+    response = client.post(
+        "/track/link",
+        data={"product_url": "https://shop.example.net/product/instant-pot", "target_price": ""},
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+    product = database.get_all_products()[0]
+    assert product["origin_type"] == "direct_link"
+    assert product["alert_mode"] == "any_drop"
+    assert product["target_price"] is None
+    assert product["current_price"] == 89.99
+
+    source_row = database.get_product_sources(product["id"])[0]
+    assert source_row["tracking_mode"] == "direct_url"
+    assert source_row["source_name"] == "shop.example.net"
+    assert source_row["domain"] == "shop.example.net"
+
+
+def test_track_link_rejects_weak_pages(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    monkeypatch.setattr(app_module, "find_source_for_url", lambda url: None)
+    monkeypatch.setattr(app_module, "ensure_generic_direct_source", database.ensure_generic_direct_source)
+    monkeypatch.setattr(
+        app_module,
+        "inspect_direct_link",
+        lambda url, source=None, context=None: {
+            "ok": False,
+            "reason": "weak_listing",
+            "url": url,
+            "domain": "example.com",
+        },
+    )
+
+    client = app_module.app.test_client()
+    response = client.post("/track/link", data={"product_url": "https://example.com/bad", "target_price": ""})
+
+    assert response.status_code == 302
+    assert "/add?mode=link" in response.headers["Location"]
+    assert database.get_all_products() == []

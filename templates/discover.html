@@ -763,6 +763,7 @@
         type="text"
         id="search-query"
         name="query"
+        value="{{ prefill.query | default('', true) }}"
         placeholder="Search anything… e.g. lawn mower, air fryer"
         maxlength="200"
         required
@@ -838,7 +839,7 @@
       <span class="discover-sources-label">Stores to include</span>
       <div class="discover-source-chips" id="discover-source-chips">
         <div class="discover-source-chips-all">
-          <input type="checkbox" name="search_all_sources" value="1" id="discover-search-all-sources" class="sr-only" />
+          <input type="checkbox" name="search_all_sources" value="1" id="discover-search-all-sources" class="sr-only" {% if prefill.search_all_sources %}checked{% endif %} />
           <label for="discover-search-all-sources" class="d-source-chip discover-all-chip">
             <span class="d-chip-dot" style="background:linear-gradient(135deg,var(--accent-purple),var(--accent-blue))"></span>
             <span>All registered stores</span>
@@ -846,7 +847,7 @@
         </div>
         {% for s in sources | default([], true) %}
         <input type="checkbox" name="source_ids" value="{{ s.id }}" id="discover-source-{{ s.id }}"
-               class="sr-only discover-source-id-cb" {% if s.enabled %}checked{% endif %}
+               class="sr-only discover-source-id-cb" {% if (prefill.source_ids and s.id in prefill.source_ids) or (not prefill.source_ids and s.enabled) %}checked{% endif %}
                data-name="{{ s.name }}" />
         <label for="discover-source-{{ s.id }}" class="d-source-chip">
           <span class="d-chip-dot" style="background:{{ s.logo_color | default('#7C5CFC') }}"></span>
@@ -870,6 +871,7 @@
           type="number"
           id="max-price"
           name="max_price"
+          value="{{ prefill.max_price | default('', true) }}"
           placeholder="Max price"
           step="0.01"
           min="0.01"

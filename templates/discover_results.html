@@ -233,6 +233,27 @@
     color: var(--accent-purple);
     background: rgba(124,92,252,0.10);
   }
+  .verification-badge.named {
+    border-color: rgba(34,211,238,0.25);
+    color: #67e8f9;
+    background: rgba(34,211,238,0.10);
+  }
+  .verification-badge.category {
+    border-color: rgba(250,204,21,0.28);
+    color: #fde68a;
+    background: rgba(250,204,21,0.10);
+  }
+
+  .category-hint {
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(250,204,21,0.16);
+    background: rgba(250,204,21,0.06);
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .category-hint strong { color: var(--text-primary); }
 
   .also-at {
     font-size: 11px; color: var(--text-muted); margin-bottom: 10px;
@@ -389,6 +410,10 @@
 
   {% if results %}
 
+  {% if is_category_search %}
+  <p class="category-hint"><strong>Pick a result to track.</strong> Broad category searches stay browse-first until you choose a specific listing.</p>
+  {% endif %}
+
   <!-- Sort controls -->
   <div class="sort-bar">
     <span class="sort-label">Sort by:</span>
@@ -407,6 +432,7 @@
          data-discount="{{ r.discount_percent }}"
          data-price="{{ r.current_price }}"
          data-relevance="{{ r.relevance_score | default(0) }}"
+         data-verify-rank="{% if r.verification_label == 'verified_exact' %}0{% elif r.verification_label == 'verified_named' %}1{% elif r.verification_label == 'category_primary' %}2{% elif r.verification_label == 'verified_related' %}3{% else %}4{% endif %}"
          data-time="{{ r.discovered_at }}">
 
       {% if r.deal_score and r.deal_score > 0 %}
@@ -464,7 +490,7 @@
         <span class="result-source-dot" style="background:{{ r.source_logo_color | default('#7C5CFC') }}"></span>
         <span class="result-source-name">{{ r.source_name }}</span>
         {% if r.verification_label %}
-        <span class="verification-badge {% if r.verification_label == 'verified_exact' %}exact{% else %}related{% endif %}">
+        <span class="verification-badge {% if r.verification_label == 'verified_exact' %}exact{% elif r.verification_label == 'verified_named' %}named{% elif r.verification_label == 'category_primary' %}category{% else %}related{% endif %}">
           {{ r.verification_label | replace('_', ' ') | title }}
         </span>
         {% endif %}
@@ -550,6 +576,9 @@
   function sortCards(key) {
     var cards = Array.from(grid.children);
     cards.sort(function (a, b) {
+      var aVerify = parseFloat(a.dataset.verifyRank) || 2;
+      var bVerify = parseFloat(b.dataset.verifyRank) || 2;
+      if (aVerify !== bVerify) return aVerify - bVerify;
       var aVal = parseFloat(a.dataset[key]) || 0;
       var bVal = parseFloat(b.dataset[key]) || 0;
       if (key === 'price') return aVal - bVal;

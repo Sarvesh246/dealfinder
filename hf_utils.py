@@ -12,11 +12,15 @@ HF_TOKEN configured.  The app works identically without HF — just less smartly
 """
 
 import json
+import hashlib
 import logging
 import os
 import re
+import threading
 from datetime import datetime
 from difflib import SequenceMatcher
+
+import requests
 
 try:
     from dotenv import load_dotenv
@@ -43,6 +47,7 @@ QUERY_ENHANCE_MODEL = os.getenv(
     "HF_QUERY_MODEL",
     "meta-llama/Llama-3.2-1B-Instruct",
 )
+HF_RELEVANCE_CACHE_TTL_SECONDS = int(os.getenv("HF_RELEVANCE_CACHE_TTL_SECONDS", "600"))
 
 
 def _normalize_name(name: str) -> str:
@@ -62,12 +67,16 @@ class SmartEngine:
     def __init__(self):
         self._client = None
         self._enabled = HF_AVAILABLE
+        self._relevance_cache: dict[tuple[str, str], tuple[datetime, list[float]]] = {}
+        self._cache_lock = threading.Lock()
+        self._warm_started = False
         if self._enabled:
             try:
                 token = os.getenv("HF_TOKEN", "") or None
                 self._client = InferenceClient(token=token)
                 logging.info(f"[{datetime.now()}] HF SmartEngine initialized"
                              f"{' (authenticated)' if token else ' (anonymous)'}")
+                self._start_warmup()
             except Exception as exc:
                 logging.warning(f"[{datetime.now()}] HF SmartEngine init failed: {exc}")
                 self._enabled = False
@@ -75,6 +84,32 @@ class SmartEngine:
     @property
     def available(self) -> bool:
         return self._enabled and self._client is not None
+
+    def _start_warmup(self) -> None:
+        if self._warm_started or not self.available:
+            return
+        self._warm_started = True
+
+        def warm() -> None:
+            try:
+                requests.get(
+                    f"https://huggingface.co/api/models/{SIMILARITY_MODEL}",
+                    timeout=10,
+                )
+                requests.get(
+                    f"https://huggingface.co/api/models/{SIMILARITY_MODEL}?expand=inferenceProviderMapping",
+                    timeout=10,
+                )
+            except Exception as exc:
+                logging.debug(f"[{datetime.now()}] HF warmup skipped: {exc}")
+
+        threading.Thread(target=warm, daemon=True).start()
+
+    def _relevance_cache_key(self, query: str, product_names: list[str]) -> tuple[str, str]:
+        normalized_query = _normalize_name(query)
+        payload = json.dumps([_normalize_name(name) for name in product_names], separators=(",", ":"))
+        titles_hash = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+        return normalized_query, titles_hash
 
     # ------------------------------------------------------------------
     # 1.  Relevance scoring  (1 API call — sentence_similarity)
@@ -89,14 +124,26 @@ class SmartEngine:
             return results
 
         product_names = [r.get("product_name", "") for r in results]
+        cache_key = self._relevance_cache_key(query, product_names)
 
         if self.available:
+            now = datetime.now()
+            with self._cache_lock:
+                cached = self._relevance_cache.get(cache_key)
+                if cached is not None:
+                    cached_at, scores = cached
+                    if (now - cached_at).total_seconds() <= HF_RELEVANCE_CACHE_TTL_SECONDS:
+                        for r, score in zip(results, scores):
+                            r["relevance_score"] = round(max(0.0, min(1.0, float(score))), 3)
+                        return results
             try:
                 scores = self._client.sentence_similarity(
                     query,
                     other_sentences=product_names,
                     model=SIMILARITY_MODEL,
                 )
+                with self._cache_lock:
+                    self._relevance_cache[cache_key] = (datetime.now(), [float(score) for score in scores])
                 for r, score in zip(results, scores):
                     r["relevance_score"] = round(max(0.0, min(1.0, float(score))), 3)
                 logging.info(f"[{datetime.now()}] HF relevance scored {len(results)} results")

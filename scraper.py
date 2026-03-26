@@ -16,8 +16,10 @@ import os
 import random
 import re
 import tempfile
+import threading
 import time
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 from urllib.parse import quote_plus, urljoin, urlparse
@@ -26,9 +28,11 @@ import requests
 from bs4 import BeautifulSoup
 from bs4.element import Tag
 from dotenv import load_dotenv
+from requests.adapters import HTTPAdapter
 
 from product_verifier import (
     ProductSpec,
+    QueryType,
     fallback_listing_fingerprint,
     fingerprint_listing_document,
     parse_product_spec,
@@ -40,6 +44,10 @@ from product_verifier import (
 load_dotenv()
 
 MAX_RESULTS_PER_SOURCE = int(os.getenv("MAX_RESULTS_PER_SOURCE", "50"))
+DISCOVERY_VERIFY_WORKERS = int(os.getenv("DISCOVERY_VERIFY_WORKERS", "4"))
+STRICT_VERIFY_WORKERS = int(os.getenv("STRICT_VERIFY_WORKERS", "3"))
+SELENIUM_DRIVER_MAX_PAGES = int(os.getenv("SELENIUM_DRIVER_MAX_PAGES", "25"))
+_REQUEST_POOL_SIZE = int(os.getenv("REQUEST_POOL_SIZE", "16"))
 
 # When true, prefer listings with a provable ≥5% markdown; unconfirmed (no was-price
 # in SRP HTML) can still appear if we have fewer than 5 confirmed hits.
@@ -50,6 +58,248 @@ REQUIRE_DISCOUNT = os.getenv("REQUIRE_DISCOUNT", "true").lower() not in (
 DISCOVERY_MIN_CONFIRMED_BEFORE_SKIP_UNCONFIRMED = 5
 # When padding, total results never exceed this (confirmed + unconfirmed).
 DISCOVERY_MAX_MERGED_RESULTS = 8
+
+
+@dataclass(frozen=True)
+class FetchCacheEntry:
+    soup: BeautifulSoup | None
+    fetch_method: str
+    failure_reason: str | None = None
+
+
+class SearchExecutionContext:
+    """Request-scoped caches, sessions, and failure state for one search/check pass."""
+
+    def __init__(self) -> None:
+        self._fetch_cache: dict[str, FetchCacheEntry] = {}
+        self._verification_cache: dict[tuple[ProductSpec, str], Any] = {}
+        self._domain_failures: dict[str, str] = {}
+        self._empty_result_counts: dict[str, int] = {}
+        self._lock = threading.RLock()
+        self._thread_local = threading.local()
+
+    def get_fetch_entry(self, key: str) -> FetchCacheEntry | None:
+        with self._lock:
+            return self._fetch_cache.get(key)
+
+    def set_fetch_entry(self, key: str, entry: FetchCacheEntry) -> None:
+        with self._lock:
+            self._fetch_cache[key] = entry
+
+    def get_verification(self, spec: ProductSpec, canonical_url: str) -> Any | None:
+        with self._lock:
+            return self._verification_cache.get((spec, canonical_url))
+
+    def set_verification(self, spec: ProductSpec, canonical_url: str, verification: Any) -> None:
+        with self._lock:
+            self._verification_cache[(spec, canonical_url)] = verification
+
+    def mark_domain_failure(self, domain: str, reason: str) -> None:
+        if not domain or not reason:
+            return
+        with self._lock:
+            self._domain_failures[domain] = reason
+
+    def domain_failure_reason(self, domain: str) -> str | None:
+        with self._lock:
+            return self._domain_failures.get(domain)
+
+    def should_skip_domain(self, domain: str) -> bool:
+        return self.domain_failure_reason(domain) is not None
+
+    def record_empty_result(self, domain: str) -> int:
+        with self._lock:
+            count = self._empty_result_counts.get(domain, 0) + 1
+            self._empty_result_counts[domain] = count
+            return count
+
+    def clear_empty_results(self, domain: str) -> None:
+        with self._lock:
+            self._empty_result_counts.pop(domain, None)
+
+    def get_session(self) -> requests.Session:
+        session = getattr(self._thread_local, "session", None)
+        if session is not None:
+            return session
+        session = requests.Session()
+        adapter = HTTPAdapter(
+            pool_connections=_REQUEST_POOL_SIZE,
+            pool_maxsize=_REQUEST_POOL_SIZE,
+            max_retries=0,
+        )
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        self._thread_local.session = session
+        return session
+
+
+@dataclass
+class _BrowserHandle:
+    driver: Any | None = None
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    pages_served: int = 0
+    created_at: float = 0.0
+
+
+class BrowserPool:
+    """Small reusable Selenium pool: one active browser task per domain."""
+
+    def __init__(self) -> None:
+        self._handles: dict[str, _BrowserHandle] = {}
+        self._lock = threading.Lock()
+        self._driver_path: str | None = None
+        self._driver_lock = threading.Lock()
+
+    def _get_handle(self, domain: str) -> _BrowserHandle:
+        key = domain or "__default__"
+        with self._lock:
+            handle = self._handles.get(key)
+            if handle is None:
+                handle = _BrowserHandle()
+                self._handles[key] = handle
+            return handle
+
+    def _resolve_driver_path(self) -> str:
+        configured = os.getenv("CHROMEDRIVER_PATH", "").strip()
+        if configured:
+            return configured
+        with self._driver_lock:
+            if self._driver_path:
+                return self._driver_path
+            from webdriver_manager.chrome import ChromeDriverManager
+
+            self._driver_path = ChromeDriverManager().install()
+            return self._driver_path
+
+    def _new_driver(self):
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+
+        ua = random.choice(USER_AGENTS)
+        opts = Options()
+        opts.add_argument("--headless=new")
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--disable-gpu")
+        opts.add_argument("--window-size=1920,1080")
+        opts.add_argument("--start-maximized")
+        opts.add_argument("--disable-blink-features=AutomationControlled")
+        opts.add_argument("--disable-features=IsolateOrigins,site-per-process")
+        opts.page_load_strategy = "eager"
+        opts.add_argument(f"--user-agent={ua}")
+        driver = webdriver.Chrome(
+            service=Service(self._resolve_driver_path()),
+            options=opts,
+        )
+        driver.set_page_load_timeout(25)
+        try:
+            driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+                "source": """
+                    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                    Object.defineProperty(navigator, 'platform', {get: () => 'Win32'});
+                """
+            })
+            driver.execute_cdp_cmd("Network.enable", {})
+            driver.execute_cdp_cmd(
+                "Network.setExtraHTTPHeaders",
+                {"headers": {"Referer": "https://www.google.com/"}},
+            )
+            driver.execute_cdp_cmd("Network.setUserAgentOverride", {"userAgent": ua})
+        except Exception:
+            pass
+        return driver
+
+    def _recycle_locked(self, handle: _BrowserHandle) -> None:
+        driver = handle.driver
+        handle.driver = None
+        handle.pages_served = 0
+        handle.created_at = 0.0
+        if driver is None:
+            return
+        try:
+            driver.quit()
+        except Exception:
+            pass
+
+    def _ensure_driver_locked(self, handle: _BrowserHandle):
+        if handle.driver is not None and handle.pages_served < SELENIUM_DRIVER_MAX_PAGES:
+            return handle.driver
+        self._recycle_locked(handle)
+        handle.driver = self._new_driver()
+        handle.created_at = time.monotonic()
+        return handle.driver
+
+    def close_all(self) -> None:
+        with self._lock:
+            handles = list(self._handles.values())
+        for handle in handles:
+            with handle.lock:
+                self._recycle_locked(handle)
+
+    def fetch_soup(
+        self,
+        url: str,
+        *,
+        domain: str = "",
+        debug_meta: dict | None = None,
+        failure_sink: dict[str, str] | None = None,
+    ) -> BeautifulSoup | None:
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.support.ui import WebDriverWait
+
+        effective_domain = (domain or urlparse(url).netloc or "").lower().replace("www.", "")
+        mode_dbg = str((debug_meta or {}).get("mode", "selenium"))
+        q_dbg = str((debug_meta or {}).get("query", ""))
+        handle = self._get_handle(effective_domain)
+        with handle.lock:
+            driver = self._ensure_driver_locked(handle)
+            try:
+                driver.get(url)
+                WebDriverWait(driver, 15).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                )
+                selectors = _selenium_wait_selectors(effective_domain, mode_dbg)
+                if selectors:
+                    _wait_for_any_selector(
+                        driver,
+                        selectors,
+                        timeout=10 if mode_dbg in {"discover_deals", "strict_search"} else 12,
+                    )
+                if _mode_needs_scroll(mode_dbg):
+                    _progressive_scroll(driver, effective_domain, selectors[0] if selectors else None)
+                page_source = driver.page_source
+                body_len = len(page_source)
+                handle.pages_served += 1
+                if body_len < 50000 and effective_domain in {"walmart.com", "bestbuy.com"}:
+                    logging.warning(
+                        f"[{datetime.now()}] Possible bot wall for {effective_domain}, body_len={body_len}"
+                    )
+                    if failure_sink is not None:
+                        failure_sink["reason"] = "bot_wall"
+                    _debug_save_failure(
+                        effective_domain,
+                        mode_dbg,
+                        q_dbg,
+                        "selenium",
+                        "bot_wall",
+                        url=url,
+                        html=page_source,
+                    )
+                    self._recycle_locked(handle)
+                    return None
+                return BeautifulSoup(page_source, "html.parser")
+            except Exception as exc:
+                logging.error(f"[{datetime.now()}] Selenium error for {url}: {exc}")
+                if failure_sink is not None:
+                    failure_sink["reason"] = "selenium_error"
+                self._recycle_locked(handle)
+                return None
+
+
+_BROWSER_POOL = BrowserPool()
 
 def _discount_confirmed(
     original_price: float | None, current_price: float | None,
@@ -464,21 +714,65 @@ def extract_price_from_meta(soup: BeautifulSoup) -> float | None:
     return None
 
 
-def extract_price_from_html(soup: BeautifulSoup) -> float | None:
+def _is_noisy_price_element(el: Tag) -> bool:
+    el_id = (el.get("id") or "").lower()
+    classes = " ".join(el.get("class", [])).lower()
+    text = el.get_text(" ", strip=True).lower()
+    noisy_bits = (
+        "warranty", "protection", "insurance", "trade-in", "trade in",
+        "monthly", "/month", "month", "store card", "subscription", "plan",
+    )
+    return any(bit in el_id or bit in classes or bit in text for bit in noisy_bits)
+
+
+def _collect_html_price_candidates(soup: BeautifulSoup) -> list[float]:
+    candidates: list[float] = []
+    seen: set[float] = set()
+
+    def add_price(raw_text: str) -> None:
+        p = clean_price(raw_text)
+        if p and p not in seen:
+            seen.add(p)
+            candidates.append(p)
+
+    # Prioritize common PDP selectors before falling back to generic price scans.
+    preferred_selectors = (
+        "#corePrice_feature_div .a-offscreen",
+        "#apex_offerDisplay_desktop .a-offscreen",
+        "#tp_price_block_total_price_ww .a-offscreen",
+        "#corePriceDisplay_desktop_feature_div .a-offscreen",
+        "#corePriceDisplay_mobile_feature_div .a-offscreen",
+        "[data-a-color='price'] .a-offscreen",
+        ".priceToPay .a-offscreen",
+        '[itemprop=\"price\"]',
+        "meta[property='product:price:amount']",
+        "meta[property='og:price:amount']",
+    )
+    for sel in preferred_selectors:
+        for el in soup.select(sel):
+            if _is_noisy_price_element(el):
+                continue
+            add_price(el.get("content") or el.get_text(" ", strip=True))
+
     pattern = re.compile(r"price", re.IGNORECASE)
     for el in soup.find_all(True):
         classes = " ".join(el.get("class", []))
         el_id = el.get("id", "")
         if not (pattern.search(classes) or pattern.search(el_id)):
             continue
-        text = el.get_text(strip=True)
+        if _is_noisy_price_element(el):
+            continue
+        text = el.get_text(" ", strip=True)
         if not text:
             continue
         if "$" in text or re.search(r"\d+[.,]\d{2}", text):
-            p = clean_price(text)
-            if p:
-                return p
-    return None
+            add_price(text)
+    return candidates
+
+
+def extract_price_from_html(soup: BeautifulSoup) -> float | None:
+    candidates = _collect_html_price_candidates(soup)
+    return min(candidates) if candidates else None
 
 
 def _pick_price_with_hint(candidates: list[float], price_hint: float | None) -> float | None:
@@ -528,9 +822,7 @@ def extract_price_from_soup(soup: BeautifulSoup, *, price_hint: float | None = N
             continue
         candidates.extend(_schema_prices(data))
 
-    html_p = extract_price_from_html(soup)
-    if html_p is not None:
-        candidates.append(html_p)
+    candidates.extend(_collect_html_price_candidates(soup))
 
     return _pick_price_with_hint(candidates, price_hint)
 
@@ -544,10 +836,13 @@ def _fetch_soup(
     *,
     debug_domain: str = "",
     failure_context: dict | None = None,
+    failure_sink: dict[str, str] | None = None,
+    context: SearchExecutionContext | None = None,
 ) -> BeautifulSoup | None:
     global _LAST_REQUESTS_FAILURE
     try:
-        resp = requests.get(url, headers=_random_headers(url), timeout=25)
+        session = context.get_session() if context else requests.Session()
+        resp = session.get(url, headers=_random_headers(url), timeout=25)
         if resp.status_code != 200:
             snippet = resp.text[:500] if resp.text else "(empty body)"
             logging.warning(
@@ -563,6 +858,8 @@ def _fetch_soup(
                 "bestbuy.com",
             ):
                 _LAST_REQUESTS_FAILURE = {"reason": "bot_wall", "url": url}
+                if failure_sink is not None:
+                    failure_sink["reason"] = "bot_wall"
                 _debug_save_failure(
                     str(failure_context["domain"]),
                     str(failure_context.get("mode", "?")),
@@ -585,6 +882,8 @@ def _fetch_soup(
         return soup
     except requests.exceptions.Timeout:
         logging.error(f"[{datetime.now()}] Timeout fetching {url}")
+        if failure_sink is not None:
+            failure_sink["reason"] = "timeout"
         if failure_context and failure_context.get("domain") in (
             "walmart.com",
             "bestbuy.com",
@@ -601,9 +900,119 @@ def _fetch_soup(
             )
     except requests.exceptions.RequestException as exc:
         logging.error(f"[{datetime.now()}] Request error for {url}: {exc}")
+        if failure_sink is not None:
+            failure_sink["reason"] = "request_error"
     except Exception as exc:
         logging.error(f"[{datetime.now()}] Unexpected error fetching {url}: {exc}")
+        if failure_sink is not None:
+            failure_sink["reason"] = "unexpected_error"
     return None
+
+
+def _selenium_wait_selectors(domain: str, mode: str) -> tuple[str, ...]:
+    search_selectors = {
+        "bestbuy.com": (
+            "li.sku-item, .sku-item, [data-testid='shop-product-card'], a.sku-title[href*='/product/']",
+        ),
+        "walmart.com": (
+            "a[href*='/ip/'], [data-testid='product-title'], [data-item-id]",
+        ),
+        "target.com": (
+            "[data-test='product-title'], [data-test='product-card'], a[href*='/p/']",
+        ),
+        "costco.com": (
+            "a[href*='.product.'], [automation-id='productList'] a, .product",
+        ),
+        "homedepot.com": (
+            "div[data-testid='product-pod'], a[href*='/p/']",
+        ),
+        "lowes.com": (
+            "[data-test='product-tile'], a[href*='/pd/']",
+        ),
+    }
+    product_selectors = (
+        "h1",
+        '[data-automation="product-title"]',
+        '[data-test="product-title"]',
+        '[data-testid*="product-title"]',
+        '[itemprop="name"]',
+    )
+    if mode in {"discover_deals", "strict_search"}:
+        return search_selectors.get(domain, ("a[href], h1",))
+    return product_selectors
+
+
+def _wait_for_any_selector(driver, selectors: tuple[str, ...], timeout: int = 15) -> None:
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    for selector in selectors:
+        try:
+            WebDriverWait(driver, timeout).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, selector))
+            )
+            return
+        except Exception:
+            continue
+
+
+def _mode_needs_scroll(mode: str) -> bool:
+    return mode in {"discover_deals", "strict_search"}
+
+
+def _progressive_scroll(driver, domain: str, selector: str | None) -> None:
+    from selenium.webdriver.support.ui import WebDriverWait
+
+    target_cards = 10 if domain in {"bestbuy.com", "walmart.com"} else 6
+    prev_height = 0
+    prev_count = 0
+    for _ in range(5):
+        try:
+            current_height = int(
+                driver.execute_script(
+                    "return Math.max(document.body.scrollHeight || 0, document.documentElement.scrollHeight || 0, 0)"
+                )
+            )
+        except Exception:
+            break
+        if selector:
+            try:
+                current_count = int(
+                    driver.execute_script("return document.querySelectorAll(arguments[0]).length", selector)
+                )
+            except Exception:
+                current_count = 0
+        else:
+            current_count = 0
+        if current_count >= target_cards and current_height <= prev_height:
+            break
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        try:
+            WebDriverWait(driver, 4).until(
+                lambda d: (
+                    int(
+                        d.execute_script(
+                            "return Math.max(document.body.scrollHeight || 0, document.documentElement.scrollHeight || 0, 0)"
+                        )
+                    ) > current_height
+                    or (
+                        bool(selector)
+                        and int(
+                            d.execute_script(
+                                "return document.querySelectorAll(arguments[0]).length",
+                                selector,
+                            )
+                        ) > current_count
+                    )
+                )
+            )
+        except Exception:
+            pass
+        prev_height = current_height
+        prev_count = current_count
+        if selector and prev_count >= target_cards:
+            break
 
 
 def _fetch_soup_selenium(
@@ -793,6 +1202,29 @@ def _fetch_soup_selenium(
     return None
 
 
+def _fetch_soup_selenium_pooled(
+    url: str,
+    *,
+    domain: str = "",
+    debug_meta: dict | None = None,
+    failure_sink: dict[str, str] | None = None,
+) -> BeautifulSoup | None:
+    global _LAST_SELENIUM_FAILURE
+    _LAST_SELENIUM_FAILURE = None
+    soup = _BROWSER_POOL.fetch_soup(
+        url,
+        domain=domain,
+        debug_meta=debug_meta,
+        failure_sink=failure_sink,
+    )
+    if soup is None and failure_sink and failure_sink.get("reason"):
+        _LAST_SELENIUM_FAILURE = {
+            "reason": failure_sink["reason"],
+            "url": url,
+        }
+    return soup
+
+
 # ---------------------------------------------------------------------------
 # Per-site search result extractors
 # ---------------------------------------------------------------------------
@@ -808,6 +1240,95 @@ def _canonical_listing_url(url: str) -> str:
         return ""
     u = url.split("/ref=")[0].split("?")[0].rstrip("/")
     return u
+
+
+def canonicalize_listing_url(url: str) -> str:
+    return _canonical_listing_url((url or "").strip())
+
+
+_DIRECT_NON_PRODUCT_PATHS = (
+    re.compile(r"/(?:s|search)(?:[/?]|$)", re.I),
+    re.compile(r"/(?:cart|gp/cart|checkout|account|login|signin)(?:[/?]|$)", re.I),
+    re.compile(r"/(?:registry|wishlist|lists?|stores?|collections?|browse|deals?)(?:[/?]|$)", re.I),
+)
+_DIRECT_NON_PRODUCT_TITLE = re.compile(
+    r"\b(search results|shopping cart|sign in|sign-in|wishlist|your list|deals? page|category)\b",
+    re.I,
+)
+
+
+def _looks_like_non_product_url(url: str) -> bool:
+    path = urlparse(url).path or "/"
+    if path in {"", "/"}:
+        return True
+    return any(pattern.search(path) for pattern in _DIRECT_NON_PRODUCT_PATHS)
+
+
+def inspect_direct_link(
+    url: str,
+    *,
+    source: dict | None = None,
+    context: SearchExecutionContext | None = None,
+) -> dict[str, Any]:
+    canonical_url = canonicalize_listing_url(url)
+    domain = urlparse(canonical_url).netloc.lower().replace("www.", "")
+    if not canonical_url or not domain:
+        return {"ok": False, "reason": "invalid_url", "url": canonical_url, "domain": domain}
+    if _looks_like_non_product_url(canonical_url):
+        return {"ok": False, "reason": "not_product_url", "url": canonical_url, "domain": domain}
+
+    source_domain = (source or {}).get("domain") or domain
+    soup, fetch_method = _fetch_listing_soup(canonical_url, source_domain, context=context)
+    if not soup:
+        return {
+            "ok": False,
+            "reason": "fetch_failed",
+            "url": canonical_url,
+            "domain": domain,
+            "fetch_method": fetch_method,
+        }
+
+    price = extract_price_from_soup(soup)
+    fingerprint = fingerprint_listing_document(
+        canonical_url,
+        soup,
+        current_price=price,
+        family_hint=None,
+    )
+    title = clean_listing_title(fingerprint.title or "")
+    if not title or len(title) < 6 or _DIRECT_NON_PRODUCT_TITLE.search(title):
+        return {
+            "ok": False,
+            "reason": "weak_listing",
+            "url": canonical_url,
+            "domain": domain,
+            "title": title,
+            "price": price,
+            "fetch_method": fetch_method,
+        }
+    if price is None:
+        return {
+            "ok": False,
+            "reason": "price_not_found",
+            "url": canonical_url,
+            "domain": domain,
+            "title": title,
+            "fetch_method": fetch_method,
+        }
+
+    spec = parse_product_spec(title)
+    verification = verify_listing(spec, fingerprint)
+    return {
+        "ok": verification.status in {"verified", "ambiguous"},
+        "reason": verification.reason,
+        "url": canonical_url,
+        "domain": domain,
+        "title": title,
+        "price": price,
+        "spec": spec,
+        "verification": verification,
+        "fetch_method": fetch_method,
+    }
 
 
 def _dedupe_rows_by_url(rows: list[dict], url_key: str) -> list[dict]:
@@ -829,13 +1350,42 @@ def _amazon_search_url_more_results(url: str) -> str:
     return f"{url}{sep}num=50"
 
 
-def _amazon_page2_soup(page2_url: str) -> BeautifulSoup | None:
+def _amazon_page2_soup(
+    page2_url: str,
+    *,
+    context: SearchExecutionContext | None = None,
+) -> BeautifulSoup | None:
     """Try HTTP first; Selenium fallback when Amazon throttles page-2 requests."""
-    soup2 = _fetch_soup(page2_url, debug_domain="amazon.com")
+    cache_key = f"search:{page2_url}"
+    if context:
+        cached = context.get_fetch_entry(cache_key)
+        if cached is not None:
+            return cached.soup
+    failure_sink: dict[str, str] = {}
+    soup2 = _fetch_soup(
+        page2_url,
+        debug_domain="amazon.com",
+        failure_sink=failure_sink,
+        context=context,
+    )
     if soup2:
+        if context:
+            context.set_fetch_entry(cache_key, FetchCacheEntry(soup2, "requests"))
         return soup2
     logging.info(f"[{datetime.now()}] Amazon page 2: HTTP failed, trying Selenium")
-    return _fetch_soup_selenium(page2_url, domain="amazon.com")
+    selenium_failure: dict[str, str] = {}
+    soup2 = _fetch_soup_selenium_pooled(
+        page2_url,
+        domain="amazon.com",
+        debug_meta={"mode": "discover_deals", "query": page2_url},
+        failure_sink=selenium_failure,
+    )
+    if context:
+        context.set_fetch_entry(
+            cache_key,
+            FetchCacheEntry(soup2, "selenium" if soup2 else "fetch_failed", selenium_failure.get("reason") or failure_sink.get("reason")),
+        )
+    return soup2
 
 
 def _missing_name_count(rows: list[dict], key: str, min_chars: int = 2) -> int:
@@ -2224,7 +2774,7 @@ def _discover_product_bhphoto(
             for r in raw
         ]
     if not candidates:
-        soup = _fetch_soup_selenium(
+        soup = _fetch_soup_selenium_pooled(
             search_url, domain=domain, debug_meta=fc
         )
         if soup:
@@ -2373,7 +2923,7 @@ def discover_product(product_name: str, source: dict,
 
     if use_selenium_first:
         logging.info(f"[{datetime.now()}] Using Selenium for {domain}")
-        soup = _fetch_soup_selenium(
+        soup = _fetch_soup_selenium_pooled(
             search_url, domain=domain, debug_meta=fc
         )
         if soup:
@@ -2402,7 +2952,7 @@ def discover_product(product_name: str, source: dict,
             logging.info(
                 f"[{datetime.now()}] Falling back to Selenium for {domain}"
             )
-            soup2 = _fetch_soup_selenium(
+            soup2 = _fetch_soup_selenium_pooled(
                 search_url, domain=domain, debug_meta=fc
             )
             if soup2:
@@ -2529,7 +3079,7 @@ def get_price_from_url(url: str, source_name: str = "") -> float | None:
                 return price
 
     logging.info(f"[{datetime.now()}] Falling back to Selenium for {url}")
-    soup = _fetch_soup_selenium(url)
+    soup = _fetch_soup_selenium_pooled(url)
     if soup:
         for fn in (extract_price_from_json_ld, extract_price_from_meta,
                    extract_price_from_html):
@@ -3057,21 +3607,56 @@ def _strict_search_url(source: dict, query: str) -> str:
     return search_url
 
 
-def _fetch_search_results_soup(search_url: str, domain: str) -> tuple[BeautifulSoup | None, str]:
+def _fetch_search_results_soup(
+    search_url: str,
+    domain: str,
+    *,
+    context: SearchExecutionContext | None = None,
+) -> tuple[BeautifulSoup | None, str]:
+    cache_key = f"search:{search_url}"
+    if context:
+        cached = context.get_fetch_entry(cache_key)
+        if cached is not None:
+            return cached.soup, cached.fetch_method
+        if context.should_skip_domain(domain):
+            return None, "circuit_breaker"
+
     soup = None
     fetch_method = "fetch_failed"
+    requests_failure: dict[str, str] = {}
+    selenium_failure: dict[str, str] = {}
     if domain in _SELENIUM_PREFERRED:
-        soup = _fetch_soup_selenium(search_url, domain=domain, debug_meta={"mode": "strict_search", "query": search_url})
+        soup = _fetch_soup_selenium_pooled(
+            search_url,
+            domain=domain,
+            debug_meta={"mode": "strict_search", "query": search_url},
+            failure_sink=selenium_failure,
+        )
         if soup:
             fetch_method = "selenium"
     else:
-        soup = _fetch_soup(search_url, debug_domain=domain)
+        soup = _fetch_soup(
+            search_url,
+            debug_domain=domain,
+            failure_sink=requests_failure,
+            context=context,
+        )
         if soup:
             fetch_method = "requests"
         if not soup:
-            soup = _fetch_soup_selenium(search_url, domain=domain, debug_meta={"mode": "strict_search", "query": search_url})
+            soup = _fetch_soup_selenium_pooled(
+                search_url,
+                domain=domain,
+                debug_meta={"mode": "strict_search", "query": search_url},
+                failure_sink=selenium_failure,
+            )
             if soup:
                 fetch_method = "selenium"
+    failure_reason = selenium_failure.get("reason") or requests_failure.get("reason")
+    if context:
+        context.set_fetch_entry(cache_key, FetchCacheEntry(soup, fetch_method, failure_reason))
+        if not soup and failure_reason in {"bot_wall", "timeout"}:
+            context.mark_domain_failure(domain, failure_reason)
     return soup, fetch_method
 
 
@@ -3080,6 +3665,7 @@ def _search_listing_candidates(
     source: dict,
     *,
     max_results: int = MAX_RESULTS_PER_SOURCE,
+    context: SearchExecutionContext | None = None,
 ) -> list[dict]:
     domain = source["domain"]
     adapter = _SOURCE_ADAPTERS.get(domain)
@@ -3087,7 +3673,7 @@ def _search_listing_candidates(
         return []
     search_url = _strict_search_url(source, search_query)
     logging.info(f"[{datetime.now()}] Strict candidate search '{search_query}' on {domain}")
-    soup, fetch_method = _fetch_search_results_soup(search_url, domain)
+    soup, fetch_method = _fetch_search_results_soup(search_url, domain, context=context)
     if not soup:
         logging.warning(f"[{datetime.now()}] Strict candidate search failed on {domain}")
         _store_discovery_stats(
@@ -3103,9 +3689,10 @@ def _search_listing_candidates(
         )
         return []
     raw = adapter.search_extractor(soup, max_results=max_results)
-    if domain == "amazon.com" and len(raw) < max_results:
+    raw = _dedupe_rows_by_url(raw, "product_url")
+    if domain == "amazon.com" and len(raw) < min(max_results, STRICT_MAX_CANDIDATES):
         sep = "&" if "?" in search_url else "?"
-        soup2 = _amazon_page2_soup(f"{search_url}{sep}page=2")
+        soup2 = _amazon_page2_soup(f"{search_url}{sep}page=2", context=context)
         if soup2:
             raw.extend(adapter.search_extractor(soup2, max_results=max_results))
     for row in raw:
@@ -3119,13 +3706,48 @@ def _search_listing_candidates(
     return raw
 
 
-def _fetch_listing_soup(url: str, source_domain: str) -> tuple[BeautifulSoup | None, str]:
-    soup = _fetch_soup(url, debug_domain=source_domain)
+def _fetch_listing_soup(
+    url: str,
+    source_domain: str,
+    *,
+    context: SearchExecutionContext | None = None,
+) -> tuple[BeautifulSoup | None, str]:
+    canonical_url = canonicalize_listing_url(url) or url
+    cache_key = f"listing:{canonical_url}"
+    if context:
+        cached = context.get_fetch_entry(cache_key)
+        if cached is not None:
+            return cached.soup, cached.fetch_method
+        if context.should_skip_domain(source_domain):
+            return None, "circuit_breaker"
+
+    requests_failure: dict[str, str] = {}
+    selenium_failure: dict[str, str] = {}
+    soup = _fetch_soup(
+        url,
+        debug_domain=source_domain,
+        failure_sink=requests_failure,
+        context=context,
+    )
     if soup:
+        if context:
+            context.set_fetch_entry(cache_key, FetchCacheEntry(soup, "requests"))
         return soup, "requests"
-    soup = _fetch_soup_selenium(url, domain=source_domain, debug_meta={"mode": "strict_verify", "query": url})
+    soup = _fetch_soup_selenium_pooled(
+        url,
+        domain=source_domain,
+        debug_meta={"mode": "strict_verify", "query": url},
+        failure_sink=selenium_failure,
+    )
     if soup:
+        if context:
+            context.set_fetch_entry(cache_key, FetchCacheEntry(soup, "selenium"))
         return soup, "selenium"
+    failure_reason = selenium_failure.get("reason") or requests_failure.get("reason")
+    if context:
+        context.set_fetch_entry(cache_key, FetchCacheEntry(None, "fetch_failed", failure_reason))
+        if failure_reason in {"bot_wall", "timeout"}:
+            context.mark_domain_failure(source_domain, failure_reason)
     return None, "fetch_failed"
 
 
@@ -3156,14 +3778,21 @@ def verify_candidate_listing(
     spec: ProductSpec,
     source: dict,
     candidate: dict,
+    *,
+    context: SearchExecutionContext | None = None,
 ):
     url = candidate.get("product_url") or candidate.get("url") or ""
     title_hint = candidate.get("product_name") or candidate.get("name_found") or spec.raw_query
     if not url:
         return None
-    soup, _fetch_method = _fetch_listing_soup(url, source["domain"])
+    canonical_url = canonicalize_listing_url(url) or url
+    if context:
+        cached = context.get_verification(spec, canonical_url)
+        if cached is not None:
+            return cached
+    soup, _fetch_method = _fetch_listing_soup(url, source["domain"], context=context)
     if not soup:
-        return verify_listing(
+        verification = verify_listing(
             spec,
             fallback_listing_fingerprint(
                 url,
@@ -3172,6 +3801,9 @@ def verify_candidate_listing(
                 family_hint=spec.family,
             ),
         )
+        if context:
+            context.set_verification(spec, canonical_url, verification)
+        return verification
     price_hint = candidate.get("current_price")
     price = extract_price_from_soup(soup, price_hint=price_hint)
     fingerprint = fingerprint_listing_document(
@@ -3180,7 +3812,85 @@ def verify_candidate_listing(
         current_price=price,
         family_hint=spec.family,
     )
-    return verify_listing(spec, fingerprint)
+    verification = verify_listing(spec, fingerprint)
+    if context:
+        context.set_verification(spec, canonical_url, verification)
+    return verification
+
+
+def _verify_candidates_parallel(
+    spec: ProductSpec,
+    source: dict,
+    candidates: list[dict],
+    *,
+    max_workers: int,
+    context: SearchExecutionContext | None = None,
+) -> list[tuple[dict, Any]]:
+    if not candidates:
+        return []
+
+    ordered: list[tuple[dict, Any] | None] = [None] * len(candidates)
+
+    def task(idx: int, candidate: dict) -> tuple[int, Any]:
+        return idx, verify_candidate_listing(spec, source, candidate, context=context)
+
+    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(candidates)))) as executor:
+        futures = [
+            executor.submit(task, idx, candidate)
+            for idx, candidate in enumerate(candidates)
+        ]
+        for future in as_completed(futures):
+            idx, verification = future.result()
+            ordered[idx] = (candidates[idx], verification)
+
+    return [item for item in ordered if item is not None]
+
+
+def _revalidate_direct_product_source(
+    ps_row,
+    *,
+    context: SearchExecutionContext | None = None,
+) -> dict[str, Any]:
+    url = (ps_row.get("discovered_url") or "").strip()
+    if not url:
+        return {"status": "quarantined", "verified": [], "ambiguous": []}
+
+    spec = product_spec_from_row(ps_row)
+    source_domain = (
+        ps_row.get("source_domain_override")
+        or ps_row.get("domain")
+        or urlparse(url).netloc.lower().replace("www.", "")
+    )
+    soup, _fetch_method = _fetch_listing_soup(url, source_domain, context=context)
+    if not soup:
+        return {"status": "quarantined", "verified": [], "ambiguous": []}
+
+    price = extract_price_from_soup(soup, price_hint=ps_row.get("current_price"))
+    fingerprint = fingerprint_listing_document(
+        url,
+        soup,
+        current_price=price,
+        family_hint=spec.family,
+    )
+    verification = verify_listing(spec, fingerprint)
+    candidate = {
+        "product_url": url,
+        "product_name": ps_row.get("matched_product_name") or ps_row.get("product_name"),
+        "current_price": price,
+    }
+    if verification.status == "verified":
+        return {
+            "status": "verified",
+            "verified": [_verification_row(candidate, verification, ps_row.get("target_price"))],
+            "ambiguous": [],
+        }
+    if verification.status == "ambiguous":
+        return {
+            "status": "pending_confirmation",
+            "verified": [],
+            "ambiguous": [_verification_row(candidate, verification, ps_row.get("target_price"))],
+        }
+    return {"status": "quarantined", "verified": [], "ambiguous": []}
 
 
 def discover_product_matches(
@@ -3189,31 +3899,71 @@ def discover_product_matches(
     *,
     target_price: float | None = None,
     max_candidates: int = STRICT_MAX_CANDIDATES,
+    context: SearchExecutionContext | None = None,
 ) -> dict[str, list[dict]]:
     spec = parse_product_spec(product_name)
-    search_query = spec.canonical_query or product_name
-    candidates = _search_listing_candidates(
-        search_query,
-        source,
-        max_results=max(MAX_RESULTS_PER_SOURCE, max_candidates),
+    search_queries = (
+        spec.search_aliases
+        if spec.query_type in {QueryType.EXACT_MODEL.value, QueryType.NAMED_PRODUCT.value}
+        else (spec.canonical_query or product_name,)
     )
+    seen_urls: set[str] = set()
     verified: list[dict] = []
     ambiguous: list[dict] = []
     rejected = 0
-    for candidate in candidates[:max_candidates]:
-        verification = verify_candidate_listing(spec, source, candidate)
-        if verification is None:
+    remaining_budget = max_candidates
+    for search_query in search_queries:
+        if remaining_budget <= 0:
+            break
+        if context and context.should_skip_domain(source["domain"]):
+            break
+        rows = _search_listing_candidates(
+            search_query,
+            source,
+            max_results=max(MAX_RESULTS_PER_SOURCE, max_candidates),
+            context=context,
+        )
+        if rows and context:
+            context.clear_empty_results(source["domain"])
+        elif not rows and context and source["domain"] in _SELENIUM_PREFERRED:
+            if context.record_empty_result(source["domain"]) >= 2:
+                break
+        new_candidates: list[dict] = []
+        for candidate in rows:
+            url = (candidate.get("product_url") or candidate.get("url") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            new_candidates.append(candidate)
+        if not new_candidates:
             continue
-        row = _verification_row(candidate, verification, target_price)
-        if verification.status == "verified":
-            verified.append(row)
-        elif verification.status == "ambiguous":
-            ambiguous.append(row)
-        else:
-            rejected += 1
+
+        candidate_batch = new_candidates[:remaining_budget]
+        remaining_budget -= len(candidate_batch)
+        for candidate, verification in _verify_candidates_parallel(
+            spec,
+            source,
+            candidate_batch,
+            max_workers=STRICT_VERIFY_WORKERS,
+            context=context,
+        ):
+            if verification is None:
+                continue
+            row = _verification_row(candidate, verification, target_price)
+            if verification.status == "verified":
+                verified.append(row)
+            elif verification.status == "ambiguous":
+                ambiguous.append(row)
+            else:
+                rejected += 1
+
+        if verified or len(ambiguous) >= 3:
+            break
     verified.sort(
         key=lambda row: (
-            0 if row.get("match_label") == "verified_exact" else 1,
+            0 if row.get("match_label") == "verified_exact"
+            else 1 if row.get("match_label") == "verified_named"
+            else 2,
             row.get("price") is None,
             float(row.get("price") or 1e9),
         )
@@ -3227,7 +3977,14 @@ def discover_product_matches(
     return {"verified": verified, "ambiguous": ambiguous}
 
 
-def revalidate_product_source(ps_row) -> dict[str, Any]:
+def revalidate_product_source(
+    ps_row,
+    *,
+    context: SearchExecutionContext | None = None,
+) -> dict[str, Any]:
+    if ps_row.get("tracking_mode") == "direct_url":
+        return _revalidate_direct_product_source(ps_row, context=context)
+
     spec = product_spec_from_row(ps_row)
     source = {
         "id": ps_row["source_id"],
@@ -3240,7 +3997,7 @@ def revalidate_product_source(ps_row) -> dict[str, Any]:
         "product_name": ps_row.get("matched_product_name") or ps_row.get("product_name"),
         "current_price": ps_row.get("current_price"),
     }
-    verification = verify_candidate_listing(spec, source, current_candidate)
+    verification = verify_candidate_listing(spec, source, current_candidate, context=context)
     if verification and verification.status == "verified":
         return {
             "status": "verified",
@@ -3251,6 +4008,7 @@ def revalidate_product_source(ps_row) -> dict[str, Any]:
         spec.raw_query,
         source,
         target_price=ps_row.get("target_price"),
+        context=context,
     )
     if matches["verified"]:
         return {"status": "rediscovered", **matches}
@@ -3270,15 +4028,19 @@ def _budget_query(query: str, max_price: float | None) -> str:
     return query
 
 
-def discover_deals(query: str, source: dict, max_price: float | None = None,
-                   max_results: int = MAX_RESULTS_PER_SOURCE) -> list[dict]:
+def discover_deals(
+    query: str,
+    source: dict,
+    max_price: float | None = None,
+    max_results: int = MAX_RESULTS_PER_SOURCE,
+    *,
+    context: SearchExecutionContext | None = None,
+) -> list[dict]:
     """
     Search a retailer for *query*, returning up to *max_results* products.
     Each result dict has: product_name, current_price, original_price,
     discount_percent, product_url.
     """
-    time.sleep(random.uniform(2, 5))
-
     global _LAST_REQUESTS_FAILURE, _LAST_SELENIUM_FAILURE
     _LAST_REQUESTS_FAILURE = None
     _LAST_SELENIUM_FAILURE = None
@@ -3316,19 +4078,37 @@ def discover_deals(query: str, source: dict, max_price: float | None = None,
     soup: BeautifulSoup | None = None
     fetch_method_used = "fetch_failed"
     use_selenium_first = domain in _SELENIUM_PREFERRED
+    requests_failure: dict[str, str] = {}
+    selenium_failure: dict[str, str] = {}
+    cache_key = f"search:{search_url}"
 
-    if use_selenium_first:
+    if context:
+        cached = context.get_fetch_entry(cache_key)
+        if cached is not None:
+            soup = cached.soup
+            fetch_method_used = cached.fetch_method
+        elif context.should_skip_domain(domain):
+            fetch_method_used = "circuit_breaker"
+
+    if soup is None and use_selenium_first:
         logging.info(
             f"[{datetime.now()}] Using Selenium for discovery on {domain}"
         )
-        soup = _fetch_soup_selenium(
-            search_url, domain=domain, debug_meta=fc
+        soup = _fetch_soup_selenium_pooled(
+            search_url,
+            domain=domain,
+            debug_meta=fc,
+            failure_sink=selenium_failure,
         )
         if soup:
             fetch_method_used = "selenium"
-    else:
+    elif soup is None:
         soup = _fetch_soup(
-            search_url, debug_domain=domain, failure_context=fc_wm_bb
+            search_url,
+            debug_domain=domain,
+            failure_context=fc_wm_bb,
+            failure_sink=requests_failure,
+            context=context,
         )
         if soup:
             fetch_method_used = "requests"
@@ -3336,11 +4116,20 @@ def discover_deals(query: str, source: dict, max_price: float | None = None,
             logging.info(
                 f"[{datetime.now()}] Trying Selenium for discovery on {domain}"
             )
-            soup = _fetch_soup_selenium(
-                search_url, domain=domain, debug_meta=fc
+            soup = _fetch_soup_selenium_pooled(
+                search_url,
+                domain=domain,
+                debug_meta=fc,
+                failure_sink=selenium_failure,
             )
             if soup:
                 fetch_method_used = "selenium"
+
+    failure_reason = selenium_failure.get("reason") or requests_failure.get("reason")
+    if context and context.get_fetch_entry(cache_key) is None:
+        context.set_fetch_entry(cache_key, FetchCacheEntry(soup, fetch_method_used, failure_reason))
+        if not soup and failure_reason in {"bot_wall", "timeout"}:
+            context.mark_domain_failure(domain, failure_reason)
 
     if not soup:
         logging.warning(
@@ -3356,13 +4145,21 @@ def discover_deals(query: str, source: dict, max_price: float | None = None,
         return []
 
     raw = extractor(soup, max_results=max_results)
+    page1_deduped = _dedupe_rows_by_url(list(raw), "product_url")
+    page1_usable = _apply_discovery_quality_pipeline(
+        [dict(row) for row in page1_deduped],
+        query=search_query,
+        max_price=max_price,
+        label=_retailer_log_label(domain),
+        price_key="current_price",
+        name_key="product_name",
+    )
 
-    if domain == "amazon.com" and len(raw) < max_results:
+    if domain == "amazon.com" and len(page1_usable) < DISCOVERY_MAX_MERGED_RESULTS:
         sep = "&" if "?" in search_url else "?"
         page2_url = f"{search_url}{sep}page=2"
-        time.sleep(random.uniform(2, 4))
         logging.info(f"[{datetime.now()}] Fetching Amazon page 2 for discovery")
-        soup2 = _amazon_page2_soup(page2_url)
+        soup2 = _amazon_page2_soup(page2_url, context=context)
         if soup2:
             page2 = extractor(soup2, max_results=max_results)
             raw.extend(page2)
@@ -3421,4 +4218,41 @@ def discover_deals(query: str, source: dict, max_price: float | None = None,
         failure_reason=fail_reason,
     )
     return out
+
+
+def discover_deals_for_queries(
+    search_queries: tuple[str, ...] | list[str],
+    source: dict,
+    *,
+    max_price: float | None = None,
+    max_results: int = MAX_RESULTS_PER_SOURCE,
+    min_usable_results: int = DISCOVERY_MAX_MERGED_RESULTS,
+    context: SearchExecutionContext | None = None,
+) -> list[dict]:
+    source_rows: list[dict] = []
+    seen_urls: set[str] = set()
+    for search_query in search_queries:
+        if context and context.should_skip_domain(source["domain"]):
+            break
+        deals = discover_deals(
+            search_query,
+            source,
+            max_price=max_price,
+            max_results=max_results,
+            context=context,
+        )
+        for deal in deals:
+            url = (deal.get("product_url") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            source_rows.append(deal)
+        if deals and context:
+            context.clear_empty_results(source["domain"])
+        elif not deals and context and source["domain"] in _SELENIUM_PREFERRED:
+            if context.record_empty_result(source["domain"]) >= 2:
+                break
+        if len(source_rows) >= min_usable_results:
+            break
+    return source_rows
 

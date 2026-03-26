@@ -11,8 +11,10 @@ import json
 import logging
 import os
 import secrets
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from threading import Thread
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 from flask import (
@@ -22,6 +24,7 @@ from flask import (
 
 load_dotenv()
 
+from alerts import get_notification_status, send_alerts, send_discord_alert, send_gmail_alert
 from database import (
     add_category,
     add_discovery_result,
@@ -34,6 +37,8 @@ from database import (
     create_discovery_search,
     delete_product,
     delete_product_sources_by_source,
+    ensure_generic_direct_source,
+    find_source_for_url,
     get_all_categories,
     get_all_products,
     get_all_sources,
@@ -62,14 +67,22 @@ from database import (
 )
 from scheduler import check_all_products, create_scheduler, run_initial_backfill
 from hf_utils import get_smart_engine
-from product_verifier import parse_product_spec, verification_result_to_fields
+from product_verifier import QueryType, parse_product_spec, verification_result_to_fields
 from scraper import (
+    SearchExecutionContext,
+    canonicalize_listing_url,
     discover_deals,
+    discover_deals_for_queries,
     discover_product,
     discover_product_matches,
+    inspect_direct_link,
     revalidate_product_source,
     verify_candidate_listing,
 )
+
+DISCOVERY_SOURCE_WORKERS = int(os.getenv("DISCOVERY_SOURCE_WORKERS", "4"))
+STRICT_SOURCE_WORKERS = int(os.getenv("STRICT_SOURCE_WORKERS", "4"))
+DISCOVERY_VERIFY_WORKERS = int(os.getenv("DISCOVERY_VERIFY_WORKERS", "4"))
 
 
 def _first_discover_listing(rows):
@@ -79,8 +92,10 @@ def _first_discover_listing(rows):
     return rows[0] if isinstance(rows, list) else rows
 
 
-def _source_status_from_price(price, target_price):
+def _source_status_from_price(price, target_price, alert_mode="target_threshold"):
     if price is None:
+        return "watching"
+    if alert_mode == "any_drop" or target_price is None:
         return "watching"
     return "deal_found" if float(price) <= float(target_price) else "watching"
 
@@ -118,7 +133,7 @@ def _matches_from_clicked_discovery_result(result, spec, source):
         }
 
     label = (result.get("verification_label") or "").strip().lower()
-    if label not in {"verified_exact", "verified_related"}:
+    if label not in {"verified_exact", "verified_named", "verified_related"}:
         return {"verified": [], "ambiguous": []}
 
     price = result.get("current_price")
@@ -129,7 +144,7 @@ def _matches_from_clicked_discovery_result(result, spec, source):
         "url": result.get("product_url"),
         "price": price,
         "name_found": result.get("product_name"),
-        "verification_state": "verified" if label == "verified_exact" else "ambiguous",
+        "verification_state": "verified" if label in {"verified_exact", "verified_named"} else "ambiguous",
         "verification_reason": "reused_discovery_verification",
         "health_state": "healthy",
         "matched_product_name": result.get("product_name"),
@@ -140,12 +155,78 @@ def _matches_from_clicked_discovery_result(result, spec, source):
         "match_label": label,
     }
     return {
-        "verified": [fallback_row] if label == "verified_exact" else [],
+        "verified": [fallback_row] if label in {"verified_exact", "verified_named"} else [],
         "ambiguous": [fallback_row] if label == "verified_related" else [],
     }
 
 
-def _persist_source_matches(product, source, matches, *, existing_ps=None):
+def _matches_from_direct_link_inspection(inspection):
+    verification = inspection.get("verification")
+    if not verification:
+        return {"verified": [], "ambiguous": []}
+    row = {
+        "url": inspection.get("url"),
+        "price": inspection.get("price"),
+        "name_found": inspection.get("title"),
+    }
+    row.update(verification_result_to_fields(verification))
+    return {
+        "verified": [row] if verification.status == "verified" else [],
+        "ambiguous": [row] if verification.status == "ambiguous" else [],
+    }
+
+
+def _direct_link_error_message(reason: str) -> str:
+    return {
+        "invalid_url": "Paste a full product URL to start tracking from a link.",
+        "not_product_url": "That link does not look like a product page. Paste the product page URL instead.",
+        "fetch_failed": "We couldn't fetch that product page right now. Please try again in a moment.",
+        "weak_listing": "That page didn't expose a stable product title we can track reliably.",
+        "price_not_found": "That page didn't expose a reliable current price, so it can't be tracked yet.",
+    }.get(reason, "That link could not be verified for reliable tracking.")
+
+
+def _discover_prefill_from_request():
+    source_ids = []
+    for raw_sid in request.args.getlist("source_ids"):
+        try:
+            source_ids.append(int(raw_sid))
+        except (TypeError, ValueError):
+            continue
+    return {
+        "query": request.args.get("query", "").strip(),
+        "max_price": request.args.get("max_price", "").strip(),
+        "search_all_sources": request.args.get("search_all_sources", "").strip() == "1",
+        "source_ids": source_ids,
+    }
+
+
+def _promoted_tracking_spec(search, result):
+    result_title = (result.get("product_name") or "").strip()
+    search_query = ((search or {}).get("query") or "").strip()
+    result_spec = parse_product_spec(result_title or search_query)
+    if search_query:
+        search_spec = parse_product_spec(search_query)
+    else:
+        search_spec = result_spec
+    if search_spec.query_type == QueryType.CATEGORY.value:
+        if result_spec.query_type == QueryType.CATEGORY.value:
+            return None, None
+        return result_spec, (result_spec.raw_query or result_title)
+    return search_spec, (search_query or result_title)
+
+
+def _persist_source_matches(
+    product,
+    source,
+    matches,
+    *,
+    existing_ps=None,
+    tracking_mode="search_verified",
+    source_label_override=None,
+    source_domain_override=None,
+):
+    product_data = dict(product) if hasattr(product, "keys") and not isinstance(product, dict) else product
     product_id = product["id"]
     source_id = source["id"]
     clear_product_source_candidates(product_id, source_id)
@@ -159,6 +240,9 @@ def _persist_source_matches(product, source, matches, *, existing_ps=None):
             source_id,
             enabled=1,
             status="not_found",
+            tracking_mode=tracking_mode,
+            source_label_override=source_label_override,
+            source_domain_override=source_domain_override,
         )
         existing_ps = get_product_source_by_id(ps_id) if ps_id else None
         return ps_id
@@ -175,7 +259,11 @@ def _persist_source_matches(product, source, matches, *, existing_ps=None):
             ps_id,
             discovered_url=best["url"],
             current_price=best.get("price"),
-            status=_source_status_from_price(best.get("price"), product["target_price"]),
+            status=_source_status_from_price(
+                best.get("price"),
+                product_data.get("target_price"),
+                product_data.get("alert_mode", "target_threshold"),
+            ),
             verification_state="verified",
             verification_reason=best.get("verification_reason"),
             health_state=best.get("health_state", "healthy"),
@@ -187,6 +275,9 @@ def _persist_source_matches(product, source, matches, *, existing_ps=None):
             match_label=best.get("match_label", "verified_exact"),
             last_verified=datetime.now().isoformat(),
             last_checked=datetime.now().isoformat(),
+            tracking_mode=tracking_mode,
+            source_label_override=source_label_override,
+            source_domain_override=source_domain_override,
         )
         if best.get("price") is not None:
             add_price_history(ps_id, best["price"])
@@ -213,6 +304,9 @@ def _persist_source_matches(product, source, matches, *, existing_ps=None):
             match_label=primary.get("match_label", "verified_related"),
             last_verified=datetime.now().isoformat(),
             last_checked=datetime.now().isoformat(),
+            tracking_mode=tracking_mode,
+            source_label_override=source_label_override,
+            source_domain_override=source_domain_override,
         )
         for candidate in ambiguous:
             add_product_source_candidate(
@@ -252,19 +346,44 @@ def _persist_source_matches(product, source, matches, *, existing_ps=None):
         match_label="related",
         last_verified=datetime.now().isoformat(),
         last_checked=datetime.now().isoformat(),
+        tracking_mode=tracking_mode,
+        source_label_override=source_label_override,
+        source_domain_override=source_domain_override,
     )
     return "not_found"
 
 
 def _apply_source_matches_for_product(product, sources):
     outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0}
-    for source in sources:
-        source_dict = dict(source)
+    if not sources:
+        compute_best_price(product["id"])
+        return outcomes
+    context = SearchExecutionContext()
+
+    def task(source_row):
+        source_dict = dict(source_row)
         matches = discover_product_matches(
             product["raw_query"] or product["name"],
             source_dict,
             target_price=product["target_price"],
+            context=context,
         )
+        return source_dict, matches
+
+    with ThreadPoolExecutor(max_workers=max(1, min(STRICT_SOURCE_WORKERS, len(sources) or 1))) as executor:
+        futures = {executor.submit(task, source): idx for idx, source in enumerate(sources)}
+        by_index = [None] * len(futures)
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                by_index[idx] = future.result()
+            except Exception as exc:
+                logging.error(
+                    f"[{datetime.now()}] Strict source matching failed for {dict(sources[idx]).get('name')}: {exc}"
+                )
+                by_index[idx] = None
+
+    for source_dict, matches in [row for row in by_index if row is not None]:
         outcome = _persist_source_matches(product, source_dict, matches)
         if outcome in outcomes:
             outcomes[outcome] += 1
@@ -305,6 +424,7 @@ def _ensure_database_at_startup():
 
 
 _ensure_database_at_startup()
+Thread(target=get_smart_engine, daemon=True).start()
 
 
 def _manual_check_ui_token() -> str:
@@ -812,15 +932,19 @@ def format_price(price) -> str:
     return f"${float(price):,.2f}"
 
 
-def price_status(current, target) -> str:
+def price_status(current, target, alert_mode="target_threshold") -> str:
     if current is None:
         return "not_found"
+    if alert_mode == "any_drop" or target is None:
+        return "watching"
     return "deal" if float(current) <= float(target) else "watching"
 
 
-def price_color(current, target) -> str:
+def price_color(current, target, alert_mode="target_threshold") -> str:
     if current is None:
         return "var(--price-bad)"
+    if alert_mode == "any_drop" or target is None:
+        return "var(--accent-blue)"
     c, t = float(current), float(target)
     if c <= t:
         return "var(--price-good)"
@@ -829,15 +953,19 @@ def price_color(current, target) -> str:
     return "var(--price-bad)"
 
 
-def progress_pct(current, target) -> float:
+def progress_pct(current, target, alert_mode="target_threshold") -> float:
+    if alert_mode == "any_drop" or target is None:
+        return 100.0 if current is not None else 0.0
     if current is None or target is None or float(target) == 0:
         return 0.0
     return round(min(100.0, (float(target) / float(current)) * 100), 1)
 
 
-def pct_away(current, target) -> str:
+def pct_away(current, target, alert_mode="target_threshold") -> str:
     if current is None:
         return ""
+    if alert_mode == "any_drop" or target is None:
+        return "Watching for a new lower price"
     c, t = float(current), float(target)
     if c <= t:
         return "Target reached!"
@@ -884,7 +1012,9 @@ def index():
     total_products = len(products)
     deals_found = sum(
         1 for p in products
+        if p.get("alert_mode") != "any_drop"
         if p["current_price"] is not None
+        and p["target_price"] is not None
         and float(p["current_price"]) <= float(p["target_price"])
     )
     last_checked_global = get_last_checked_time()
@@ -905,9 +1035,17 @@ def index():
 @app.route("/add", methods=["GET"])
 def add_page():
     sources = get_all_sources()
-    resp = app.make_response(render_template("add.html", sources=sources))
+    resp = app.make_response(
+        render_template(
+            "add.html",
+            sources=sources,
+            active_mode=request.args.get("mode", "search").strip() or "search",
+            link_prefill_url=request.args.get("product_url", "").strip(),
+            link_prefill_target=request.args.get("target_price", "").strip(),
+        )
+    )
     # Lets you verify in DevTools → Network → /add → Response headers that this build is live.
-    resp.headers["X-PricePulse-Add-UI"] = "discovery-no-url-v1"
+    resp.headers["X-PricePulse-Add-UI"] = "search-and-link-v1"
     return resp
 
 
@@ -936,6 +1074,22 @@ def add_product_route():
     if not source_ids:
         flash("Select at least one source to search, or choose All sources.", "error")
         return redirect(url_for("add_page"))
+
+    spec = parse_product_spec(name)
+    if spec.query_type == QueryType.CATEGORY.value:
+        flash(
+            "That search is still broad. Pick a specific result from Discovery before creating a tracker.",
+            "info",
+        )
+        redirect_args = {
+            "query": name,
+            "max_price": target_str,
+        }
+        if search_all:
+            redirect_args["search_all_sources"] = "1"
+        else:
+            redirect_args["source_ids"] = source_ids
+        return redirect(url_for("discover_page", **redirect_args))
 
     product_id = add_product(name, target_price)
     if not product_id:
@@ -972,6 +1126,88 @@ def add_product_route():
         )
     if pending:
         return redirect(url_for("product_confirmations_page", product_id=product_id))
+    return redirect(url_for("index"))
+
+
+@app.route("/track/link", methods=["POST"])
+def track_link_route():
+    raw_url = request.form.get("product_url", "").strip()
+    target_str = request.form.get("target_price", "").strip()
+
+    if not raw_url:
+        flash("Paste a product URL to start tracking from a direct link.", "error")
+        return redirect(url_for("add_page", mode="link"))
+
+    try:
+        target_price = float(target_str) if target_str else None
+        if target_price is not None and target_price <= 0:
+            raise ValueError
+    except (ValueError, TypeError):
+        flash("Enter a valid notify price, or leave it blank for any lower verified price.", "error")
+        return redirect(url_for("add_page", mode="link", product_url=raw_url, target_price=target_str))
+
+    matched_source = find_source_for_url(raw_url)
+    source_row = matched_source or ensure_generic_direct_source()
+    if not source_row:
+        flash("Could not initialize direct-link tracking right now.", "error")
+        return redirect(url_for("add_page", mode="link", product_url=raw_url, target_price=target_str))
+
+    inspection = inspect_direct_link(
+        raw_url,
+        source=dict(matched_source) if matched_source else None,
+        context=SearchExecutionContext(),
+    )
+    if not inspection.get("ok"):
+        flash(_direct_link_error_message(str(inspection.get("reason") or "")), "error")
+        return redirect(
+            url_for(
+                "add_page",
+                mode="link",
+                product_url=canonicalize_listing_url(raw_url) or raw_url,
+                target_price=target_str,
+            )
+        )
+
+    tracking_name = inspection.get("title") or canonicalize_listing_url(raw_url)
+    alert_mode = "target_threshold" if target_price is not None else "any_drop"
+    product_id = add_product(
+        tracking_name,
+        target_price,
+        alert_mode=alert_mode,
+        origin_type="direct_link",
+    )
+    if not product_id:
+        flash("Could not save that link for tracking.", "error")
+        return redirect(url_for("add_page", mode="link", product_url=raw_url, target_price=target_str))
+
+    product = dict(get_product_by_id(product_id))
+    host = (inspection.get("domain") or urlparse(raw_url).netloc or "").replace("www.", "")
+    source_label_override = None if matched_source else host
+    source_domain_override = None if matched_source else host
+    matches = _matches_from_direct_link_inspection(inspection)
+    outcome = _persist_source_matches(
+        product,
+        dict(source_row),
+        matches,
+        tracking_mode="direct_url",
+        source_label_override=source_label_override,
+        source_domain_override=source_domain_override,
+    )
+    compute_best_price(product_id)
+
+    if outcome == "pending_confirmation":
+        flash(f'Added "{tracking_name}" — confirm the match before tracking alerts start.', "success")
+        return redirect(url_for("product_confirmations_page", product_id=product_id))
+    if alert_mode == "any_drop":
+        flash(
+            f'Now tracking "{tracking_name}" from its direct link. You’ll be alerted on any new verified lower price.',
+            "success",
+        )
+    else:
+        flash(
+            f'Now tracking "{tracking_name}" from its direct link at your ${target_price:,.2f} notify price.',
+            "success",
+        )
     return redirect(url_for("index"))
 
     found_count = 0
@@ -1031,8 +1267,8 @@ def product_detail(product_id):
     price_history_rows = get_price_history(product_id)
     pending_candidates = get_product_source_candidates(product_id)
 
-    return render_template_string(
-        TEMPLATE_PRODUCT,
+    return render_template(
+        "product.html",
         product=dict(product),
         product_sources=product_sources,
         price_history=price_history_rows,
@@ -1080,6 +1316,7 @@ def confirm_product_candidate(product_id, candidate_id):
     if not product or not candidate or candidate["product_id"] != product_id:
         flash("Confirmation candidate not found.", "error")
         return redirect(url_for("index"))
+    product_data = dict(product)
 
     ps_id = candidate["product_source_id"]
     if not ps_id:
@@ -1093,7 +1330,11 @@ def confirm_product_candidate(product_id, candidate_id):
     status = (
         "quarantined"
         if candidate["candidate_price"] is None
-        else _source_status_from_price(candidate["candidate_price"], product["target_price"])
+        else _source_status_from_price(
+            candidate["candidate_price"],
+            product_data.get("target_price"),
+            product_data.get("alert_mode", "target_threshold"),
+        )
     )
     update_product_source(
         ps_id,
@@ -1179,18 +1420,36 @@ def product_sources_save(product_id):
 
     if newly_added:
         outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0}
-        for sid in newly_added:
+        context = SearchExecutionContext()
+
+        def task(sid):
             source = get_source_by_id(sid)
             if not source:
-                continue
+                return None
             ps_rows = get_product_sources(product_id)
             ps_row = next((r for r in ps_rows if r["source_id"] == sid), None)
+            source_dict = dict(source)
             matches = discover_product_matches(
                 product["raw_query"] or product["name"],
-                dict(source),
+                source_dict,
                 target_price=product["target_price"],
+                context=context,
             )
-            outcome = _persist_source_matches(dict(product), dict(source), matches, existing_ps=ps_row)
+            return source_dict, ps_row, matches
+
+        with ThreadPoolExecutor(max_workers=max(1, min(STRICT_SOURCE_WORKERS, len(newly_added)))) as executor:
+            futures = {executor.submit(task, sid): idx for idx, sid in enumerate(newly_added)}
+            ordered = [None] * len(futures)
+            for future in as_completed(futures):
+                try:
+                    ordered[futures[future]] = future.result()
+                except Exception as exc:
+                    logging.error(f"[{datetime.now()}] Source add verification failed: {exc}")
+                    ordered[futures[future]] = None
+
+        for item in [row for row in ordered if row is not None]:
+            source_dict, ps_row, matches = item
+            outcome = _persist_source_matches(dict(product), dict(source_dict), matches, existing_ps=ps_row)
             if outcome in outcomes:
                 outcomes[outcome] += 1
         compute_best_price(product_id)
@@ -1247,19 +1506,50 @@ def rediscover_route(product_id):
 
     ps_list = get_product_sources(product_id)
     outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0}
-    for ps in ps_list:
+    context = SearchExecutionContext()
+
+    def rediscover_task(ps_row):
         source_dict = {
-            "id": ps["source_id"],
-            "name": ps["source_name"],
-            "domain": ps["domain"],
-            "search_url_template": ps["search_url_template"],
+            "id": ps_row["source_id"],
+            "name": ps_row["source_name"],
+            "domain": ps_row["domain"],
+            "search_url_template": ps_row["search_url_template"],
         }
-        matches = discover_product_matches(
-            product["raw_query"] or product["name"],
-            source_dict,
-            target_price=product["target_price"],
-        )
-        outcome = _persist_source_matches(dict(product), source_dict, matches, existing_ps=ps)
+        if ps_row.get("tracking_mode") == "direct_url":
+            matches = revalidate_product_source(dict(ps_row), context=context)
+        else:
+            matches = discover_product_matches(
+                product["raw_query"] or product["name"],
+                source_dict,
+                target_price=product["target_price"],
+                context=context,
+            )
+        return ps_row, source_dict, matches
+
+    with ThreadPoolExecutor(max_workers=max(1, min(STRICT_SOURCE_WORKERS, len(ps_list) or 1))) as executor:
+        futures = {executor.submit(rediscover_task, ps): idx for idx, ps in enumerate(ps_list)}
+        ordered = [None] * len(futures)
+        for future in as_completed(futures):
+            try:
+                ordered[futures[future]] = future.result()
+            except Exception as exc:
+                logging.error(f"[{datetime.now()}] Re-discovery failed: {exc}")
+                ordered[futures[future]] = None
+
+    for item in [row for row in ordered if row is not None]:
+        ps, source_dict, matches = item
+        if ps.get("tracking_mode") == "direct_url":
+            outcome = _persist_source_matches(
+                dict(product),
+                source_dict,
+                matches,
+                existing_ps=ps,
+                tracking_mode="direct_url",
+                source_label_override=ps.get("source_label_override"),
+                source_domain_override=ps.get("source_domain_override"),
+            )
+        else:
+            outcome = _persist_source_matches(dict(product), source_dict, matches, existing_ps=ps)
         if outcome in outcomes:
             outcomes[outcome] += 1
 
@@ -1334,7 +1624,11 @@ def delete_product_route(product_id):
 @app.route("/settings")
 def settings_page():
     sources = get_all_sources()
-    return render_template_string(TEMPLATE_SETTINGS, sources=sources)
+    return render_template(
+        "settings.html",
+        sources=sources,
+        notification_status=get_notification_status(),
+    )
 
 
 @app.route("/settings/sources", methods=["POST"])
@@ -1350,6 +1644,57 @@ def settings_sources_save():
         update_source_enabled(source["id"], 1 if source["id"] in enabled_ids else 0)
 
     flash("Default sources updated.", "success")
+    return redirect(url_for("settings_page"))
+
+
+@app.route("/settings/notifications/test/<channel>", methods=["POST"])
+def settings_test_notification(channel):
+    status = get_notification_status()
+    channel = (channel or "").strip().lower()
+    if channel not in {"discord", "gmail", "all"}:
+        flash("Unknown notification channel.", "error")
+        return redirect(url_for("settings_page"))
+
+    if channel == "discord" and not status["discord_configured"]:
+        flash("Discord webhook is not configured yet.", "error")
+        return redirect(url_for("settings_page"))
+    if channel == "gmail" and not status["gmail_configured"]:
+        flash("Gmail alert settings are not configured yet.", "error")
+        return redirect(url_for("settings_page"))
+
+    sent = False
+    if channel == "discord":
+        sent = send_discord_alert(
+            "PricePulse test alert",
+            179.0,
+            alert_mode="any_drop",
+            previous_price=199.0,
+            url="https://example.com/test-product",
+            is_test=True,
+        )
+    elif channel == "gmail":
+        sent = send_gmail_alert(
+            "PricePulse test alert",
+            179.0,
+            alert_mode="any_drop",
+            previous_price=199.0,
+            url="https://example.com/test-product",
+            is_test=True,
+        )
+    else:
+        sent = send_alerts(
+            "PricePulse test alert",
+            179.0,
+            alert_mode="any_drop",
+            previous_price=199.0,
+            url="https://example.com/test-product",
+            is_test=True,
+        )
+
+    flash(
+        "Test notification sent." if sent else "Test notification could not be sent. Check your current channel settings.",
+        "success" if sent else "error",
+    )
     return redirect(url_for("settings_page"))
 
 
@@ -1391,11 +1736,13 @@ def discover_page():
             sources = get_all_sources()
         except Exception as exc:
             logging.error(f"[{datetime.now()}] discover init_db retry failed: {exc}")
+    prefill = _discover_prefill_from_request()
     return render_template(
         "discover.html",
         categories=tree,
         parent_categories=parents,
         sources=sources,
+        prefill=prefill,
     )
 
 
@@ -1468,18 +1815,43 @@ def discover_search():
         return redirect(url_for("discover_page"))
 
     # --- Scrape chosen sources, collect raw results -----------------
+    if query_spec.query_type in {QueryType.EXACT_MODEL.value, QueryType.NAMED_PRODUCT.value}:
+        search_queries = query_spec.search_aliases or (search_terms,)
+    else:
+        search_queries = (search_terms,)
+
     all_raw: list[dict] = []
-    for source in sources:
-        source_dict = dict(source)
-        try:
-            deals = discover_deals(search_terms, source_dict, max_price=max_price)
-            for deal in deals:
-                deal["source_id"] = source["id"]
-                deal["source_name"] = source["name"]
-            all_raw.extend(deals)
-        except Exception as exc:
-            logging.error(f"[{datetime.now()}] Discovery error on {source['name']}: {exc}")
-            continue
+    context = SearchExecutionContext()
+
+    def discover_source(source_row):
+        source_dict = dict(source_row)
+        deals = discover_deals_for_queries(
+            tuple(search_queries),
+            source_dict,
+            max_price=max_price,
+            context=context,
+        )
+        for deal in deals:
+            deal["source_id"] = source_row["id"]
+            deal["source_name"] = source_row["name"]
+        return deals
+
+    with ThreadPoolExecutor(max_workers=max(1, min(DISCOVERY_SOURCE_WORKERS, len(sources) or 1))) as executor:
+        futures = {executor.submit(discover_source, source): idx for idx, source in enumerate(sources)}
+        source_rows_by_index = [[] for _ in sources]
+        for future in as_completed(futures):
+            idx = futures[future]
+            try:
+                source_rows_by_index[idx] = future.result()
+            except Exception as exc:
+                source = sources[idx]
+                logging.error(
+                    f"[{datetime.now()}] Discovery error on {source['name']} for query {query!r}: {exc}"
+                )
+                source_rows_by_index[idx] = []
+
+    for rows in source_rows_by_index:
+        all_raw.extend(rows)
 
     scraped_before_rank = len(all_raw)
 
@@ -1496,23 +1868,38 @@ def discover_search():
         ai_enhanced = engine.available
         strict_spec = parse_product_spec(query)
         source_map = {int(s["id"]): dict(s) for s in sources}
-        for row in all_raw:
-            source_dict = source_map.get(int(row["source_id"]))
-            if not source_dict:
-                row["verification_label"] = "related"
-                continue
-            verification = verify_candidate_listing(
-                strict_spec,
-                source_dict,
-                {
-                    "product_url": row["product_url"],
-                    "product_name": row["product_name"],
-                    "current_price": row["current_price"],
-                },
-            )
-            row["verification_label"] = (
-                verification.match_label if verification is not None else "related"
-            )
+        with ThreadPoolExecutor(max_workers=max(1, min(DISCOVERY_VERIFY_WORKERS, len(all_raw) or 1))) as executor:
+            futures = {}
+            for idx, row in enumerate(all_raw):
+                source_dict = source_map.get(int(row["source_id"]))
+                if not source_dict:
+                    row["verification_label"] = "related"
+                    continue
+                futures[
+                    executor.submit(
+                        verify_candidate_listing,
+                        strict_spec,
+                        source_dict,
+                        {
+                            "product_url": row["product_url"],
+                            "product_name": row["product_name"],
+                            "current_price": row["current_price"],
+                        },
+                        context=context,
+                    )
+                ] = idx
+            for future in as_completed(futures):
+                idx = futures[future]
+                try:
+                    verification = future.result()
+                except Exception as exc:
+                    logging.error(
+                        f"[{datetime.now()}] Discovery verification error for {all_raw[idx].get('product_url')}: {exc}"
+                    )
+                    verification = None
+                all_raw[idx]["verification_label"] = (
+                    verification.match_label if verification is not None else "related"
+                )
 
     # --- Persist results ---------------------------------------------
     for r in all_raw:
@@ -1585,11 +1972,15 @@ def discover_results(search_id):
             results[idx]["group_size"] = len(members)
             results[idx]["is_best_in_group"] = (idx == best_idx)
 
+    query_spec = parse_product_spec(search["query"])
+
     return render_template(
         "discover_results.html",
         search=dict(search),
         results=results,
         ai_enhanced=has_ai_scores,
+        query_spec=query_spec,
+        is_category_search=(query_spec.query_type == QueryType.CATEGORY.value),
     )
 
 
@@ -1603,13 +1994,23 @@ def discover_track(result_id):
     result = dict(result)
     search = get_discovery_search(result["search_id"]) if result.get("search_id") else None
     search = dict(search) if search else None
-    tracking_name = (
-        (search.get("query") or "").strip()
-        if search
-        else (result.get("product_name") or "").strip()
-    ) or result.get("product_name") or "Unknown Product"
+    spec, tracking_name = _promoted_tracking_spec(search, result)
+    if spec is None or not tracking_name:
+        flash(
+            "That result is still too broad to track directly. Choose a more specific listing.",
+            "error",
+        )
+        if result.get("search_id"):
+            return redirect(url_for("discover_results", search_id=result["search_id"]))
+        return redirect(url_for("discover_page"))
+
     price = result.get("current_price")
-    target_price = price if price is not None else 0
+    target_price = (
+        search.get("max_price")
+        if search and search.get("max_price") is not None
+        else price
+    )
+    target_price = target_price if target_price is not None else 0
     source_id = result["source_id"]
     source = get_source_by_id(source_id) if source_id else None
     if not source or not result.get("product_url"):
@@ -1618,8 +2019,6 @@ def discover_track(result_id):
             return redirect(url_for("discover_results", search_id=result["search_id"]))
         return redirect(url_for("discover_page"))
 
-    spec_query = (search.get("query") if search else None) or result.get("product_name") or tracking_name
-    spec = parse_product_spec(spec_query)
     matches = _matches_from_clicked_discovery_result(result, spec, dict(source))
     if not matches["verified"] and not matches["ambiguous"]:
         flash(

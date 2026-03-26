@@ -32,6 +32,10 @@ class ProductSpec:
     model_token: str | None
     normalized_model: str | None
     variant_tokens: tuple[str, ...]
+    required_tokens: tuple[str, ...] = ()
+    soft_variant_tokens: tuple[str, ...] = ()
+    hard_variant_tokens: tuple[str, ...] = ()
+    search_aliases: tuple[str, ...] = ()
     match_mode: str = "strict"
     query_type: str = QueryType.CATEGORY.value
 
@@ -120,6 +124,12 @@ _VARIANT_PATTERNS = (
     re.compile(r"\b(?:gen|generation)\s*\d+\b", re.I),
     re.compile(r"\b\d+(?:st|nd|rd|th)\s+gen\b", re.I),
 )
+_STRUCTURED_TOKEN_PATTERNS = (
+    re.compile(r"\b\d+in\d+\b", re.I),
+    re.compile(r"\b\d{2,3}mm\b", re.I),
+    re.compile(r"\b\d+(?:\.\d+)?qt\b", re.I),
+    re.compile(r"\b\d{2,3}x\d{2,3}\b", re.I),
+)
 _TITLE_SELECTORS = (
     "h1",
     '[data-automation="product-title"]',
@@ -150,6 +160,9 @@ _FAMILY_QUERY_TERM = {
     "macbook": "macbook",
     "ipad": "ipad",
     "airpods": "earbuds",
+    "air_fryer": "air fryer",
+    "pressure_cooker": "pressure cooker",
+    "standing_desk": "standing desk",
     "ps5": "ps5",
     "xbox": "xbox",
 }
@@ -158,7 +171,7 @@ _FAMILY_QUERY_TERM = {
 def _norm_token(value: str | None) -> str | None:
     if not value:
         return None
-    out = re.sub(r"[\s\-_/]+", "", value.lower())
+    out = re.sub(r"[^a-z0-9]+", "", value.lower())
     return out or None
 
 
@@ -168,6 +181,16 @@ def _normalize_text_blob(value: str | None) -> str:
     text = re.sub(r"[_/|]+", " ", text)
     text = re.sub(r"[^a-zA-Z0-9.+\- ]+", " ", text)
     return re.sub(r"\s+", " ", text).strip().lower()
+
+
+def _contains_model_phrase(text: str | None, model_token: str | None) -> bool:
+    if not text or not model_token:
+        return False
+    parts = [re.escape(part) for part in re.split(r"[\s\-_/()[\]]+", model_token) if part]
+    if not parts:
+        return False
+    pattern = r"(?<![a-z0-9])" + r"[\s\-_/()[\]]*".join(parts) + r"(?![a-z0-9])"
+    return bool(re.search(pattern, text, re.I))
 
 
 def _serialize_variants(variants: tuple[str, ...]) -> str:
@@ -189,6 +212,49 @@ def deserialize_variant_tokens(raw: str | None) -> tuple[str, ...]:
         if item_s and item_s not in out:
             out.append(item_s)
     return tuple(out)
+
+
+def _dedupe(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    seen: list[str] = []
+    for value in values:
+        token = normalize_user_query(value).strip()
+        if token and token not in seen:
+            seen.append(token)
+    return tuple(seen)
+
+
+def _extract_structured_tokens(text: str) -> tuple[str, ...]:
+    normalized = normalize_user_query(text)
+    found: list[str] = []
+    for pattern in _STRUCTURED_TOKEN_PATTERNS:
+        for match in pattern.finditer(normalized):
+            token = normalize_user_query(match.group(0))
+            if token not in found:
+                found.append(token)
+    return tuple(found)
+
+
+def _contains_token_phrase(text: str | None, token: str) -> bool:
+    if not text or not token:
+        return False
+    parts = [re.escape(part) for part in re.split(r"[\s\-_/()[\]]+", token) if part]
+    if not parts:
+        return False
+    pattern = r"(?<![a-z0-9])" + r"[\s\-_/()[\]]*".join(parts) + r"(?![a-z0-9])"
+    return bool(re.search(pattern, text, re.I))
+
+
+def _format_alias_template(template: str, spec: "ProductSpec", family_term: str | None) -> str:
+    values = {
+        "raw": spec.raw_query,
+        "brand": spec.brand or "",
+        "model_token": spec.model_token or "",
+        "family_term": family_term or "",
+        "required_tokens": " ".join(spec.required_tokens),
+        "hard_variant_tokens": " ".join(spec.hard_variant_tokens),
+    }
+    alias = template.format(**values)
+    return re.sub(r"\s+", " ", alias).strip()
 
 
 def product_spec_to_fields(spec: ProductSpec) -> dict[str, Any]:
@@ -218,6 +284,10 @@ def product_spec_from_row(row: Any) -> ProductSpec:
         model_token=(data.get("model_token") or spec.model_token),
         normalized_model=_norm_token(data.get("model_token") or spec.model_token),
         variant_tokens=deserialize_variant_tokens(data.get("variant_tokens")) or spec.variant_tokens,
+        required_tokens=spec.required_tokens,
+        soft_variant_tokens=spec.soft_variant_tokens,
+        hard_variant_tokens=spec.hard_variant_tokens,
+        search_aliases=spec.search_aliases,
         match_mode=(data.get("match_mode") or spec.match_mode or "strict"),
         query_type=(data.get("query_type") or spec.query_type),
     )
@@ -259,30 +329,68 @@ def _extract_variant_tokens(text: str) -> tuple[str, ...]:
 
 def parse_product_spec(raw_query: str) -> ProductSpec:
     intent = parse_query_intent(raw_query)
+    raw_clean = raw_query.strip()
     qn = normalize_user_query(raw_query)
     family_id = _infer_family_id_from_query(qn, intent.family)
     family = _FAMILY_BY_ID.get(family_id) if family_id else intent.family
-    brand = _infer_brand_from_query(qn, family)
+    brand = intent.brand or _infer_brand_from_query(qn, family)
     model_token = intent.model_token
+    required_tokens = tuple(intent.required_tokens or ())
+    hard_variant_tokens = tuple(intent.hard_variant_tokens or ())
+    soft_variant_tokens = tuple(intent.soft_variant_tokens or ())
     canonical_parts: list[str] = []
     if brand:
         canonical_parts.append(brand)
     if model_token:
         canonical_parts.append(model_token)
-    elif raw_query.strip():
-        canonical_parts.append(raw_query.strip())
+    elif required_tokens:
+        canonical_parts.extend(required_tokens)
+    elif raw_clean:
+        raw_norm = normalize_user_query(raw_clean)
+        existing = normalize_user_query(" ".join(canonical_parts))
+        if raw_norm and raw_norm not in existing:
+            canonical_parts.append(raw_clean)
     family_term = _FAMILY_QUERY_TERM.get(family_id or "")
     if family_term and family_term.lower() not in " ".join(canonical_parts).lower():
         canonical_parts.append(family_term)
     canonical_query = re.sub(r"\s+", " ", " ".join(canonical_parts)).strip() or raw_query.strip()
+    alias_values: list[str] = [canonical_query]
+    if raw_clean and raw_clean.lower() != canonical_query.lower():
+        alias_values.append(raw_clean)
+    if brand and model_token:
+        alias_values.append(f"{brand} {model_token}")
+    if family:
+        for template in family.get("search_alias_templates", ()):
+            alias = _format_alias_template(template, ProductSpec(
+                raw_query=raw_clean,
+                canonical_query=canonical_query,
+                brand=brand,
+                family=family_id,
+                model_token=model_token,
+                normalized_model=_norm_token(model_token),
+                variant_tokens=soft_variant_tokens,
+                required_tokens=required_tokens,
+                soft_variant_tokens=soft_variant_tokens,
+                hard_variant_tokens=hard_variant_tokens,
+                search_aliases=(),
+                match_mode="strict",
+                query_type=intent.query_type.value,
+            ), family_term)
+            if alias:
+                alias_values.append(alias)
+    search_aliases = _dedupe(alias_values)
     return ProductSpec(
-        raw_query=raw_query.strip(),
+        raw_query=raw_clean,
         canonical_query=canonical_query,
         brand=brand,
         family=family_id,
         model_token=model_token,
         normalized_model=_norm_token(model_token),
-        variant_tokens=_extract_variant_tokens(qn),
+        variant_tokens=soft_variant_tokens or _extract_variant_tokens(qn),
+        required_tokens=required_tokens,
+        soft_variant_tokens=soft_variant_tokens,
+        hard_variant_tokens=hard_variant_tokens,
+        search_aliases=search_aliases,
         match_mode="strict",
         query_type=intent.query_type.value,
     )
@@ -462,7 +570,9 @@ def fingerprint_listing_document(
     combined = _normalize_text_blob(f"{title_blob} {page_text}")
     slug_text = _normalize_text_blob(unquote(urlparse(url).path.replace("/", " ")))
     signal_text = _normalize_text_blob(f"{title_blob} {slug_text}")
-    family_id = _infer_family_from_text(combined, family_hint)
+    family_id = _infer_family_from_text(signal_text, family_hint)
+    if not family_id and family_hint and combined != signal_text:
+        family_id = _infer_family_from_text(combined, family_hint)
     family = _FAMILY_BY_ID.get(family_id or "")
     model_tokens, normalized_models = _collect_model_tokens(combined)
     accessory_signal = bool(_GENERIC_ACCESSORY.search(signal_text))
@@ -532,10 +642,28 @@ def _mismatched_variant(spec: ProductSpec, fp: ListingFingerprint) -> bool:
 def _brand_mismatch(spec: ProductSpec, fp: ListingFingerprint) -> bool:
     if not spec.brand:
         return False
-    if fp.brand and fp.brand != spec.brand:
-        return True
     family = _FAMILY_BY_ID.get(spec.family or "")
+    brand_policy = family.get("brand_policy", "exact") if family else "exact"
+    if fp.brand:
+        fp_brand = normalize_user_query(fp.brand)
+        spec_brand = normalize_user_query(spec.brand)
+        if brand_policy == "platform_plus_partner":
+            partners = {normalize_user_query(b) for b in family.get("partner_brands", ())}
+            allowed = {spec_brand, "geforce"} | partners
+            if spec_brand == "amd":
+                allowed.add("radeon")
+            if fp_brand not in allowed:
+                return True
+        elif fp_brand != spec_brand:
+            return True
     if not family:
+        return False
+    if brand_policy == "platform_plus_partner":
+        partners = {normalize_user_query(b) for b in family.get("partner_brands", ())}
+        forbidden = {"amd", "radeon"} if normalize_user_query(spec.brand) in {"nvidia", "geforce"} else {"nvidia", "geforce"}
+        for brand in forbidden:
+            if re.search(rf"\b{re.escape(brand)}\b", fp.raw_text, re.I):
+                return True
         return False
     for brand in family.get("brand_tokens", ()):
         if brand == spec.brand:
@@ -545,21 +673,111 @@ def _brand_mismatch(spec: ProductSpec, fp: ListingFingerprint) -> bool:
     return False
 
 
+def _primary_identity_blob(fingerprint: ListingFingerprint) -> str:
+    slug = unquote(urlparse(fingerprint.url).path.replace("/", " "))
+    return _normalize_text_blob(f"{fingerprint.title} {slug}")
+
+
+def _required_tokens_present(text: str, tokens: tuple[str, ...]) -> bool:
+    structured = set(_extract_structured_tokens(text))
+    hard_tokens = set(_extract_hard_variant_tokens(text))
+    for token in tokens:
+        if token in structured or token in hard_tokens:
+            continue
+        if _contains_token_phrase(text, token):
+            continue
+        return False
+    return True
+
+
+def _extract_hard_variant_tokens(text: str) -> tuple[str, ...]:
+    found = list(_extract_structured_tokens(text))
+    normalized = normalize_user_query(text)
+    for phrase in ("duo plus", "duo", "rio", "pro crisp", "super", "ti"):
+        if _contains_token_phrase(normalized, phrase) and phrase not in found:
+            found.append(phrase)
+    return tuple(found)
+
+
+def _hard_variant_conflict(spec: ProductSpec, primary_identity: str) -> bool:
+    if not spec.hard_variant_tokens:
+        return False
+    present_tokens = _extract_hard_variant_tokens(primary_identity)
+    if not present_tokens:
+        return False
+    for token in spec.hard_variant_tokens:
+        if token.endswith("in1"):
+            for present in present_tokens:
+                if present.endswith("in1") and present != token:
+                    return True
+        elif token.endswith("qt"):
+            for present in present_tokens:
+                if present.endswith("qt") and present != token:
+                    return True
+        elif "x" in token and re.fullmatch(r"\d{2,3}x\d{2,3}", token):
+            for present in present_tokens:
+                if re.fullmatch(r"\d{2,3}x\d{2,3}", present) and present != token:
+                    return True
+        elif token.endswith("mm"):
+            for present in present_tokens:
+                if present.endswith("mm") and present != token:
+                    return True
+        elif token in {"duo", "rio"} and _contains_token_phrase(primary_identity, "duo plus"):
+            return True
+        elif token == "rtx 4070":
+            if _contains_token_phrase(primary_identity, "rtx 4070 super") or _contains_token_phrase(primary_identity, "rtx 5070"):
+                return True
+        elif token not in present_tokens and _contains_token_phrase(primary_identity, token):
+            continue
+    return False
+
+
 def verify_listing(spec: ProductSpec, fingerprint: ListingFingerprint) -> VerificationResult:
     product_name = fingerprint.title or spec.raw_query
     family = _FAMILY_BY_ID.get(spec.family or "")
     same_family = not spec.family or fingerprint.family == spec.family
+    primary_identity = _primary_identity_blob(fingerprint)
+    strict_exact_only = spec.family == "gpu"
+    _primary_tokens, normalized_primary_models = _collect_model_tokens(primary_identity)
+    exact_model_in_primary = bool(
+        spec.normalized_model
+        and (
+            spec.normalized_model in normalized_primary_models
+            or (
+                not strict_exact_only
+                and _contains_model_phrase(primary_identity, spec.model_token)
+            )
+        )
+    )
     exact_model = bool(
         spec.normalized_model
         and (
-            spec.normalized_model in fingerprint.normalized_model_tokens
-            or spec.normalized_model in _normalize_text_blob(fingerprint.title).replace(" ", "")
+            exact_model_in_primary
+            or (
+                not normalized_primary_models
+                and (
+                    spec.normalized_model in fingerprint.normalized_model_tokens
+                    or (
+                        not strict_exact_only
+                        and _contains_model_phrase(fingerprint.title, spec.model_token)
+                    )
+                )
+            )
         )
     )
     different_model = bool(
         spec.normalized_model
-        and fingerprint.normalized_model_tokens
-        and spec.normalized_model not in fingerprint.normalized_model_tokens
+        and (
+            (
+                normalized_primary_models
+                and spec.normalized_model not in normalized_primary_models
+            )
+            or (
+                not normalized_primary_models
+                and fingerprint.normalized_model_tokens
+                and spec.normalized_model not in fingerprint.normalized_model_tokens
+            )
+        )
     )
     family_core_match = bool(
         family and family["title_core"].search(fingerprint.raw_text)
@@ -692,21 +910,102 @@ def verify_listing(spec: ProductSpec, fingerprint: ListingFingerprint) -> Verifi
             brand=fingerprint.brand,
             family=fingerprint.family,
             model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else None,
+                match_label="related",
+                fingerprint=fingerprint,
+            )
+    if spec.query_type in {QueryType.NAMED_PRODUCT.value, QueryType.PRODUCT_LINE.value}:
+        required_ok = _required_tokens_present(primary_identity, spec.required_tokens)
+        if same_family and family_core_match:
+            if _hard_variant_conflict(spec, primary_identity):
+                return VerificationResult(
+                    status="rejected",
+                    reason="hard_variant_conflict",
+                    health_state="healthy",
+                    product_name=product_name,
+                    current_price=fingerprint.current_price,
+                    brand=fingerprint.brand,
+                    family=fingerprint.family,
+                    model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else None,
+                    match_label="related",
+                    fingerprint=fingerprint,
+                )
+        if same_family and family_core_match and required_ok:
+            if _mismatched_variant(spec, fingerprint):
+                return VerificationResult(
+                    status="ambiguous",
+                    reason="variant_needs_confirmation",
+                    health_state="healthy",
+                    product_name=product_name,
+                    current_price=fingerprint.current_price,
+                    brand=fingerprint.brand,
+                    family=fingerprint.family,
+                    model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else None,
+                    match_label="verified_related",
+                    fingerprint=fingerprint,
+                )
+            if fingerprint.current_price is None:
+                return VerificationResult(
+                    status="ambiguous",
+                    reason="price_unavailable",
+                    health_state="quarantined",
+                    product_name=product_name,
+                    current_price=fingerprint.current_price,
+                    brand=fingerprint.brand or spec.brand,
+                    family=fingerprint.family or spec.family,
+                    model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else spec.model_token,
+                    match_label="verified_named",
+                    fingerprint=fingerprint,
+                )
+            return VerificationResult(
+                status="verified",
+                reason="named_product_verified",
+                health_state="healthy",
+                product_name=product_name,
+                current_price=fingerprint.current_price,
+                brand=fingerprint.brand or spec.brand,
+                family=fingerprint.family or spec.family,
+                model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else spec.model_token,
+                match_label="verified_named",
+                fingerprint=fingerprint,
+            )
+        if same_family and family_core_match:
+            health = "quarantined" if fingerprint.current_price is None else "healthy"
+            return VerificationResult(
+                status="ambiguous",
+                reason="named_product_needs_confirmation",
+                health_state=health,
+                product_name=product_name,
+                current_price=fingerprint.current_price,
+                brand=fingerprint.brand,
+                family=fingerprint.family,
+                model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else None,
+                match_label="verified_related" if fingerprint.current_price is not None else "related",
+                fingerprint=fingerprint,
+            )
+        return VerificationResult(
+            status="rejected",
+            reason="insufficient_identity",
+            health_state="healthy",
+            product_name=product_name,
+            current_price=fingerprint.current_price,
+            brand=fingerprint.brand,
+            family=fingerprint.family,
+            model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else None,
             match_label="related",
             fingerprint=fingerprint,
         )
-    if same_family and family_core_match:
+    if same_family and family_core_match and (spec.family or fingerprint.family):
         health = "quarantined" if fingerprint.current_price is None else "healthy"
         return VerificationResult(
             status="ambiguous",
-            reason="family_match_requires_confirmation",
+            reason="category_primary_match",
             health_state=health,
             product_name=product_name,
             current_price=fingerprint.current_price,
             brand=fingerprint.brand,
             family=fingerprint.family,
             model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else None,
-            match_label="verified_related" if fingerprint.current_price is not None else "related",
+            match_label="category_primary" if fingerprint.current_price is not None else "related",
             fingerprint=fingerprint,
         )
     return VerificationResult(

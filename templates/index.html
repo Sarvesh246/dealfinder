@@ -164,6 +164,20 @@
     max-width: 340px; margin-bottom: 8px;
   }
   .btn-add-first { padding: 12px 24px; font-size: 14px; margin-top: 4px; }
+  .btn-link-track {
+    padding: 10px 16px;
+    font-size: 13px;
+    border-radius: 999px;
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    background: transparent;
+    transition: all 180ms ease;
+  }
+  .btn-link-track:hover {
+    color: var(--text-primary);
+    background: var(--glass-hover);
+    border-color: rgba(255,255,255,0.15);
+  }
 
   /* ── Responsive ──────────────────────────────────────────────────── */
   @media (max-width: 639px) {
@@ -212,9 +226,10 @@
     {% set sources_list = p.sources | default([], true) %}
     {% set found_sources = sources_list | selectattr('current_price') | sort(attribute='current_price') | list %}
     {% set best = found_sources[0] if found_sources else None %}
-    {% set status = price_status(p.current_price, p.target_price) %}
-    {% set pct = progress_pct(p.current_price, p.target_price) %}
-    {% set away = pct_away(p.current_price, p.target_price) %}
+    {% set is_any_drop = p.alert_mode == 'any_drop' %}
+    {% set status = price_status(p.current_price, p.target_price, p.alert_mode) %}
+    {% set pct = progress_pct(p.current_price, p.target_price, p.alert_mode) %}
+    {% set away = pct_away(p.current_price, p.target_price, p.alert_mode) %}
 
     <div class="card product-card fade-in" style="animation-delay:{{ loop.index0 * 80 }}ms">
 
@@ -222,9 +237,12 @@
       <div class="pc-section pc-header">
         <h3 class="pc-name">{{ p.name or 'Unnamed Product' }}</h3>
         <div class="pc-header-right">
-          <span class="pc-target">TARGET: {{ p.target_price | format_price }}</span>
+          <span class="pc-target">
+            {% if is_any_drop %}ALERT: Any drop{% else %}TARGET: {{ p.target_price | format_price }}{% endif %}
+          </span>
           <span class="badge badge-{{ status }}">
-            {% if status == 'deal' %}Deal Found
+            {% if is_any_drop and status == 'watching' %}Watching
+            {% elif status == 'deal' %}Deal Found
             {% elif status == 'watching' %}Watching
             {% else %}Not Found{% endif %}
           </span>
@@ -236,9 +254,9 @@
       <!-- Best price section -->
       <div class="pc-section">
         {% if best %}
-        <div class="pc-best-label">Best Price Found</div>
+        <div class="pc-best-label">{{ 'Current Verified Price' if is_any_drop else 'Best Price Found' }}</div>
         <div class="pc-best-row">
-          <span class="pc-best-price" style="color:{{ price_color(best.current_price, p.target_price) }}">
+          <span class="pc-best-price" style="color:{{ price_color(best.current_price, p.target_price, p.alert_mode) }}">
             {{ best.current_price | format_price }}
           </span>
           <span class="pc-best-source">on
@@ -252,29 +270,33 @@
             {{ away if away else '' }}
           </span>
         </div>
-        <div class="progress-wrap">
-          <div class="progress-track">
-            <div class="progress-fill" style="width:{{ pct }}%"></div>
+        {% if not is_any_drop %}
+          <div class="progress-wrap">
+            <div class="progress-track">
+              <div class="progress-fill" style="width:{{ pct }}%"></div>
+            </div>
           </div>
-        </div>
+        {% endif %}
         {% elif sources_list %}
         <div class="pc-best-label">Prices</div>
         <div class="pc-best-none">No prices discovered yet</div>
         {% else %}
         <div class="pc-best-label">Current Price</div>
         <div class="pc-best-row">
-          <span class="pc-best-price" style="color:{{ price_color(p.current_price, p.target_price) }}">
+          <span class="pc-best-price" style="color:{{ price_color(p.current_price, p.target_price, p.alert_mode) }}">
             {{ p.current_price | format_price }}
           </span>
           <span class="pc-best-away {% if status == 'deal' %}reached{% endif %}">
             {{ away if away else '' }}
           </span>
         </div>
-        <div class="progress-wrap">
-          <div class="progress-track">
-            <div class="progress-fill" style="width:{{ pct }}%"></div>
+        {% if not is_any_drop %}
+          <div class="progress-wrap">
+            <div class="progress-track">
+              <div class="progress-fill" style="width:{{ pct }}%"></div>
+            </div>
           </div>
-        </div>
+        {% endif %}
         {% endif %}
       </div>
 
@@ -296,7 +318,7 @@
           </span>
 
           {% if s.current_price and s.status not in ['not_found','error'] %}
-            <span class="source-price" style="color:{{ price_color(s.current_price, p.target_price) }}">
+            <span class="source-price" style="color:{{ price_color(s.current_price, p.target_price, p.alert_mode) }}">
               {{ s.current_price | format_price }}
             </span>
             {% if s.previous_price is defined and s.previous_price is not none %}
@@ -345,11 +367,12 @@
   <div class="card empty-state fade-in">
     <div class="empty-icon">📭</div>
     <div class="empty-heading">Nothing tracked yet</div>
-    <p class="empty-sub">Add your first product to start watching for deals across multiple stores.</p>
+    <p class="empty-sub">Track your first product by searching stores or pasting a direct product link for exact-page tracking.</p>
     <a href="{{ url_for('add_page') }}" class="btn-primary btn-add-first">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-      Add Your First Product
+      Track Your First Product
     </a>
+    <a href="{{ url_for('add_page', mode='link') }}" class="btn-link-track">Or paste a product link</a>
   </div>
   {% endif %}
 
