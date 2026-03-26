@@ -3,4 +3,4 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "python app.py"
+startCommand = "python3 app.py"
