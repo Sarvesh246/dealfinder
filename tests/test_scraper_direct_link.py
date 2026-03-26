@@ -86,3 +86,33 @@ def test_revalidate_direct_url_quarantines_changed_pages(monkeypatch):
     assert result["status"] == "quarantined"
     assert result["verified"] == []
     assert result["ambiguous"] == []
+
+
+def test_inspect_direct_link_uses_clean_title_and_primary_price_hint(monkeypatch):
+    html = """
+    <html>
+      <head>
+        <title>Amazon.com: TP-Link Dual-Band AX3000 Wi-Fi 6 Router Archer AX55 : Electronics</title>
+        <meta property="og:title" content="Amazon.com: TP-Link Dual-Band AX3000 Wi-Fi 6 Router Archer AX55 : Electronics" />
+      </head>
+      <body>
+        <h1>Amazon.com: TP-Link Dual-Band AX3000 Wi-Fi 6 Router Archer AX55 : Electronics</h1>
+        <div id="corePrice_feature_div"><span class="a-offscreen">$65.98</span></div>
+        <div id="attach-warranty-card-price">$5.99</div>
+        <div>keyboard shortcuts</div>
+      </body>
+    </html>
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    monkeypatch.setattr(scraper, "_fetch_listing_soup", lambda url, source_domain, **kwargs: (soup, "requests"))
+
+    result = scraper.inspect_direct_link(
+        "https://www.amazon.com/TP-Link-WiFi-AX3000-Smart-Router/dp/B09G5W9R6R",
+        source={"domain": "amazon.com"},
+    )
+
+    assert result["ok"] is True
+    assert result["title"] == "TP-Link Dual-Band AX3000 Wi-Fi 6 Router Archer AX55"
+    assert result["price"] == 65.98
+    assert result["verification"].status == "verified"
+    assert result["verification"].match_label == "verified_exact"

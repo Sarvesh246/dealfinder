@@ -315,6 +315,29 @@
     gap: 5px;
     min-width: 0;
   }
+
+  /* Make dropdown filters feel like first-class cards (same vibe as condition radios). */
+  .df-filter-card {
+    padding: 14px 14px 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)),
+      rgba(13, 17, 30, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    transition: border-color 180ms ease, background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+  }
+  .df-filter-card:hover {
+    border-color: rgba(255,255,255,0.14);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025)),
+      rgba(16, 20, 34, 0.8);
+    transform: translateY(-1px);
+  }
+  .df-filter-card:focus-within {
+    border-color: rgba(124,92,252,0.55);
+    box-shadow: 0 0 0 3px rgba(124,92,252,0.12);
+  }
   .df-lab {
     font-size: 11px;
     font-weight: 600;
@@ -327,7 +350,7 @@
     background: rgba(255,255,255,0.05);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-sm);
-    padding: 9px 10px;
+    padding: 10px 12px;
     color: var(--text-primary);
     font-size: 12px;
     font-family: inherit;
@@ -816,14 +839,14 @@
     </fieldset>
 
     <div class="discover-filters discover-filters-secondary">
-      <label class="df-item">
+      <label class="df-item df-filter-card">
         <span class="df-lab">Product type</span>
         <select name="filter_product_type" class="df-select" id="filter-product-type">
           <option value="primary_only" selected>Main products only</option>
           <option value="include_accessories">Include accessories</option>
         </select>
       </label>
-      <label class="df-item">
+      <label class="df-item df-filter-card">
         <span class="df-lab">Brand match</span>
         <select name="filter_brand" class="df-select" id="filter-brand">
           <option value="exact" selected>Exact line (e.g. real AirPods)</option>

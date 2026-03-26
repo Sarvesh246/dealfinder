@@ -77,6 +77,7 @@ from scraper import (
     discover_product_matches,
     inspect_direct_link,
     revalidate_product_source,
+    start_browser_warmup,
     verify_candidate_listing,
 )
 
@@ -425,6 +426,7 @@ def _ensure_database_at_startup():
 
 _ensure_database_at_startup()
 Thread(target=get_smart_engine, daemon=True).start()
+Thread(target=start_browser_warmup, daemon=True).start()
 
 
 def _manual_check_ui_token() -> str:

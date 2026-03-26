@@ -89,6 +89,13 @@ _MODEL_BRAND_HINTS: tuple[tuple[re.Pattern[str], str, str], ...] = (
     (re.compile(r"\brx\s*\d{3,4}\s*(?:xt)?\b", re.I), "gpu", "amd"),
     (re.compile(r"\bgalaxy\s*[sz]\s*\d{2,3}\b", re.I), "phone", "samsung"),
     (re.compile(r"\bpixel\s*[89]\b", re.I), "phone", "google"),
+    (re.compile(r"\bhl[- ]?l\d{4}[a-z]{1,3}\b", re.I), "printer", "brother"),
+    (re.compile(r"\bmfc[- ]?l\d{4}[a-z]{1,3}\b", re.I), "printer", "brother"),
+    (re.compile(r"\bdcp[- ]?l\d{4}[a-z]{1,3}\b", re.I), "printer", "brother"),
+    (re.compile(r"\b(?:archer\s*)?(?:axe|ax|be|ac)\s*\d{1,4}\b", re.I), "router", "tp-link"),
+    (re.compile(r"\bdyson\s*v(?:8|10|11|12|15)\b", re.I), "vacuum", "dyson"),
+    (re.compile(r"\b(?:9[78]0|9[89]0)\s*(?:pro|evo)\b", re.I), "storage", "samsung"),
+    (re.compile(r"\bsn\s*\d{3,4}x?\b", re.I), "storage", "wd"),
 )
 
 _GENERIC_ACCESSORY = re.compile(
@@ -163,6 +170,10 @@ _FAMILY_QUERY_TERM = {
     "air_fryer": "air fryer",
     "pressure_cooker": "pressure cooker",
     "standing_desk": "standing desk",
+    "printer": "printer",
+    "router": "router",
+    "vacuum": "vacuum",
+    "storage": "ssd",
     "ps5": "ps5",
     "xbox": "xbox",
 }
@@ -348,7 +359,7 @@ def parse_product_spec(raw_query: str) -> ProductSpec:
     elif raw_clean:
         raw_norm = normalize_user_query(raw_clean)
         existing = normalize_user_query(" ".join(canonical_parts))
-        if raw_norm and raw_norm not in existing:
+        if raw_norm and (not existing or existing not in raw_norm):
             canonical_parts.append(raw_clean)
     family_term = _FAMILY_QUERY_TERM.get(family_id or "")
     if family_term and family_term.lower() not in " ".join(canonical_parts).lower():

@@ -312,6 +312,157 @@ def test_gpu_partner_brand_verifies_but_wrong_models_and_accessories_do_not():
     assert accessory_result.reason in {"compatible_or_wrong_type", "accessory_or_bundle"}
 
 
+def test_keyboard_alphanumeric_model_parses_as_exact_model():
+    spec = parse_product_spec("AULA F99 Wireless Mechanical Keyboard")
+
+    assert spec.query_type == "exact_model"
+    assert spec.family == "keyboard"
+    assert spec.brand == "aula"
+    assert spec.model_token == "f99"
+
+
+def test_random_specific_queries_parse_with_model_intent():
+    printer = parse_product_spec("Brother HL-L2460DW printer")
+    router = parse_product_spec("TP-Link Archer AX55 router")
+    vacuum = parse_product_spec("Dyson V8 cordless vacuum")
+    storage = parse_product_spec("Samsung 990 Pro 2TB")
+
+    assert printer.query_type == "exact_model"
+    assert printer.family == "printer"
+    assert printer.brand == "brother"
+    assert printer.model_token.lower() == "hl-l2460dw"
+
+    assert router.query_type == "exact_model"
+    assert router.family == "router"
+    assert router.brand == "tp-link"
+    assert router.model_token.lower() == "archer ax55"
+    assert router.canonical_query.lower() == "tp-link archer ax55 router"
+    assert router.search_aliases[0].lower() == "tp-link archer ax55 router"
+
+    assert vacuum.query_type == "exact_model"
+    assert vacuum.family == "vacuum"
+    assert vacuum.brand == "dyson"
+    assert vacuum.model_token.lower() == "v8"
+
+    assert storage.query_type == "exact_model"
+    assert storage.family == "storage"
+    assert storage.brand == "samsung"
+    assert storage.model_token.lower() == "990 pro"
+
+
+def test_printer_router_and_vacuum_verification_reject_accessories_and_wrong_models():
+    printer_spec = parse_product_spec("Brother HL-L2460DW printer")
+    printer_exact = verify_listing(
+        printer_spec,
+        fingerprint_listing_document(
+            "https://example.com/brother-hl-l2460dw",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Brother HL-L2460DW Wireless Compact Monochrome Laser Printer" /></head>
+                <body><h1>Brother HL-L2460DW Wireless Compact Monochrome Laser Printer</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=159.99,
+            family_hint=printer_spec.family,
+        ),
+    )
+    assert printer_exact.status == "verified"
+    assert printer_exact.match_label == "verified_exact"
+
+    printer_toner = verify_listing(
+        printer_spec,
+        fingerprint_listing_document(
+            "https://example.com/brother-toner",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="TN830XL Toner for Brother Printer HL-L2460DW Replacement Cartridge" /></head>
+                <body><h1>TN830XL Toner for Brother Printer HL-L2460DW Replacement Cartridge</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=45.99,
+            family_hint=printer_spec.family,
+        ),
+    )
+    assert printer_toner.status == "rejected"
+    assert printer_toner.reason in {"compatible_or_wrong_type", "accessory_or_bundle"}
+
+    router_spec = parse_product_spec("TP-Link Archer AX55 router")
+    router_exact = verify_listing(
+        router_spec,
+        fingerprint_listing_document(
+            "https://example.com/archer-ax55",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="TP-Link Dual-Band AX3000 Wi-Fi 6 Router Archer AX55" /></head>
+                <body><h1>TP-Link Dual-Band AX3000 Wi-Fi 6 Router Archer AX55</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=69.99,
+            family_hint=router_spec.family,
+        ),
+    )
+    assert router_exact.status == "verified"
+    assert router_exact.match_label == "verified_exact"
+
+    router_wrong = verify_listing(
+        router_spec,
+        fingerprint_listing_document(
+            "https://example.com/archer-axe75",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="TP-Link AXE5400 Tri-Band Router Archer AXE75" /></head>
+                <body><h1>TP-Link AXE5400 Tri-Band Router Archer AXE75</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=119.99,
+            family_hint=router_spec.family,
+        ),
+    )
+    assert router_wrong.status == "rejected"
+    assert router_wrong.reason == "different_model"
+
+    vacuum_spec = parse_product_spec("Dyson V8 cordless vacuum")
+    vacuum_exact = verify_listing(
+        vacuum_spec,
+        fingerprint_listing_document(
+            "https://example.com/dyson-v8",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Dyson V8 Cordless Vacuum, Cleans Hard Floors and Carpets" /></head>
+                <body><h1>Dyson V8 Cordless Vacuum, Cleans Hard Floors and Carpets</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=349.99,
+            family_hint=vacuum_spec.family,
+        ),
+    )
+    assert vacuum_exact.status == "verified"
+    assert vacuum_exact.match_label == "verified_exact"
+
+    vacuum_wrong = verify_listing(
+        vacuum_spec,
+        fingerprint_listing_document(
+            "https://example.com/shark-vacuum",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Shark Pet Cordless Vacuum Cleaner with LED Headlights" /></head>
+                <body><h1>Shark Pet Cordless Vacuum Cleaner with LED Headlights</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=149.99,
+            family_hint=vacuum_spec.family,
+        ),
+    )
+    assert vacuum_wrong.status == "rejected"
+    assert vacuum_wrong.reason in {"brand_mismatch", "different_model", "model_missing"}
+
+
 def test_category_query_labels_primary_products_without_auto_verifying_identity():
     desk_html = """
     <html><head><meta property="og:title" content="FlexiSpot EN1 Electric Standing Desk 48 x 24" /></head>

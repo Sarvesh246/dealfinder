@@ -297,6 +297,77 @@ def test_discover_track_promotes_category_result_to_specific_tracker(tmp_path, m
     assert product["target_price"] == 300.0
 
 
+def test_discover_track_promotes_keyboard_category_primary_to_exact_tracker(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    search_id = database.create_discovery_search("AULA F99 Wireless Mechanical Keyboard", None, 120.0)
+    database.add_discovery_result(
+        search_id,
+        1,
+        "AULA F99 Wireless Mechanical Keyboard",
+        89.99,
+        109.99,
+        18.0,
+        "https://example.com/aula-f99-keyboard",
+        relevance_score=95,
+        deal_score=58,
+        discount_confirmed=1,
+        verification_label="category_primary",
+    )
+    result_id = database.get_discovery_results(search_id)[0]["id"]
+
+    seen_specs = []
+
+    def _verify(spec, source, candidate):
+        seen_specs.append(spec)
+        fingerprint = ListingFingerprint(
+            url=candidate["product_url"],
+            domain="example.com",
+            title=candidate["product_name"],
+            brand="aula",
+            family="keyboard",
+            model_tokens=("F99",),
+            normalized_model_tokens=("f99",),
+            variant_tokens=(),
+            current_price=89.99,
+            accessory_signal=False,
+            compatibility_signal=False,
+            bundle_signal=False,
+            hard_block_signal=False,
+            raw_text=candidate["product_name"],
+        )
+        return VerificationResult(
+            status="verified",
+            reason="exact_model_verified",
+            health_state="healthy",
+            product_name=candidate["product_name"],
+            current_price=89.99,
+            brand="aula",
+            family="keyboard",
+            model_token="F99",
+            match_label="verified_exact",
+            fingerprint=fingerprint,
+        )
+
+    monkeypatch.setattr(app_module, "verify_candidate_listing", _verify)
+
+    client = app_module.app.test_client()
+    response = client.post(f"/discover/track/{result_id}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+    assert seen_specs
+    assert seen_specs[0].query_type == "exact_model"
+    assert seen_specs[0].family == "keyboard"
+    assert seen_specs[0].model_token == "f99"
+
+    products = database.get_all_products()
+    assert len(products) == 1
+    product = products[0]
+    assert product["name"] == "AULA F99 Wireless Mechanical Keyboard"
+    assert product["query_type"] == "exact_model"
+
+
 def test_add_page_renders_search_and_link_tabs(tmp_path, monkeypatch):
     _database, app_module = _load_test_app(tmp_path, monkeypatch)
     client = app_module.app.test_client()

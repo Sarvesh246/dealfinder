@@ -284,6 +284,13 @@ _UNIVERSAL_MODEL_PATTERNS: tuple[Pattern[str], ...] = (
     re.compile(r"\b(?:galaxy|pixel)\s*[sz]\s*\d{2,3}\b", re.I),
     re.compile(r"\bairpods?\s*(?:pro|max)?\s*(?:2|3|4)?\b", re.I),
     re.compile(r"\bmp[ol]\s*-\s*\d{2,4}\b", re.I),
+    re.compile(r"\bhl[- ]?l\d{4}[a-z]{1,3}\b", re.I),
+    re.compile(r"\bmfc[- ]?l\d{4}[a-z]{1,3}\b", re.I),
+    re.compile(r"\bdcp[- ]?l\d{4}[a-z]{1,3}\b", re.I),
+    re.compile(r"\b(?:archer\s*)?(?:axe|ax|be|ac)\s*\d{1,4}\b", re.I),
+    re.compile(r"\bv(?:8|10|11|12|15)\b", re.I),
+    re.compile(r"\b(?:9[78]0|9[89]0)\s*(?:pro|evo)\b", re.I),
+    re.compile(r"\bsn\s*\d{3,4}x?\b", re.I),
 )
 
 
@@ -299,11 +306,12 @@ def _extract_model_token(q: str, family: dict[str, Any] | None) -> str | None:
             patterns.extend(mp if isinstance(mp, (list, tuple)) else [mp])
     patterns.extend(_UNIVERSAL_MODEL_PATTERNS)
     seen: set[str] = set()
+    min_len = 2 if family else 3
     for p in patterns:
         m = p.search(q)
         if m:
             tok = _norm_model(m.group(0))
-            if len(tok) >= 3 and tok not in seen:
+            if len(tok) >= min_len and tok not in seen:
                 return m.group(0).strip()
     return None
 
@@ -609,6 +617,120 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "brand_plus_family_named": True,
     },
     {
+        "id": "printer",
+        "match_query": re.compile(
+            r"\bprinter\b|\blaser\s*printer\b|\binkjet\b|\bhl[- ]?l\d{4}[a-z]{1,3}\b|"
+            r"\bmfc[- ]?l\d{4}[a-z]{1,3}\b|\bdcp[- ]?l\d{4}[a-z]{1,3}\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\bprinter\b|\blaser\b|\binkjet\b|\bmonochrome\b|\bduplex\b|"
+            r"\ball[- ]in[- ]one\b|\bmultifunction\b",
+            re.I,
+        ),
+        "brand_tokens": ("brother", "hp", "canon", "epson"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("printer", "laser", "inkjet", "duplex", "monochrome"),
+        "accessory_signals": (
+            "toner", "toner cartridge", "cartridge", "drum", "ink", "label tape",
+            "replacement toner", "refill",
+        ),
+        "negative_signals": (
+            "toner", "cartridge", "drum", "ink", "label tape", "refill",
+        ),
+        "search_alias_templates": (
+            "{brand} {model_token} printer",
+            "{model_token} printer",
+            "{raw}",
+        ),
+        "model_patterns": [
+            re.compile(r"\bhl[- ]?l\d{4}[a-z]{1,3}\b", re.I),
+            re.compile(r"\bmfc[- ]?l\d{4}[a-z]{1,3}\b", re.I),
+            re.compile(r"\bdcp[- ]?l\d{4}[a-z]{1,3}\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\btoner\b|\bcartridge\b|\bdrum\b|\bink\b|\blabel\s*tape\b|\brefill\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("toner", "cartridge", "drum", "ink", "label tape", "refill"),
+    },
+    {
+        "id": "vacuum",
+        "match_query": re.compile(
+            r"\bvacuum\b|\bcordless\s*vacuum\b|\bstick\s*vacuum\b|\bhandheld\s*vacuum\b|"
+            r"\bdyson\s*v(?:8|10|11|12|15)\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\bvacuum\b|\bstick\s*vacuum\b|\bcordless\b|\bhandheld\b",
+            re.I,
+        ),
+        "brand_tokens": ("dyson", "shark", "bissell", "tineco", "eufy"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("vacuum", "cordless", "stick vacuum", "handheld"),
+        "accessory_signals": (
+            "filter", "battery", "charger", "replacement head", "brush head",
+            "mop pad", "wall mount", "attachment kit",
+        ),
+        "negative_signals": (
+            "filter", "battery", "charger", "replacement head", "brush head",
+            "mop pad", "wall mount", "attachment kit",
+        ),
+        "search_alias_templates": (
+            "{brand} {model_token} cordless vacuum",
+            "{brand} {model_token} vacuum",
+            "{raw}",
+        ),
+        "model_patterns": [
+            re.compile(r"\bv(?:8|10|11|12|15)\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\bfilter\b|\bbattery\b|\bcharger\b|\breplacement\s*head\b|\bbrush\s*head\b|"
+            r"\bmop\s*pad\b|\bwall\s*mount\b|\battachment\s*kit\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": (
+            "filter", "battery", "charger", "replacement head", "brush head",
+            "mop pad", "wall mount", "attachment kit",
+        ),
+    },
+    {
+        "id": "storage",
+        "match_query": re.compile(
+            r"\bssd\b|\bnvme\b|\bm\.?2\b|\bsolid\s*state\b|\b(?:9[78]0|9[89]0)\s*(?:pro|evo)\b|"
+            r"\bsn\s*\d{3,4}x?\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\bssd\b|\bnvme\b|\bm\.?2\b|\bsolid\s*state\b|\bpcie\b|\bheatsink\b",
+            re.I,
+        ),
+        "brand_tokens": ("samsung", "wd", "western digital", "crucial", "kingston", "sabrent", "sk hynix"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("ssd", "nvme", "m.2", "solid state", "pcie"),
+        "accessory_signals": ("enclosure", "adapter", "dock", "cable", "heatsink cover"),
+        "negative_signals": ("enclosure", "adapter", "dock", "cable"),
+        "search_alias_templates": (
+            "{brand} {model_token} ssd",
+            "{raw}",
+        ),
+        "model_patterns": [
+            re.compile(r"\b(?:9[78]0|9[89]0)\s*(?:pro|evo)\b", re.I),
+            re.compile(r"\bsn\s*\d{3,4}x?\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\benclosure\b|\badapter\b|\bdock\b|\bcable\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("enclosure", "adapter", "dock", "cable"),
+    },
+    {
         "id": "tv",
         "match_query": re.compile(
             r"\btv\b|\btelevision\b|\boled\s*tv\b|\bqled\b|\b4k\s*tv\b",
@@ -649,6 +771,9 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
             r"\bkeyboard\b|\bmechanical\b|\btkl\b|\btenkeyless\b",
             re.I,
         ),
+        "model_patterns": [
+            re.compile(r"\b[a-z]{1,6}\d{2,4}[a-z]?\b", re.I),
+        ],
         "brand_tokens": (
             "logitech", "corsair", "razer", "keychron", "ducky", "steelseries",
         ),
@@ -755,9 +880,23 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "brand_tokens": (
             "asus", "tp-link", "netgear", "linksys", "eero", "google",
         ),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("router", "mesh", "wifi", "dual band", "tri band"),
+        "accessory_signals": ("adapter", "antenna", "mount", "extender"),
+        "negative_signals": ("adapter", "antenna", "mount", "extender"),
+        "search_alias_templates": (
+            "{brand} {model_token} router",
+            "{model_token} router",
+            "{raw}",
+        ),
+        "model_patterns": [
+            re.compile(r"\barcher\s*(?:axe|ax|be|ac)\s*\d{1,4}\b", re.I),
+            re.compile(r"\b(?:axe|ax|be|ac)\s*\d{1,4}\b", re.I),
+        ],
         "hard_block": None,
         "other_brand_earbuds": None,
-        "category_accessory_words": ("cable", "adapter", "mount"),
+        "category_accessory_words": ("cable", "adapter", "mount", "antenna", "extender"),
     },
     {
         "id": "ps5",
@@ -818,6 +957,44 @@ def _extract_brand_from_query(
     return None
 
 
+def _infer_brand_from_model_context(
+    query_norm: str,
+    family: dict[str, Any] | None,
+    model_token: str | None,
+) -> str | None:
+    if not family or not model_token:
+        return None
+    model_norm = normalize_user_query(model_token)
+    match = re.search(rf"^(.*?)\b{re.escape(model_norm)}\b", query_norm, re.I)
+    if not match:
+        return None
+    prefix = normalize_user_query(match.group(1) or "").strip()
+    if not prefix:
+        return None
+    parts = prefix.split()
+    if not parts:
+        return None
+    candidate = parts[-1].strip().lower()
+    if not re.fullmatch(r"[a-z][a-z0-9&-]{1,20}", candidate):
+        return None
+    generic = {
+        family.get("id", "").replace("_", " "),
+        "wireless",
+        "mechanical",
+        "gaming",
+        "bluetooth",
+        "portable",
+        "smart",
+        "electric",
+        "noise",
+        "canceling",
+        "cancelling",
+    }
+    if candidate in generic:
+        return None
+    return candidate
+
+
 def _extract_named_required_tokens(
     query_norm: str,
     family: dict[str, Any] | None,
@@ -873,8 +1050,8 @@ def parse_query_intent(raw_user_query: str) -> QueryIntent:
     qn = normalize_user_query(raw_user_query)
     acc = query_has_accessory_intent(qn)
     family = match_family_from_query(qn)
-    brand = _extract_brand_from_query(qn, family)
     model_token = _extract_model_token(qn, family)
+    brand = _extract_brand_from_query(qn, family) or _infer_brand_from_model_context(qn, family, model_token)
     required_tokens = _extract_named_required_tokens(qn, family, brand)
     soft_variant_tokens = _extract_soft_variant_tokens(qn)
     hard_variant_tokens = _extract_structured_tokens(qn)
