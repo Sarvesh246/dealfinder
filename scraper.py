@@ -410,36 +410,42 @@ def _first_dollar_price_in_text(text: str) -> float | None:
 # Extraction helpers (JSON-LD, meta, HTML)
 # ---------------------------------------------------------------------------
 
-def _schema_price(obj) -> float | None:
+def _schema_prices(obj) -> list[float]:
+    """Collect candidate prices from JSON-LD schema objects."""
+    out: list[float] = []
     if isinstance(obj, list):
         for item in obj:
-            p = _schema_price(item)
-            if p:
-                return p
-        return None
+            out.extend(_schema_prices(item))
+        return out
     if not isinstance(obj, dict):
-        return None
+        return out
+
+    # Prefer explicit price, but keep ranges too (we'll score later).
     for key in ("price", "lowPrice", "highPrice"):
         if key in obj:
-            p = clean_price(obj[key])
+            p = clean_price(obj.get(key))
             if p:
-                return p
+                out.append(p)
+
     offers = obj.get("offers")
     if offers:
-        return _schema_price(offers)
-    return None
+        out.extend(_schema_prices(offers))
+    return out
 
 
 def extract_price_from_json_ld(soup: BeautifulSoup) -> float | None:
+    prices: list[float] = []
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(script.string or "")
-            p = _schema_price(data)
-            if p:
-                return p
         except (json.JSONDecodeError, AttributeError):
             continue
-    return None
+        prices.extend(_schema_prices(data))
+    prices = [p for p in prices if p and 0 < p <= 100_000]
+    if not prices:
+        return None
+    # Without a hint, the safest generic choice is the minimum (usually the actual offer price).
+    return min(prices)
 
 
 def extract_price_from_meta(soup: BeautifulSoup) -> float | None:
@@ -475,12 +481,58 @@ def extract_price_from_html(soup: BeautifulSoup) -> float | None:
     return None
 
 
-def extract_price_from_soup(soup: BeautifulSoup) -> float | None:
-    for fn in (extract_price_from_json_ld, extract_price_from_meta, extract_price_from_html):
-        price = fn(soup)
-        if price is not None:
-            return price
-    return None
+def _pick_price_with_hint(candidates: list[float], price_hint: float | None) -> float | None:
+    if not candidates:
+        return None
+    candidates = [p for p in candidates if p and 0 < p <= 100_000]
+    if not candidates:
+        return None
+    if price_hint is None:
+        return min(candidates)
+
+    try:
+        hint = float(price_hint)
+    except (TypeError, ValueError):
+        return min(candidates)
+    if hint <= 0:
+        return min(candidates)
+
+    def score(p: float) -> float:
+        # Relative error; lower is better. This favors the discovery price when tracking.
+        return abs(p - hint) / max(hint, 1.0)
+
+    best = min(candidates, key=score)
+    return best
+
+
+def extract_price_from_soup(soup: BeautifulSoup, *, price_hint: float | None = None) -> float | None:
+    """
+    Extract a plausible item price from a PDP soup.
+
+    When price_hint is provided (e.g. from search/discovery), choose the candidate price
+    closest to that hint. This avoids accidentally selecting installment/monthly prices.
+    """
+    candidates: list[float] = []
+
+    # Meta tags are often the cleanest "current price".
+    meta_p = extract_price_from_meta(soup)
+    if meta_p is not None:
+        candidates.append(meta_p)
+
+    # JSON-LD can include multiple prices (ranges, variations, etc).
+    # We collect all of them (via extract_price_from_json_ld's internal collector) by re-parsing here.
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        candidates.extend(_schema_prices(data))
+
+    html_p = extract_price_from_html(soup)
+    if html_p is not None:
+        candidates.append(html_p)
+
+    return _pick_price_with_hint(candidates, price_hint)
 
 
 # ---------------------------------------------------------------------------
@@ -3120,7 +3172,8 @@ def verify_candidate_listing(
                 family_hint=spec.family,
             ),
         )
-    price = extract_price_from_soup(soup)
+    price_hint = candidate.get("current_price")
+    price = extract_price_from_soup(soup, price_hint=price_hint)
     fingerprint = fingerprint_listing_document(
         url,
         soup,
