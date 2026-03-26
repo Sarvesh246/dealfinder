@@ -1,0 +1,1185 @@
+{% extends "base.html" %}
+{% block title %}Discover Deals — PricePulse{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Hero ───────────────────────────────────────────────────────────── */
+  .discover-hero {
+    text-align: center;
+    padding-top: 24px;
+    margin-bottom: 32px;
+  }
+
+  .discover-heading {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.15;
+    margin-bottom: 8px;
+  }
+
+  .discover-heading .gradient-word {
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .discover-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    max-width: 480px;
+    margin: 0 auto 28px;
+    line-height: 1.55;
+  }
+
+  .ai-powered-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent-purple);
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: rgba(124,92,252,0.08);
+    border: 1px solid rgba(124,92,252,0.18);
+    margin-bottom: 22px;
+    letter-spacing: 0.2px;
+  }
+
+  /* ── Search card ────────────────────────────────────────────────────── */
+  .search-card {
+    max-width: 620px;
+    margin: 0 auto;
+    padding: 28px 28px 24px;
+    border-radius: var(--radius);
+  }
+
+  .search-wrap {
+    position: relative;
+    margin-bottom: 14px;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+    display: flex;
+  }
+
+  .search-input {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px 14px 44px;
+    color: var(--text-primary);
+    font-size: 15px;
+    outline: none;
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .search-input::placeholder { color: var(--text-muted); }
+
+  .search-input:focus {
+    border-color: var(--accent-purple);
+    box-shadow: 0 0 0 3px rgba(124,92,252,0.15);
+  }
+
+  .search-row {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .price-wrap {
+    position: relative;
+    flex: 0 0 140px;
+  }
+
+  .price-prefix {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+
+  .price-input {
+    width: 100%;
+    height: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px 12px 28px;
+    color: var(--text-primary);
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+    -webkit-appearance: none;
+    -moz-appearance: textfield;
+  }
+
+  .price-input::placeholder { color: var(--text-muted); }
+
+  .price-input:focus {
+    border-color: var(--accent-purple);
+    box-shadow: 0 0 0 3px rgba(124,92,252,0.15);
+  }
+
+  .price-input::-webkit-inner-spin-button,
+  .price-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+  /* ── Condition + filters (submit is below stores so you set options first) ─ */
+  .df-condition-fieldset {
+    border: none;
+    margin: 18px 0 0;
+    padding: 0;
+    min-width: 0;
+  }
+  .df-fieldset-legend {
+    width: 100%;
+    padding: 0;
+    margin-bottom: 12px;
+  }
+  .df-condition-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+  .df-condition-title {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .df-condition-rule {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.14), rgba(255,255,255,0.03));
+  }
+  .df-condition-subtitle {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    max-width: 520px;
+  }
+  .df-radio-row {
+    display: grid;
+    gap: 10px;
+  }
+  .df-radio {
+    position: relative;
+    display: block;
+    cursor: pointer;
+  }
+  .df-radio input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .df-radio-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: start;
+    gap: 16px;
+    padding: 15px 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)),
+      rgba(13, 17, 30, 0.72);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    transition: border-color 180ms ease, background 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+    text-align: left;
+  }
+  .df-radio:hover .df-radio-card {
+    border-color: rgba(255,255,255,0.14);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025)),
+      rgba(16, 20, 34, 0.8);
+    transform: translateY(-1px);
+  }
+  .df-radio input:focus-visible + .df-radio-card {
+    border-color: rgba(124,92,252,0.55);
+    box-shadow: 0 0 0 3px rgba(124,92,252,0.14);
+  }
+  .df-radio input:checked + .df-radio-card {
+    border-color: rgba(124,92,252,0.48);
+    background:
+      radial-gradient(circle at top right, rgba(0,255,194,0.07), transparent 42%),
+      linear-gradient(135deg, rgba(124,92,252,0.17), rgba(0,255,194,0.07)),
+      rgba(15, 20, 34, 0.92);
+    box-shadow:
+      0 14px 30px rgba(0,0,0,0.22),
+      0 0 0 1px rgba(124,92,252,0.1) inset;
+  }
+  .df-radio-copy {
+    min-width: 0;
+  }
+  .df-radio-kicker {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    margin-bottom: 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .df-radio input:checked + .df-radio-card .df-radio-kicker {
+    color: #d8cffd;
+    border-color: rgba(124,92,252,0.28);
+    background: rgba(124,92,252,0.12);
+  }
+  .df-radio-title {
+    display: block;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.2;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .df-radio-desc {
+    display: block;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    max-width: 470px;
+  }
+  .df-radio-indicator {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    margin-top: 2px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.22);
+    background: rgba(255,255,255,0.04);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    flex-shrink: 0;
+  }
+  .df-radio-indicator::after {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-blue));
+    transform: scale(0.35);
+    opacity: 0;
+    transition: transform 180ms ease, opacity 180ms ease;
+  }
+  .df-radio input:checked + .df-radio-card .df-radio-indicator {
+    border-color: rgba(124,92,252,0.7);
+    background: rgba(124,92,252,0.08);
+    box-shadow: 0 0 0 4px rgba(124,92,252,0.12);
+  }
+  .df-radio input:checked + .df-radio-card .df-radio-indicator::after {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  .discover-filters-secondary {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 14px;
+  }
+  /* Legacy grid name — condition radios use fieldset above */
+  .discover-filters {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .df-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+  }
+  .df-lab {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .df-select {
+    width: 100%;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-sm);
+    padding: 9px 10px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+    color-scheme: dark;
+  }
+  .df-select option {
+    background: #12131c;
+    color: var(--text-primary);
+  }
+  .df-select:focus {
+    border-color: var(--accent-purple);
+    box-shadow: 0 0 0 2px rgba(124,92,252,0.12);
+  }
+  .discover-filters-hint {
+    grid-column: 1 / -1;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.45;
+    margin: 0;
+  }
+
+  .discover-sources-field {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid var(--glass-border);
+  }
+  .discover-sources-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+  }
+  .discover-sources-hint {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    line-height: 1.45;
+  }
+  .discover-sources-empty {
+    margin: 10px 0 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.08);
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    border: 0;
+  }
+  .discover-source-chips {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .discover-source-chips-all { grid-column: 1 / -1; }
+  .d-source-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--glass-border);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 200ms ease;
+    user-select: none;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .d-source-chip:hover {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+  }
+  .sr-only:checked + .d-source-chip {
+    background: rgba(124,92,252,0.15);
+    border-color: rgba(124,92,252,0.4);
+    color: var(--text-primary);
+    box-shadow: 0 0 12px rgba(124,92,252,0.08);
+  }
+  .d-chip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity 200ms ease;
+  }
+  .sr-only:checked + .d-source-chip .d-chip-dot { opacity: 1; }
+  .discover-all-chip {
+    border-style: dashed;
+    font-weight: 600;
+  }
+  .discover-source-chips.discover-source-chips--all-mode .d-source-chip:not(.discover-all-chip) {
+    opacity: 0.42;
+    pointer-events: none;
+  }
+
+  .btn-search {
+    flex: 1;
+    height: 46px;
+    font-size: 14px;
+    padding: 0 24px;
+    white-space: nowrap;
+  }
+
+  /* ── Chip rows (quick categories & recent) ─────────────────────────── */
+  .chip-section {
+    max-width: 620px;
+    margin: 18px auto 0;
+  }
+
+  .chip-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.08) transparent;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chip-row::-webkit-scrollbar { height: 4px; }
+  .chip-row::-webkit-scrollbar-track { background: transparent; }
+  .chip-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+
+  .chip-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    padding-right: 4px;
+  }
+
+  .chip {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+    user-select: none;
+    white-space: nowrap;
+  }
+
+  .chip:hover {
+    background: var(--glass-hover);
+    border-color: rgba(255,255,255,0.14);
+    color: var(--text-primary);
+  }
+
+  .chip:active { transform: scale(0.97); }
+
+  .chip-emoji { font-size: 14px; line-height: 1; }
+
+  /* ── Recent searches section ────────────────────────────────────────── */
+  .recent-section { margin-top: 12px; }
+
+  .chip-ghost {
+    background: transparent;
+    border-style: dashed;
+  }
+
+  .clear-link {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: color 180ms ease;
+  }
+
+  .clear-link:hover { color: var(--price-bad); }
+
+  /* ── Category browser ───────────────────────────────────────────────── */
+  .cat-browser {
+    margin-top: 40px;
+    max-width: 620px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .cat-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+    margin: 0 auto;
+    display: flex;
+    justify-content: center;
+  }
+
+  .cat-toggle:hover {
+    background: var(--glass-bg);
+    color: var(--text-primary);
+    border-color: rgba(255,255,255,0.14);
+  }
+
+  .cat-toggle .caret {
+    display: inline-block;
+    transition: transform 260ms ease;
+    font-size: 11px;
+  }
+
+  .cat-toggle.open .caret { transform: rotate(180deg); }
+
+  .cat-grid {
+    display: none;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .cat-grid.visible {
+    display: grid;
+    animation: fadeUp 300ms ease-out both;
+  }
+
+  .cat-card {
+    padding: 20px 16px;
+    text-align: center;
+    cursor: pointer;
+    border-radius: var(--radius);
+    position: relative;
+  }
+
+  .cat-card-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+    line-height: 1;
+  }
+
+  .cat-card-name {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 3px;
+  }
+
+  .cat-card-count {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+
+  .cat-card.active {
+    border-color: rgba(124,92,252,0.35);
+    background: rgba(124,92,252,0.08);
+  }
+
+  .cat-children {
+    display: none;
+    grid-column: 1 / -1;
+    padding: 12px 16px;
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--glass-border);
+  }
+
+  .cat-children.visible {
+    display: block;
+    animation: fadeUp 250ms ease-out both;
+  }
+
+  .cat-children-inner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .cat-child-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 16px;
+    border-radius: 999px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+  }
+
+  .cat-child-chip:hover {
+    background: rgba(124,92,252,0.12);
+    border-color: rgba(124,92,252,0.3);
+    color: var(--text-primary);
+  }
+
+  /* ── Loading overlay ────────────────────────────────────────────────── */
+  .loading-overlay {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(7,8,15,0.82);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    gap: 16px;
+    text-align: center;
+  }
+
+  .loading-overlay.active { display: flex; }
+
+  .loading-dots { display: flex; gap: 6px; }
+
+  .loading-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent-purple);
+    opacity: 0.3;
+    animation: dotPulse 1.4s ease-in-out infinite;
+  }
+
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes dotPulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50%      { opacity: 1;   transform: scale(1.1); }
+  }
+
+  .loading-text {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .loading-sub {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  /* ── Responsive ─────────────────────────────────────────────────────── */
+  @media (max-width: 639px) {
+    .discover-heading { font-size: 24px; }
+    .search-card { padding: 20px 16px 18px; }
+    .price-wrap { flex: 0 0 110px; }
+    .btn-search { padding: 0 16px; font-size: 13px; }
+    .cat-grid { grid-template-columns: repeat(2, 1fr); }
+    .discover-source-chips { grid-template-columns: repeat(2, 1fr); }
+    .discover-filters,
+    .discover-filters-secondary { grid-template-columns: 1fr; }
+    .df-radio-card {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .df-radio-indicator {
+      order: -1;
+    }
+    .df-radio-desc {
+      max-width: none;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .search-row { flex-direction: column; }
+    .price-wrap { flex: unset; }
+    .cat-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="discover-hero fade-in">
+  <h1 class="discover-heading">
+    Find the <span class="gradient-word">Best Deal</span> On Anything
+  </h1>
+  <p class="discover-subtitle">
+    Type any product, brand, or category — we'll find the best prices across the internet
+  </p>
+  <div class="ai-powered-note">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+      <path d="M2 17l10 5 10-5"></path>
+      <path d="M2 12l10 5 10-5"></path>
+    </svg>
+    AI-enhanced search &mdash; results ranked by relevance, deduped across stores
+  </div>
+
+  <!-- Search card -->
+  <form method="POST" action="{{ url_for('discover_search') }}" class="card search-card" id="discover-form" autocomplete="off">
+    <input type="hidden" name="category_id" id="hidden-category-id" value="" />
+
+    <div class="search-wrap">
+      <span class="search-icon">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </span>
+      <input
+        class="search-input"
+        type="text"
+        id="search-query"
+        name="query"
+        placeholder="Search anything… e.g. lawn mower, air fryer"
+        maxlength="200"
+        required
+      />
+    </div>
+
+    <fieldset class="df-condition-fieldset">
+      <legend class="df-fieldset-legend">
+        <div class="df-condition-head">
+          <span class="df-condition-title">Listing condition</span>
+          <span class="df-condition-rule" aria-hidden="true"></span>
+        </div>
+        <div class="df-condition-subtitle">Choose how strict the results should be before we rank and compare prices.</div>
+      </legend>
+      <div class="df-radio-row">
+        <label class="df-radio">
+          <input type="radio" name="filter_condition" value="new_only" checked />
+          <span class="df-radio-card">
+            <span class="df-radio-copy">
+              <span class="df-radio-kicker">Strictest</span>
+              <span class="df-radio-title">New only</span>
+              <span class="df-radio-desc">Hide renewed, refurbished, open-box, and most used listings when the scraper can detect that in the title or product URL.</span>
+            </span>
+            <span class="df-radio-indicator" aria-hidden="true"></span>
+          </span>
+        </label>
+        <label class="df-radio">
+          <input type="radio" name="filter_condition" value="include_refurb" />
+          <span class="df-radio-card">
+            <span class="df-radio-copy">
+              <span class="df-radio-kicker">Balanced</span>
+              <span class="df-radio-title">Include renewed &amp; refurbished</span>
+              <span class="df-radio-desc">Show renewed, refurbished, and open-box listings, but still hide plain used items unless you choose <em>Any condition</em>.</span>
+            </span>
+            <span class="df-radio-indicator" aria-hidden="true"></span>
+          </span>
+        </label>
+        <label class="df-radio">
+          <input type="radio" name="filter_condition" value="all" />
+          <span class="df-radio-card">
+            <span class="df-radio-copy">
+              <span class="df-radio-kicker">Broadest</span>
+              <span class="df-radio-title">Any condition</span>
+              <span class="df-radio-desc">Don’t remove listings for condition. This includes used, renewed, refurbished, and open-box results.</span>
+            </span>
+            <span class="df-radio-indicator" aria-hidden="true"></span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <div class="discover-filters discover-filters-secondary">
+      <label class="df-item">
+        <span class="df-lab">Product type</span>
+        <select name="filter_product_type" class="df-select" id="filter-product-type">
+          <option value="primary_only" selected>Main products only</option>
+          <option value="include_accessories">Include accessories</option>
+        </select>
+      </label>
+      <label class="df-item">
+        <span class="df-lab">Brand match</span>
+        <select name="filter_brand" class="df-select" id="filter-brand">
+          <option value="exact" selected>Exact line (e.g. real AirPods)</option>
+          <option value="similar">Include similar brands</option>
+        </select>
+      </label>
+    </div>
+    <p class="discover-filters-hint" style="margin-top:10px">
+      <strong>Tip:</strong> Run a <em>new</em> search after changing filters. Old result pages were built with the settings from that earlier run.
+    </p>
+
+    <div class="discover-sources-field">
+      <span class="discover-sources-label">Stores to include</span>
+      <div class="discover-source-chips" id="discover-source-chips">
+        <div class="discover-source-chips-all">
+          <input type="checkbox" name="search_all_sources" value="1" id="discover-search-all-sources" class="sr-only" />
+          <label for="discover-search-all-sources" class="d-source-chip discover-all-chip">
+            <span class="d-chip-dot" style="background:linear-gradient(135deg,var(--accent-purple),var(--accent-blue))"></span>
+            <span>All registered stores</span>
+          </label>
+        </div>
+        {% for s in sources | default([], true) %}
+        <input type="checkbox" name="source_ids" value="{{ s.id }}" id="discover-source-{{ s.id }}"
+               class="sr-only discover-source-id-cb" {% if s.enabled %}checked{% endif %}
+               data-name="{{ s.name }}" />
+        <label for="discover-source-{{ s.id }}" class="d-source-chip">
+          <span class="d-chip-dot" style="background:{{ s.logo_color | default('#7C5CFC') }}"></span>
+          <span>{{ s.name }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <span class="discover-sources-hint">Matches your defaults from Settings; change here for this search only. <strong>All registered stores</strong> queries every store in the list (including ones off by default).</span>
+      {% if not sources %}
+      <p class="discover-sources-empty" role="alert">
+        No per-store chips loaded — the store list from the database is empty or the DB failed to open. Check the server log for SQLite errors; if the database file is corrupted, restore from backup or remove it so the app can recreate schema and defaults on startup.
+      </p>
+      {% endif %}
+    </div>
+
+    <div class="search-row" style="margin-top:18px">
+      <div class="price-wrap">
+        <span class="price-prefix">$</span>
+        <input
+          class="price-input"
+          type="number"
+          id="max-price"
+          name="max_price"
+          placeholder="Max price"
+          step="0.01"
+          min="0.01"
+        />
+      </div>
+      <button type="submit" class="btn-primary btn-search" id="btn-search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        Find Deals
+      </button>
+    </div>
+  </form>
+
+  <!-- Quick category chips -->
+  <div class="chip-section fade-in" style="animation-delay:.08s">
+    <div class="chip-row">
+      <span class="chip-label">Popular:</span>
+      <span class="chip" data-query="Keyboards"><span class="chip-emoji">⌨️</span> Keyboards</span>
+      <span class="chip" data-query="Monitors"><span class="chip-emoji">🖥️</span> Monitors</span>
+      <span class="chip" data-query="Headphones"><span class="chip-emoji">🎧</span> Headphones</span>
+      <span class="chip" data-query="Mice"><span class="chip-emoji">🖱️</span> Mice</span>
+      <span class="chip" data-query="Laptops"><span class="chip-emoji">💻</span> Laptops</span>
+      <span class="chip" data-query="Phones"><span class="chip-emoji">📱</span> Phones</span>
+      <span class="chip" data-query="Controllers"><span class="chip-emoji">🎮</span> Controllers</span>
+      <span class="chip" data-query="Cameras"><span class="chip-emoji">📷</span> Cameras</span>
+      <span class="chip" data-query="Smart Home"><span class="chip-emoji">🏠</span> Smart Home</span>
+      <span class="chip" data-query="Appliances"><span class="chip-emoji">🧹</span> Appliances</span>
+      <span class="chip" data-query="Outdoor & Garden"><span class="chip-emoji">🌿</span> Outdoor &amp; Garden</span>
+      <span class="chip" data-query="Furniture"><span class="chip-emoji">🪑</span> Furniture</span>
+      <span class="chip" data-query="Fitness"><span class="chip-emoji">🏋️</span> Fitness</span>
+      <span class="chip" data-query="Backpacks"><span class="chip-emoji">🎒</span> Backpacks</span>
+    </div>
+  </div>
+
+  <!-- Recent searches -->
+  <div class="chip-section recent-section fade-in" id="recent-section" style="display:none;animation-delay:.14s">
+    <div class="chip-row" id="recent-chips">
+      <span class="chip-label">Recent:</span>
+      <!-- filled by JS -->
+    </div>
+  </div>
+</section>
+
+<!-- Browse by category -->
+<div class="cat-browser fade-in" style="animation-delay:.18s">
+  <button type="button" class="cat-toggle" id="cat-toggle">
+    Browse by Category <span class="caret">▾</span>
+  </button>
+
+  <div class="cat-grid" id="cat-grid">
+    {% for parent in categories %}
+    <div class="card cat-card" data-parent-id="{{ parent.id }}">
+      <div class="cat-card-icon">{{ parent.icon | default('📦') }}</div>
+      <div class="cat-card-name">{{ parent.name }}</div>
+      <div class="cat-card-count">
+        {{ parent.children | length }} sub{{ 'categories' if parent.children | length != 1 else 'category' }}
+      </div>
+    </div>
+    {% if parent.children %}
+    <div class="cat-children" data-for-parent="{{ parent.id }}">
+      <div class="cat-children-inner">
+        {% for child in parent.children %}
+        <span
+          class="cat-child-chip"
+          data-keywords="{{ child.search_keywords | default(child.name) }}"
+          data-cat-id="{{ child.id }}"
+        >
+          {{ child.icon | default('') }} {{ child.name }}
+        </span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loading-overlay">
+  <div class="loading-dots">
+    <span></span><span></span><span></span>
+  </div>
+  <div class="loading-text" id="loading-text">Finding the best results...</div>
+  <div class="loading-sub" id="loading-sub">This may take a couple minutes while we check each store.</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form       = document.getElementById('discover-form');
+  var queryInput = document.getElementById('search-query');
+  var priceInput = document.getElementById('max-price');
+  var hiddenCat  = document.getElementById('hidden-category-id');
+  var overlay    = document.getElementById('loading-overlay');
+  var loadText   = document.getElementById('loading-text');
+  var loadSub    = document.getElementById('loading-sub');
+  var chipWrap   = document.getElementById('discover-source-chips');
+  var allInput   = document.getElementById('discover-search-all-sources');
+  var loadingTimer = null;
+
+  if (!form || !queryInput) return;
+
+  function sourceIdInputs() {
+    return form.querySelectorAll('input.discover-source-id-cb');
+  }
+
+  function applyAllMode(on) {
+    if (!chipWrap || !allInput) return;
+    chipWrap.classList.toggle('discover-source-chips--all-mode', on);
+    sourceIdInputs().forEach(function (inp) {
+      inp.disabled = on;
+      if (on) inp.checked = false;
+    });
+  }
+
+  if (allInput) {
+    allInput.addEventListener('change', function () {
+      applyAllMode(allInput.checked);
+    });
+  }
+  sourceIdInputs().forEach(function (inp) {
+    inp.addEventListener('change', function () {
+      if (inp.checked && allInput) allInput.checked = false;
+      if (allInput && !allInput.checked) applyAllMode(false);
+    });
+  });
+  if (allInput) applyAllMode(!!allInput.checked);
+
+  var STORAGE_KEY = 'pp_recent_searches';
+  var MAX_RECENT  = 8;
+
+  /* ── Quick chips ──────────────────────────────────────────────────── */
+  document.querySelectorAll('.chip[data-query]').forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      queryInput.value = chip.getAttribute('data-query');
+      queryInput.focus();
+      hiddenCat.value = '';
+    });
+  });
+
+  /* ── Recent searches ──────────────────────────────────────────────── */
+  function getRecent() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+
+  function saveRecent(list) {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+
+  function addRecent(query, maxPrice) {
+    var list = getRecent().filter(function (r) {
+      return r.q.toLowerCase() !== query.toLowerCase();
+    });
+    list.unshift({ q: query, p: maxPrice || '' });
+    if (list.length > MAX_RECENT) list = list.slice(0, MAX_RECENT);
+    saveRecent(list);
+  }
+
+  function renderRecent() {
+    var section = document.getElementById('recent-section');
+    var row     = document.getElementById('recent-chips');
+    var list    = getRecent();
+
+    if (!list.length) { section.style.display = 'none'; return; }
+
+    section.style.display = '';
+    var label = row.querySelector('.chip-label');
+    row.innerHTML = '';
+    row.appendChild(label);
+
+    list.forEach(function (r) {
+      var el = document.createElement('span');
+      el.className = 'chip chip-ghost';
+      el.textContent = r.q + (r.p ? ' ≤$' + r.p : '');
+      el.addEventListener('click', function () {
+        queryInput.value = r.q;
+        if (r.p) priceInput.value = r.p;
+        queryInput.focus();
+        hiddenCat.value = '';
+      });
+      row.appendChild(el);
+    });
+
+    var clear = document.createElement('span');
+    clear.className = 'clear-link';
+    clear.textContent = 'Clear';
+    clear.addEventListener('click', function () {
+      localStorage.removeItem(STORAGE_KEY);
+      renderRecent();
+    });
+    row.appendChild(clear);
+  }
+
+  renderRecent();
+
+  function buildLoadingMessages(query, names, useAll) {
+    var messages = [];
+    if (query) messages.push('Searching for "' + query + '"...');
+    messages.push('Finding the best results...');
+    if (useAll) {
+      messages.push(names.length ? 'Checking all ' + names.length + ' stores...' : 'Checking registered stores...');
+    } else if (names.length > 1) {
+      messages.push('Checking ' + names.length + ' stores...');
+    }
+    names.slice(0, 4).forEach(function (name) {
+      messages.push('Scanning ' + name + '...');
+    });
+    messages.push('Comparing prices across stores...');
+    messages.push('Filtering out weak matches...');
+    messages.push('Removing duplicates and false positives...');
+    messages.push('Ranking the strongest deals...');
+    messages.push('Wrapping things up...');
+    return messages;
+  }
+
+  function startLoadingMessages(query, names, useAll) {
+    var messages = buildLoadingMessages(query, names, useAll);
+    var idx = 0;
+    if (loadingTimer) window.clearInterval(loadingTimer);
+    if (loadSub) {
+      loadSub.textContent = 'This may take a couple minutes while we check each store.';
+    }
+    loadText.textContent = messages[0];
+    loadingTimer = window.setInterval(function () {
+      idx = (idx + 1) % messages.length;
+      loadText.textContent = messages[idx];
+    }, 2200);
+  }
+
+  /* ── Form submit ──────────────────────────────────────────────────── */
+  form.addEventListener('submit', function (e) {
+    var useAll = allInput && allInput.checked;
+    if (!useAll) {
+      var anySource = false;
+      sourceIdInputs().forEach(function (inp) {
+        if (!inp.disabled && inp.checked) anySource = true;
+      });
+      if (!anySource) {
+        e.preventDefault();
+        alert('Select at least one store, or turn on All registered stores.');
+        return;
+      }
+    }
+    var q = queryInput.value.trim();
+    if (q) addRecent(q, priceInput.value.trim());
+    overlay.classList.add('active');
+    var names = [];
+    if (useAll) {
+      sourceIdInputs().forEach(function (inp) {
+        names.push(inp.getAttribute('data-name'));
+      });
+    } else {
+      sourceIdInputs().forEach(function (inp) {
+        if (!inp.disabled && inp.checked) names.push(inp.getAttribute('data-name'));
+      });
+    }
+    startLoadingMessages(q, names, useAll);
+  });
+
+  /* ── Category browser ─────────────────────────────────────────────── */
+  var toggle = document.getElementById('cat-toggle');
+  var grid   = document.getElementById('cat-grid');
+
+  toggle.addEventListener('click', function () {
+    toggle.classList.toggle('open');
+    grid.classList.toggle('visible');
+  });
+
+  var openParent = null;
+
+  document.querySelectorAll('.cat-card').forEach(function (card) {
+    card.addEventListener('click', function () {
+      var pid = card.getAttribute('data-parent-id');
+      var childPanel = document.querySelector('.cat-children[data-for-parent="' + pid + '"]');
+
+      if (openParent && openParent !== pid) {
+        var prev = document.querySelector('.cat-card[data-parent-id="' + openParent + '"]');
+        var prevPanel = document.querySelector('.cat-children[data-for-parent="' + openParent + '"]');
+        if (prev) prev.classList.remove('active');
+        if (prevPanel) prevPanel.classList.remove('visible');
+      }
+
+      if (openParent === pid) {
+        card.classList.remove('active');
+        if (childPanel) childPanel.classList.remove('visible');
+        openParent = null;
+      } else {
+        card.classList.add('active');
+        if (childPanel) childPanel.classList.add('visible');
+        openParent = pid;
+      }
+    });
+  });
+
+  document.querySelectorAll('.cat-child-chip').forEach(function (chip) {
+    chip.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var kw = chip.getAttribute('data-keywords');
+      var catId = chip.getAttribute('data-cat-id');
+      queryInput.value = kw;
+      hiddenCat.value = catId;
+      form.requestSubmit();
+    });
+  });
+})();
+</script>
+{% endblock %}

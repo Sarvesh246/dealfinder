@@ -1,0 +1,321 @@
+{% extends "base.html" %}
+{% block title %}Manage Categories — PricePulse{% endblock %}
+
+{% block head %}
+<style>
+  .cat-outer { display: flex; justify-content: center; }
+
+  .cat-card {
+    width: 100%; max-width: 800px; padding: 0;
+    border-radius: var(--radius); overflow: hidden;
+  }
+
+  .cat-header { padding: 36px 36px 0; }
+
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-secondary);
+    margin-bottom: 20px; transition: color 180ms ease;
+  }
+  .back-link:hover { color: var(--text-primary); }
+
+  .cat-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: 24px;
+    font-weight: 700; color: var(--text-primary); margin-bottom: 6px;
+  }
+  .cat-subtitle {
+    font-size: 14px; color: var(--text-secondary); margin-bottom: 28px;
+    max-width: 560px;
+  }
+
+  /* ── Add form ──────────────────────────────────────────────────────── */
+  .add-form {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
+    padding: 0 36px 28px; border-bottom: 1px solid var(--glass-border);
+  }
+
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label {
+    font-size: 10px; font-weight: 600; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+
+  .form-group input,
+  .form-group select {
+    height: 36px; padding: 0 10px; font-size: 13px;
+    color: var(--text-primary); background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+    outline: none; transition: border-color 180ms ease;
+  }
+  .form-group input:focus,
+  .form-group select:focus { border-color: rgba(124,92,252,0.5); }
+
+  .form-group select { cursor: pointer; }
+  .form-group select option { background: #13141f; color: var(--text-primary); }
+
+  .fg-icon { width: 50px; flex-shrink: 0; }
+  .fg-icon input { width: 100%; text-align: center; font-size: 16px; }
+  .fg-name { flex: 2; min-width: 120px; }
+  .fg-parent { min-width: 140px; }
+  .fg-keywords { flex: 2; min-width: 140px; }
+
+  .btn-add {
+    height: 36px; padding: 0 16px; font-size: 13px; font-weight: 600;
+    white-space: nowrap; border-radius: var(--radius-sm); flex-shrink: 0;
+  }
+
+  /* ── Table ─────────────────────────────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { border-bottom: 1px solid var(--glass-border); }
+  thead th {
+    padding: 14px 20px; text-align: left; font-size: 11px;
+    font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  tbody tr {
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: background 180ms ease;
+  }
+  tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+  tbody tr:hover { background: rgba(255,255,255,0.04); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody td {
+    padding: 13px 20px; font-size: 14px; color: var(--text-secondary);
+    vertical-align: middle;
+  }
+
+  .td-icon { font-size: 18px; width: 48px; text-align: center; }
+  .td-name { font-weight: 600; color: var(--text-primary); }
+  .td-keywords {
+    font-size: 12px; color: var(--text-muted); max-width: 180px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .td-actions { white-space: nowrap; }
+
+  .btn-edit {
+    font-size: 12px; font-weight: 600; color: var(--accent-blue);
+    background: none; border: 1px solid rgba(58,159,255,0.2);
+    border-radius: 6px; padding: 4px 12px; cursor: pointer;
+    transition: all 180ms ease;
+  }
+  .btn-edit:hover { background: rgba(58,159,255,0.1); border-color: rgba(58,159,255,0.4); }
+
+  /* ── Edit row ──────────────────────────────────────────────────────── */
+  .edit-row { display: none; }
+  .edit-row.visible { display: table-row; }
+  .edit-row td { padding: 12px 20px; background: rgba(124,92,252,0.04); }
+
+  .edit-form {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end;
+  }
+  .edit-form input,
+  .edit-form select {
+    height: 34px; padding: 0 10px; font-size: 13px;
+    color: var(--text-primary); background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+    outline: none; transition: border-color 180ms ease;
+  }
+  .edit-form input:focus,
+  .edit-form select:focus { border-color: rgba(124,92,252,0.5); }
+  .edit-form select option { background: #13141f; color: var(--text-primary); }
+
+  .ef-icon { width: 44px; text-align: center; font-size: 16px; }
+  .ef-name { flex: 2; min-width: 100px; }
+  .ef-parent { min-width: 120px; }
+  .ef-keywords { flex: 2; min-width: 120px; }
+
+  .btn-save {
+    height: 34px; padding: 0 14px; font-size: 12px; font-weight: 600;
+    border-radius: 6px; white-space: nowrap;
+  }
+  .btn-cancel {
+    height: 34px; padding: 0 14px; font-size: 12px; font-weight: 600;
+    color: var(--text-secondary); background: none;
+    border: 1px solid var(--glass-border); border-radius: 6px;
+    cursor: pointer; transition: all 180ms ease; white-space: nowrap;
+  }
+  .btn-cancel:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.15); }
+
+  /* ── Toggle switch ─────────────────────────────────────────────────── */
+  .toggle-switch {
+    position: relative; display: inline-block; cursor: pointer; flex-shrink: 0;
+  }
+  .toggle-switch input { display: none; }
+  .toggle-track {
+    display: block; width: 40px; height: 22px; border-radius: 999px;
+    background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border);
+    transition: all 200ms ease; position: relative;
+  }
+  .toggle-thumb {
+    display: block; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-muted); position: absolute; top: 2px; left: 2px;
+    transition: all 200ms ease;
+  }
+  .toggle-switch input:checked + .toggle-track {
+    background: rgba(124,92,252,0.3); border-color: rgba(124,92,252,0.5);
+  }
+  .toggle-switch input:checked + .toggle-track .toggle-thumb {
+    background: var(--accent-purple); transform: translateX(18px);
+  }
+
+  /* ── Empty state ───────────────────────────────────────────────────── */
+  .cat-empty {
+    padding: 48px 24px; text-align: center;
+    color: var(--text-secondary); font-size: 14px;
+  }
+  .cat-empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.5; }
+
+  /* ── Responsive ────────────────────────────────────────────────────── */
+  @media (max-width: 639px) {
+    .cat-header { padding: 24px 16px 0; }
+    .add-form { padding: 0 16px 20px; }
+    .fg-icon { width: 44px; }
+    thead th { padding: 12px 14px; font-size: 10px; }
+    tbody td { padding: 10px 14px; font-size: 13px; }
+    .td-keywords { max-width: 100px; }
+    .edit-row td { padding: 10px 14px; }
+    .col-keywords,
+    .col-parent { display: none; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cat-outer">
+  <div class="card cat-card fade-in">
+
+    <div class="cat-header">
+      <a href="{{ url_for('index') }}" class="back-link">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        Back to Dashboard
+      </a>
+
+      <h1 class="cat-title">Manage Categories</h1>
+      <p class="cat-subtitle">Add, edit, and organize categories for Deal Discovery</p>
+    </div>
+
+    <!-- Add category form -->
+    <form method="POST" action="{{ url_for('admin_categories') }}" class="add-form">
+      <input type="hidden" name="action" value="add">
+
+      <div class="form-group fg-icon">
+        <label for="add-icon">Icon</label>
+        <input type="text" id="add-icon" name="icon" placeholder="🏷️" maxlength="4">
+      </div>
+
+      <div class="form-group fg-name">
+        <label for="add-name">Name</label>
+        <input type="text" id="add-name" name="name" placeholder="Category name" required>
+      </div>
+
+      <div class="form-group fg-parent">
+        <label for="add-parent">Parent</label>
+        <select id="add-parent" name="parent_id">
+          <option value="">— None (top level) —</option>
+          {% for pc in parent_categories %}
+          <option value="{{ pc.id }}">{{ pc.icon }} {{ pc.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group fg-keywords">
+        <label for="add-keywords">Keywords</label>
+        <input type="text" id="add-keywords" name="search_keywords" placeholder="comma-separated search terms">
+      </div>
+
+      <button type="submit" class="btn-primary btn-add">Add</button>
+    </form>
+
+    <!-- Category table -->
+    {% if categories %}
+    <table>
+      <thead>
+        <tr>
+          <th>Icon</th>
+          <th>Name</th>
+          <th class="col-parent">Parent</th>
+          <th class="col-keywords">Keywords</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cat in categories %}
+        <tr>
+          <td class="td-icon">{{ cat.icon or '—' }}</td>
+          <td class="td-name">{{ cat.name }}</td>
+          <td class="col-parent">{{ cat.parent_name or '—' }}</td>
+          <td class="col-keywords"><span class="td-keywords" title="{{ cat.search_keywords or '' }}">{{ cat.search_keywords or '—' }}</span></td>
+          <td>
+            <form method="POST" action="{{ url_for('admin_categories') }}" class="toggle-form">
+              <input type="hidden" name="action" value="toggle">
+              <input type="hidden" name="category_id" value="{{ cat.id }}">
+              <input type="hidden" name="enabled" value="{{ 0 if cat.enabled else 1 }}">
+              <label class="toggle-switch">
+                <input type="checkbox" {% if cat.enabled %}checked{% endif %} onchange="this.previousElementSibling.value=this.checked?1:0;this.closest('form').submit()">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </form>
+          </td>
+          <td class="td-actions">
+            <button type="button" class="btn-edit" data-target="edit-{{ cat.id }}">Edit</button>
+          </td>
+        </tr>
+        <tr class="edit-row" id="edit-{{ cat.id }}">
+          <td colspan="6">
+            <form method="POST" action="{{ url_for('admin_categories') }}" class="edit-form">
+              <input type="hidden" name="action" value="update">
+              <input type="hidden" name="category_id" value="{{ cat.id }}">
+
+              <input type="text" name="icon" value="{{ cat.icon or '' }}" class="ef-icon" placeholder="🏷️" maxlength="4">
+              <input type="text" name="name" value="{{ cat.name }}" class="ef-name" placeholder="Name" required>
+
+              <select name="parent_id" class="ef-parent">
+                <option value="">— None (top level) —</option>
+                {% for pc in parent_categories %}
+                <option value="{{ pc.id }}" {% if cat.parent_id == pc.id %}selected{% endif %}>{{ pc.icon }} {{ pc.name }}</option>
+                {% endfor %}
+              </select>
+
+              <input type="text" name="search_keywords" value="{{ cat.search_keywords or '' }}" class="ef-keywords" placeholder="Keywords">
+
+              <button type="submit" class="btn-primary btn-save">Save</button>
+              <button type="button" class="btn-cancel" data-cancel="edit-{{ cat.id }}">Cancel</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="cat-empty">
+      <div class="cat-empty-icon">📂</div>
+      <p>No categories yet.</p>
+      <p style="margin-top:6px;font-size:13px;color:var(--text-muted)">Use the form above to add your first category.</p>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('.btn-edit').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var row = document.getElementById(this.dataset.target);
+      if (row) row.classList.toggle('visible');
+    });
+  });
+
+  document.querySelectorAll('.btn-cancel').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var row = document.getElementById(this.dataset.cancel);
+      if (row) row.classList.remove('visible');
+    });
+  });
+</script>
+{% endblock %}

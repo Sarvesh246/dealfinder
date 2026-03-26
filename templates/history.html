@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}{{ product.name or 'Product' }} History — PricePulse{% endblock %}
+
+{% block head %}
+<style>
+  /* ── History page ────────────────────────────────────────────────── */
+  .history-back {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-secondary);
+    margin-bottom: 20px; transition: color 180ms ease;
+  }
+  .history-back:hover { color: var(--text-primary); }
+
+  .history-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: 22px;
+    font-weight: 700; color: var(--text-primary); line-height: 1.3;
+    margin-bottom: 6px;
+  }
+  .history-title-muted {
+    color: var(--text-muted); font-weight: 500;
+  }
+
+  .history-meta {
+    font-size: 13px; color: var(--text-secondary); margin-bottom: 28px;
+  }
+  .history-meta a {
+    color: var(--accent-blue); text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* Summary row */
+  .history-summary {
+    display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  .summary-chip {
+    display: inline-flex; flex-direction: column; gap: 2px;
+    padding: 12px 16px; border-radius: var(--radius-sm);
+    background: var(--glass-bg); border: 1px solid var(--glass-border);
+    min-width: 120px;
+  }
+  .summary-chip-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .summary-chip-value {
+    font-family: 'Space Grotesk', sans-serif; font-size: 18px;
+    font-weight: 700; color: var(--text-primary);
+  }
+
+  /* Table card */
+  .table-card { padding: 0; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  thead tr { border-bottom: 1px solid var(--glass-border); }
+  thead th {
+    padding: 14px 20px; text-align: left; font-size: 11px;
+    font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  tbody tr {
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: background 180ms ease;
+  }
+  tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+  tbody tr:hover           { background: rgba(255,255,255,0.04); }
+  tbody tr:last-child      { border-bottom: none; }
+  tbody td {
+    padding: 13px 20px; font-size: 14px; color: var(--text-secondary);
+    vertical-align: middle;
+  }
+  .td-price {
+    font-family: 'Space Grotesk', sans-serif; font-size: 15px; font-weight: 600;
+  }
+  .td-source { display: flex; align-items: center; gap: 6px; }
+  .td-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .price-good { color: var(--price-good); }
+  .price-warn { color: var(--price-warn); }
+  .price-bad  { color: var(--price-bad); }
+  .target-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+    text-transform: uppercase; padding: 3px 8px; border-radius: 999px;
+    margin-left: 8px; background: rgba(0,229,160,0.12);
+    color: var(--price-good); border: 1px solid rgba(0,229,160,0.25);
+    vertical-align: middle;
+  }
+
+  .history-empty {
+    padding: 48px 24px; text-align: center;
+    color: var(--text-secondary); font-size: 14px;
+  }
+
+  @media (max-width: 639px) {
+    .history-summary { flex-direction: column; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+  <!-- Back link -->
+  <a href="{{ url_for('index') }}" class="history-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="19" y1="12" x2="5" y2="12"></line>
+      <polyline points="12 19 5 12 12 5"></polyline>
+    </svg>
+    Back to Dashboard
+  </a>
+
+  <h1 class="history-title">
+    {{ product.name or 'Unnamed Product' }}
+    <span class="history-title-muted"> — Price History</span>
+  </h1>
+  <p class="history-meta">
+    Target: <strong style="color:var(--text-primary)">{{ product.target_price | format_price }}</strong>
+    {% if product.created_at is defined and product.created_at %}
+      &nbsp;&middot;&nbsp;
+      <span>Added {{ product.created_at | relative_time }}</span>
+    {% endif %}
+  </p>
+
+  <!-- Summary chips -->
+  {% if price_history %}
+  {% set prices = price_history | map(attribute='price') | select | list %}
+  <div class="history-summary fade-in">
+    <div class="summary-chip">
+      <span class="summary-chip-label">Total Checks</span>
+      <span class="summary-chip-value">{{ price_history | length }}</span>
+    </div>
+    {% if product.current_price is defined and product.current_price is not none %}
+    <div class="summary-chip">
+      <span class="summary-chip-label">Current Price</span>
+      <span class="summary-chip-value" style="color:{{ price_color(product.current_price, product.target_price) }}">
+        {{ product.current_price | format_price }}
+      </span>
+    </div>
+    {% endif %}
+    {% if prices %}
+    <div class="summary-chip">
+      <span class="summary-chip-label">Lowest Seen</span>
+      <span class="summary-chip-value" style="color:var(--price-good)">
+        ${{ "%.2f" | format(prices | min) }}
+      </span>
+    </div>
+    <div class="summary-chip">
+      <span class="summary-chip-label">Highest Seen</span>
+      <span class="summary-chip-value" style="color:var(--price-bad)">
+        ${{ "%.2f" | format(prices | max) }}
+      </span>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- History table -->
+  <div class="card table-card fade-in" style="animation-delay:80ms">
+    {% if price_history %}
+
+    {% set has_sources = price_history[0].source_name is defined %}
+    <table>
+      <thead>
+        <tr>
+          <th>Date Checked</th>
+          {% if has_sources %}<th>Source</th>{% endif %}
+          <th>Price</th>
+          <th>vs Target</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in price_history %}
+        {% set diff = row.price - product.target_price %}
+        <tr>
+          <td>{{ row.checked_at[:19].replace('T', ' ') }}</td>
+
+          {% if has_sources %}
+          <td>
+            <div class="td-source">
+              {% if row.logo_color is defined and row.logo_color %}
+                <span class="td-dot" style="background:{{ row.logo_color }}"></span>
+              {% endif %}
+              {{ row.source_name | default('—') }}
+            </div>
+          </td>
+          {% endif %}
+
+          <td>
+            <span class="td-price
+              {% if row.price <= product.target_price %}price-good
+              {% elif row.price <= product.target_price * 1.10 %}price-warn
+              {% else %}price-bad{% endif %}">
+              ${{ "%.2f" | format(row.price) }}
+            </span>
+            {% if row.price <= product.target_price %}
+              <span class="target-badge">✓ Deal</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if diff <= 0 %}
+              <span style="color:var(--price-good)">
+                ↓ ${{ "%.2f" | format(diff | abs) }} below target
+              </span>
+            {% else %}
+              <span style="color:var(--text-muted)">
+                ${{ "%.2f" | format(diff) }} above target
+              </span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="history-empty">
+      <p>No price checks recorded yet for this product.</p>
+      <p style="margin-top:8px;font-size:13px;color:var(--text-muted)">
+        Use <a href="{{ manual_check_url }}" style="color:var(--accent-blue)">Check Now</a>
+        to run the first scan.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+{% endblock %}

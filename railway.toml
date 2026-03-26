@@ -1,0 +1,6 @@
+# Railway: https://docs.railway.com/reference/railway-toml
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "python app.py"

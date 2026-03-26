@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}Edit Sources — {{ product.name or 'Product' }} — PricePulse{% endblock %}
+
+{% block head %}
+<style>
+  .sources-outer { display: flex; justify-content: center; }
+
+  .sources-card {
+    width: 100%; max-width: 600px; padding: 36px;
+    border-radius: var(--radius);
+  }
+
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-secondary);
+    margin-bottom: 20px; transition: color 180ms ease;
+  }
+  .back-link:hover { color: var(--text-primary); }
+
+  .sources-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: 22px;
+    font-weight: 700; color: var(--text-primary); margin-bottom: 4px;
+  }
+  .sources-subtitle {
+    font-size: 13px; color: var(--text-secondary); margin-bottom: 24px;
+  }
+  .sources-subtitle strong { color: var(--text-primary); }
+
+  .source-list { display: flex; flex-direction: column; }
+
+  .source-item {
+    display: flex; align-items: center; gap: 12px; padding: 14px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .source-item:last-child { border-bottom: none; }
+
+  .source-item-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .source-item-info { flex: 1; min-width: 0; }
+  .source-item-name {
+    font-size: 14px; font-weight: 600; color: var(--text-primary);
+  }
+  .source-item-domain {
+    font-size: 12px; color: var(--text-muted); margin-top: 1px;
+  }
+
+  .toggle-switch {
+    position: relative; display: inline-block; cursor: pointer; flex-shrink: 0;
+  }
+  .toggle-switch input { display: none; }
+  .toggle-track {
+    display: block; width: 40px; height: 22px; border-radius: 999px;
+    background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border);
+    transition: all 200ms ease; position: relative;
+  }
+  .toggle-thumb {
+    display: block; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-muted); position: absolute; top: 2px; left: 2px;
+    transition: all 200ms ease;
+  }
+  .toggle-switch input:checked + .toggle-track {
+    background: rgba(124,92,252,0.3); border-color: rgba(124,92,252,0.5);
+  }
+  .toggle-switch input:checked + .toggle-track .toggle-thumb {
+    background: var(--accent-purple); transform: translateX(18px);
+  }
+
+  .sources-actions {
+    display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap;
+    align-items: center;
+  }
+  .btn-save { padding: 10px 20px; font-size: 14px; }
+  .btn-outline {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 20px; font-size: 14px;
+    background: transparent; color: var(--text-secondary);
+    border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+    cursor: pointer; font-family: inherit; font-weight: 500;
+    transition: all 180ms ease; text-decoration: none;
+  }
+  .btn-outline:hover {
+    color: var(--text-primary); border-color: rgba(255,255,255,0.15);
+    background: var(--glass-hover);
+  }
+
+  .loading-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(7,8,15,0.85); z-index: 200;
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 16px;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--glass-border);
+    border-top: 3px solid var(--accent-purple);
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 639px) {
+    .sources-card { padding: 24px 16px; }
+    .source-item { flex-wrap: wrap; gap: 8px; }
+    .sources-actions { flex-direction: column; }
+    .btn-save, .btn-outline { width: 100%; justify-content: center; text-align: center; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sources-outer">
+  <div class="card sources-card fade-in">
+
+    <a href="{{ url_for('product_detail', product_id=product.id) }}" class="back-link">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+      Back to Product
+    </a>
+
+    <h1 class="sources-title">Edit Sources</h1>
+    <p class="sources-subtitle">
+      {{ product.name }} — Target: <strong>{{ product.target_price | format_price }}</strong>
+    </p>
+
+    <form method="POST" action="{{ url_for('product_sources_save', product_id=product.id) }}" id="sources-form">
+      <div class="source-list">
+        {% for s in all_sources | default([], true) %}
+        <div class="source-item">
+          <span class="source-item-dot" style="background:{{ s.logo_color | default('#7C5CFC') }}"></span>
+
+          <div class="source-item-info">
+            <div class="source-item-name">{{ s.name }}</div>
+            <div class="source-item-domain">{{ s.domain }}</div>
+          </div>
+
+          <label class="toggle-switch">
+            <input type="checkbox" name="source_ids" value="{{ s.id }}"
+                   {% if s.id in active_ids %}checked{% endif %} />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="sources-actions">
+        <button type="submit" class="btn-primary btn-save">Save Changes</button>
+
+        <button type="button" class="btn-outline" id="btn-rediscover"
+                onclick="document.getElementById('rediscover-form').submit();">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          Re-discover All
+        </button>
+
+        <a href="{{ url_for('index') }}" class="btn-outline">&larr; Back to Dashboard</a>
+      </div>
+    </form>
+
+    <form id="rediscover-form" method="POST"
+          action="{{ url_for('rediscover_route', product_id=product.id) }}"
+          style="display:none"></form>
+
+  </div>
+</div>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <div style="font-family:'Space Grotesk',sans-serif;font-size:18px;color:var(--text-primary)">Updating sources&hellip;</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('sources-form');
+  if (!form) return;
+  form.addEventListener('submit', function () {
+    document.getElementById('loading-overlay').style.display = 'flex';
+  });
+  document.getElementById('btn-rediscover').addEventListener('click', function () {
+    document.getElementById('loading-overlay').style.display = 'flex';
+  });
+})();
+</script>
+{% endblock %}

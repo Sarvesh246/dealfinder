@@ -1,0 +1,3371 @@
+"""
+scraper.py — Product discovery and price extraction.
+
+Two main functions:
+  1. discover_product(product_name, source, target_price=...) — search a retailer;
+     returns a list of listing dicts (url, price, name_found, status_hint), best-first.
+  2. get_price_from_url(url, source_name)   — fetch price from a known product page
+
+Extraction pipeline: JSON-LD → meta tags → HTML class/id patterns.
+Requests+BeautifulSoup first, Selenium headless Chrome as fallback.
+"""
+
+import json
+import logging
+import os
+import random
+import re
+import tempfile
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+from urllib.parse import quote_plus, urljoin, urlparse
+
+import requests
+from bs4 import BeautifulSoup
+from bs4.element import Tag
+from dotenv import load_dotenv
+
+from product_verifier import (
+    ProductSpec,
+    fallback_listing_fingerprint,
+    fingerprint_listing_document,
+    parse_product_spec,
+    product_spec_from_row,
+    verification_result_to_fields,
+    verify_listing,
+)
+
+load_dotenv()
+
+MAX_RESULTS_PER_SOURCE = int(os.getenv("MAX_RESULTS_PER_SOURCE", "50"))
+
+# When true, prefer listings with a provable ≥5% markdown; unconfirmed (no was-price
+# in SRP HTML) can still appear if we have fewer than 5 confirmed hits.
+REQUIRE_DISCOUNT = os.getenv("REQUIRE_DISCOUNT", "true").lower() not in (
+    "0", "false", "no", "off",
+)
+# If relevance-filtered "confirmed sale" rows are below this, pad from unconfirmed.
+DISCOVERY_MIN_CONFIRMED_BEFORE_SKIP_UNCONFIRMED = 5
+# When padding, total results never exceed this (confirmed + unconfirmed).
+DISCOVERY_MAX_MERGED_RESULTS = 8
+
+def _discount_confirmed(
+    original_price: float | None, current_price: float | None,
+) -> bool:
+    """True when SRP shows a was-price at least ~5% above the current price."""
+    if original_price is None or current_price is None:
+        return False
+    return original_price > current_price * 1.05
+
+
+def _retailer_log_label(domain: str) -> str:
+    return {
+        "amazon.com": "Amazon",
+        "bestbuy.com": "Best Buy",
+        "newegg.com": "Newegg",
+        "walmart.com": "Walmart",
+        "ebay.com": "eBay",
+        "target.com": "Target",
+        "costco.com": "Costco",
+        "homedepot.com": "Home Depot",
+        "lowes.com": "Lowe's",
+        "bhphotovideo.com": "B&H",
+    }.get(domain, domain.replace(".com", "").title())
+
+
+def _apply_discovery_quality_pipeline(
+    rows: list[dict],
+    *,
+    query: str,
+    max_price: float | None,
+    label: str,
+    price_key: str,
+    name_key: str,
+) -> list[dict]:
+    """
+    Price (<= max_price) → discount tiers → optional unconfirmed fill.
+
+    Listing quality and identity gating run in ``product_identity`` /
+    ``process_discovery_results`` / ``_filter_discover_candidates`` — not here.
+
+    Sets ``discount_confirmed`` on each kept row. Never drops rows solely because
+    ``original_price`` is missing when REQUIRE_DISCOUNT is on (they may pad results).
+    """
+    _ = query, name_key  # retained for logging API compatibility with extractors
+    n_raw = len(rows)
+    for row in rows:
+        if name_key in row and row.get(name_key):
+            row[name_key] = clean_listing_title(str(row.get(name_key, "")))
+    after_price: list[dict] = []
+    for r in rows:
+        p = r.get(price_key)
+        if p is None:
+            continue
+        if max_price is None or p <= max_price:
+            after_price.append(r)
+    n_price = len(after_price)
+
+    dropped_non_sale = 0
+
+    if not REQUIRE_DISCOUNT:
+        after_rel: list[dict] = []
+        for r in after_price:
+            cur = r.get(price_key)
+            if cur is None:
+                continue
+            orig = r.get("original_price")
+            r["discount_confirmed"] = _discount_confirmed(orig, cur)
+            after_rel.append(r)
+        n_conf_rel = sum(1 for x in after_rel if x.get("discount_confirmed"))
+        logging.info(
+            f"[{label}] {n_raw} raw → {n_price} passed price filter → "
+            f"REQUIRE_DISCOUNT off → {len(after_rel)} rows ({n_conf_rel} confirmed sale) "
+            f"→ storing {len(after_rel)} results"
+        )
+        return after_rel
+
+    tier1: list[dict] = []
+    unconfirmed: list[dict] = []
+    for r in after_price:
+        cur = r.get(price_key)
+        if cur is None:
+            continue
+        orig = r.get("original_price")
+        if _discount_confirmed(orig, cur):
+            tier1.append(r)
+        elif orig is None:
+            unconfirmed.append(r)
+        else:
+            dropped_non_sale += 1
+
+    merged: list[dict] = []
+    for r in tier1:
+        r["discount_confirmed"] = True
+        merged.append(r)
+
+    n_pad = 0
+    if len(merged) < DISCOVERY_MIN_CONFIRMED_BEFORE_SKIP_UNCONFIRMED:
+        room = max(0, DISCOVERY_MAX_MERGED_RESULTS - len(merged))
+        for r in unconfirmed[:room]:
+            r["discount_confirmed"] = False
+            merged.append(r)
+            n_pad += 1
+
+    n_rel = len(merged)
+    rel1 = tier1
+    rel_seg = f"{len(rel1)} confirmed tier + {n_pad} unconfirmed fill"
+    logging.info(
+        f"[{label}] {n_raw} raw → {n_price} passed price filter → "
+        f"{len(tier1)} confirmed discount pre-relevance, "
+        f"{len(unconfirmed)} unconfirmed (no was-price), "
+        f"dropped_non_sale={dropped_non_sale} → "
+        f"{rel_seg} → storing {n_rel} results"
+    )
+    return merged
+
+
+# First N B&H listing rows: log name/url/card preview (0 = off).
+_BHPHOTO_DEBUG_FIRST_N = int(os.getenv("BHPHOTO_DEBUG_ROWS", "10"))
+
+# Last run metrics (read by tests / monitoring); overwritten each discover_* call.
+LAST_DISCOVERY_STATS: dict[str, dict] = {}
+
+# Set when Selenium returns None after a diagnosable failure (e.g. bot wall).
+_LAST_SELENIUM_FAILURE: dict | None = None
+
+# Set on requests timeout / captcha when failure_context targets Walmart or Best Buy.
+_LAST_REQUESTS_FAILURE: dict | None = None
+
+# ---------------------------------------------------------------------------
+# User-Agent pool
+# ---------------------------------------------------------------------------
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0",
+]
+
+
+_SELENIUM_PREFERRED = {
+    "bestbuy.com",
+    "target.com",
+    "walmart.com",
+    "costco.com",
+    "homedepot.com",
+    "lowes.com",
+}
+
+_DEBUG_HTML_MAX_BYTES = int(os.getenv("SCRAPER_DEBUG_MAX_BYTES", str(5 * 1024 * 1024)))
+
+
+def _scraper_debug_dir() -> str:
+    d = os.getenv(
+        "SCRAPER_DEBUG_DIR",
+        os.path.join(tempfile.gettempdir(), "pricepulse_scraper_debug"),
+    )
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _debug_text_preview(html: str, limit: int = 2048) -> str:
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+        t = soup.get_text(separator=" ", strip=True)
+        return t[:limit] if t else ""
+    except Exception:
+        return html[:limit]
+
+
+def _debug_save_failure(
+    domain: str,
+    mode: str,
+    query: str,
+    fetch_method: str,
+    failure_reason: str,
+    *,
+    url: str = "",
+    html: str | None = None,
+    note: str = "",
+) -> str | None:
+    """Save HTML + meta for Walmart/Best Buy failure analysis. Returns base path or None."""
+    if domain not in ("walmart.com", "bestbuy.com"):
+        return None
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    safe = domain.replace(".", "_")
+    base = os.path.join(_scraper_debug_dir(), f"{safe}_{mode}_{ts}")
+    meta_lines = [
+        f"domain={domain}",
+        f"mode={mode}",
+        f"query={query!r}",
+        f"fetch_method={fetch_method}",
+        f"failure_reason={failure_reason}",
+        f"url={url}",
+        f"note={note}",
+        "",
+        "---- text_preview (first ~2KB) ----",
+    ]
+    if html:
+        prev = _debug_text_preview(html, 2048)
+        meta_lines.append(prev or "(empty)")
+    else:
+        meta_lines.append("(no html captured)")
+    try:
+        with open(base + ".meta.txt", "w", encoding="utf-8", errors="replace") as f:
+            f.write("\n".join(meta_lines))
+        if html:
+            raw = html.encode("utf-8", errors="replace")
+            if len(raw) > _DEBUG_HTML_MAX_BYTES:
+                raw = raw[:_DEBUG_HTML_MAX_BYTES]
+            with open(base + ".html", "wb") as f:
+                f.write(raw)
+        logging.warning(
+            f"[{datetime.now()}] Debug dump written: {base}.meta.txt"
+            + (f" + {base}.html" if html else "")
+        )
+        return base
+    except OSError as exc:
+        logging.error(f"[{datetime.now()}] Debug dump failed: {exc}")
+        return None
+
+
+def _discovery_failure_reason_no_soup() -> str:
+    """Best-effort label when HTML could not be loaded (Walmart/Best Buy debug signals)."""
+    global _LAST_REQUESTS_FAILURE, _LAST_SELENIUM_FAILURE
+    if _LAST_REQUESTS_FAILURE and _LAST_REQUESTS_FAILURE.get("reason") == "timeout":
+        return "timeout"
+    if _LAST_SELENIUM_FAILURE and _LAST_SELENIUM_FAILURE.get("reason") == "bot_wall":
+        return "bot_wall"
+    return "fetch_failed"
+
+
+def _humanize_walmart_search_url(url: str) -> str:
+    """Add common query params so the URL looks more like a typical browser search."""
+    if "walmart.com/search" not in url.lower():
+        return url
+    if "sort=" in url.lower():
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}sort=best_match"
+
+
+def _random_headers(url: str) -> dict:
+    headers = {
+        "User-Agent": random.choice(USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                  "image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+    }
+    if "amazon" in url.lower():
+        headers["Referer"] = "https://www.google.com/"
+    elif any(
+        x in url.lower()
+        for x in (
+            "bestbuy",
+            "target",
+            "walmart",
+            "bhphotovideo",
+            "costco",
+            "homedepot",
+            "lowes",
+        )
+    ):
+        headers["Referer"] = "https://www.google.com/"
+    return headers
+
+
+# ---------------------------------------------------------------------------
+# Price string cleaning
+# ---------------------------------------------------------------------------
+
+def clean_price(raw) -> float | None:
+    if raw is None:
+        return None
+    s = str(raw).strip().replace(",", "")
+    text = re.sub(r"[^\d.]", "", s)
+    parts = text.split(".")
+    if len(parts) > 2:
+        text = "".join(parts[:-1]) + "." + parts[-1]
+    try:
+        price = float(text)
+        if 0 < price < 1_000_000:
+            return round(price, 2)
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+_TITLE_LEADING_NOISE = (
+    re.compile(r"^(?:overall\s+pick)\s+", re.I),
+    re.compile(r"^(?:amazon'?s\s+choice)\s+", re.I),
+    re.compile(r"^(?:best\s+seller)\s+", re.I),
+    re.compile(r"^(?:limited\s+time\s+deal)\s+", re.I),
+    re.compile(r"^(?:sponsored)\s+", re.I),
+)
+
+_TITLE_TRAILING_NOISE = (
+    re.compile(r"\s+\$\s*[\d,]+(?:\.\d{2})?(?:\s+was\s+\$\s*[\d,]+(?:\.\d{2})?)?.*$", re.I),
+    re.compile(r"\s+was\s+\$\s*[\d,]+(?:\.\d{2})?.*$", re.I),
+    re.compile(r"\s+\d+(?:\.\d+)?\s+out\s+of\s+5\s+stars.*$", re.I),
+    re.compile(r"\s+\d+\+?\s+bought\s+in\s+past\s+month.*$", re.I),
+)
+
+
+def clean_listing_title(raw_title: str) -> str:
+    title = re.sub(r"\s+", " ", (raw_title or "").strip())
+    if not title:
+        return ""
+    changed = True
+    while changed and title:
+        changed = False
+        for pattern in _TITLE_LEADING_NOISE:
+            cleaned = pattern.sub("", title).strip()
+            if cleaned != title:
+                title = cleaned
+                changed = True
+        for pattern in _TITLE_TRAILING_NOISE:
+            cleaned = pattern.sub("", title).strip()
+            if cleaned != title:
+                title = cleaned
+                changed = True
+    title = re.sub(r"\s+[-|:]+\s*$", "", title).strip(" -|:")
+    return title or re.sub(r"\s+", " ", (raw_title or "").strip())
+
+
+def _first_dollar_price_in_text(text: str) -> float | None:
+    """Pick first plausible $NN.nn from visible copy (fallback for sparse price nodes)."""
+    if not text:
+        return None
+    for m in re.finditer(r"\$\s*[\d,]+\.\d{2}", text):
+        p = clean_price(m.group(0))
+        if p and 1.0 <= p <= 100_000:
+            return p
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Extraction helpers (JSON-LD, meta, HTML)
+# ---------------------------------------------------------------------------
+
+def _schema_price(obj) -> float | None:
+    if isinstance(obj, list):
+        for item in obj:
+            p = _schema_price(item)
+            if p:
+                return p
+        return None
+    if not isinstance(obj, dict):
+        return None
+    for key in ("price", "lowPrice", "highPrice"):
+        if key in obj:
+            p = clean_price(obj[key])
+            if p:
+                return p
+    offers = obj.get("offers")
+    if offers:
+        return _schema_price(offers)
+    return None
+
+
+def extract_price_from_json_ld(soup: BeautifulSoup) -> float | None:
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+            p = _schema_price(data)
+            if p:
+                return p
+        except (json.JSONDecodeError, AttributeError):
+            continue
+    return None
+
+
+def extract_price_from_meta(soup: BeautifulSoup) -> float | None:
+    candidates = [
+        ("property", "og:price:amount"),
+        ("property", "product:price:amount"),
+        ("name", "price"),
+        ("itemprop", "price"),
+    ]
+    for attr, val in candidates:
+        tag = soup.find("meta", {attr: val})
+        if tag:
+            p = clean_price(tag.get("content"))
+            if p:
+                return p
+    return None
+
+
+def extract_price_from_html(soup: BeautifulSoup) -> float | None:
+    pattern = re.compile(r"price", re.IGNORECASE)
+    for el in soup.find_all(True):
+        classes = " ".join(el.get("class", []))
+        el_id = el.get("id", "")
+        if not (pattern.search(classes) or pattern.search(el_id)):
+            continue
+        text = el.get_text(strip=True)
+        if not text:
+            continue
+        if "$" in text or re.search(r"\d+[.,]\d{2}", text):
+            p = clean_price(text)
+            if p:
+                return p
+    return None
+
+
+def extract_price_from_soup(soup: BeautifulSoup) -> float | None:
+    for fn in (extract_price_from_json_ld, extract_price_from_meta, extract_price_from_html):
+        price = fn(soup)
+        if price is not None:
+            return price
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Requests + BeautifulSoup fetch
+# ---------------------------------------------------------------------------
+
+def _fetch_soup(
+    url: str,
+    *,
+    debug_domain: str = "",
+    failure_context: dict | None = None,
+) -> BeautifulSoup | None:
+    global _LAST_REQUESTS_FAILURE
+    try:
+        resp = requests.get(url, headers=_random_headers(url), timeout=25)
+        if resp.status_code != 200:
+            snippet = resp.text[:500] if resp.text else "(empty body)"
+            logging.warning(
+                f"[{datetime.now()}] HTTP {resp.status_code} for {url}\n"
+                f"  Response preview: {snippet}"
+            )
+            return None
+        body_lower = resp.text.lower()
+        if "captcha" in body_lower or "robot check" in body_lower:
+            logging.warning(f"[{datetime.now()}] CAPTCHA detected for {url}")
+            if failure_context and failure_context.get("domain") in (
+                "walmart.com",
+                "bestbuy.com",
+            ):
+                _LAST_REQUESTS_FAILURE = {"reason": "bot_wall", "url": url}
+                _debug_save_failure(
+                    str(failure_context["domain"]),
+                    str(failure_context.get("mode", "?")),
+                    str(failure_context.get("query", "")),
+                    "requests",
+                    "bot_wall",
+                    url=url,
+                    html=resp.text,
+                    note="captcha/robot in body",
+                )
+            return None
+        soup = BeautifulSoup(resp.content, "html.parser")
+        if debug_domain:
+            title = soup.title.get_text(strip=True) if soup.title else "(no title)"
+            body_len = len(resp.text)
+            logging.info(
+                f"[{datetime.now()}] Fetched {debug_domain}: "
+                f"HTTP 200, {body_len} chars, title=\"{title[:80]}\""
+            )
+        return soup
+    except requests.exceptions.Timeout:
+        logging.error(f"[{datetime.now()}] Timeout fetching {url}")
+        if failure_context and failure_context.get("domain") in (
+            "walmart.com",
+            "bestbuy.com",
+        ):
+            _LAST_REQUESTS_FAILURE = {"reason": "timeout", "url": url}
+            _debug_save_failure(
+                str(failure_context["domain"]),
+                str(failure_context.get("mode", "?")),
+                str(failure_context.get("query", "")),
+                "requests",
+                "timeout",
+                url=url,
+                note="requests.Timeout",
+            )
+    except requests.exceptions.RequestException as exc:
+        logging.error(f"[{datetime.now()}] Request error for {url}: {exc}")
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] Unexpected error fetching {url}: {exc}")
+    return None
+
+
+def _fetch_soup_selenium(
+    url: str,
+    *,
+    domain: str = "",
+    debug_meta: dict | None = None,
+) -> BeautifulSoup | None:
+    global _LAST_SELENIUM_FAILURE
+    _LAST_SELENIUM_FAILURE = None
+    meta = debug_meta or {}
+    mode_dbg = str(meta.get("mode", "selenium"))
+    q_dbg = str(meta.get("query", ""))
+    try:
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.support.ui import WebDriverWait
+        from webdriver_manager.chrome import ChromeDriverManager
+
+        ua = random.choice(USER_AGENTS)
+        opts = Options()
+        opts.add_argument("--headless=new")
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
+        opts.add_argument("--disable-gpu")
+        opts.add_argument("--window-size=1920,1080")
+        opts.add_argument("--start-maximized")
+        opts.add_argument("--disable-blink-features=AutomationControlled")
+        opts.add_argument(f"--user-agent={ua}")
+        opts.add_experimental_option("excludeSwitches", ["enable-automation"])
+        opts.add_experimental_option("useAutomationExtension", False)
+
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()), options=opts
+        )
+        try:
+            driver.execute_cdp_cmd(
+                "Page.addScriptToEvaluateOnNewDocument",
+                {
+                    "source": "Object.defineProperty(navigator, 'webdriver', "
+                    "{get: () => undefined})"
+                },
+            )
+            driver.execute_cdp_cmd("Network.enable", {})
+            effective_domain = (domain or urlparse(url).netloc or "").lower()
+            if "walmart" in effective_domain or "bestbuy" in effective_domain:
+                driver.execute_cdp_cmd(
+                    "Network.setExtraHTTPHeaders",
+                    {"headers": {"Referer": "https://www.google.com/"}},
+                )
+            driver.execute_cdp_cmd("Network.setUserAgentOverride", {"userAgent": ua})
+
+            driver.get(url)
+            WebDriverWait(driver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            time.sleep(random.uniform(2, 3.5))
+            try:
+                driver.execute_script(
+                    "Object.defineProperty(navigator, 'webdriver', "
+                    "{get: () => undefined})"
+                )
+            except Exception:
+                pass
+
+            if "walmart" in effective_domain:
+                for _ in range(20):
+                    if driver.execute_script("return document.readyState") == "complete":
+                        break
+                    time.sleep(0.5)
+                time.sleep(random.uniform(5, 8))
+                try:
+                    h = int(
+                        driver.execute_script(
+                            "return Math.max("
+                            "document.body.scrollHeight||0,"
+                            "document.documentElement.scrollHeight||0, 8000)"
+                        )
+                    )
+                except Exception:
+                    h = 8000
+                for frac in (0.2, 0.45, 0.7, 1.0):
+                    driver.execute_script(
+                        f"window.scrollTo(0, {max(0, int(h * frac))});"
+                    )
+                    time.sleep(random.uniform(0.9, 1.4))
+                time.sleep(random.uniform(1.5, 2.5))
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(random.uniform(1.2, 2.0))
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(random.uniform(2, 3.5))
+
+            elif "bestbuy" in effective_domain:
+                time.sleep(random.uniform(2, 3))
+                try:
+                    WebDriverWait(driver, 20).until(
+                        EC.presence_of_element_located(
+                            (
+                                By.CSS_SELECTOR,
+                                "li.sku-item, .sku-item, "
+                                "[data-testid='shop-product-card'], "
+                                "a.sku-title[href*='/product/']",
+                            )
+                        )
+                    )
+                except Exception:
+                    logging.info(
+                        f"[{datetime.now()}] Best Buy: grid selectors not seen in time "
+                        f"(continuing)"
+                    )
+                time.sleep(random.uniform(4, 6))
+                driver.execute_script("window.scrollBy(0, 400)")
+                time.sleep(2)
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(random.uniform(1.5, 2.2))
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(random.uniform(2.5, 4))
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(2)
+
+            elif any(
+                s in effective_domain for s in ("target", "bhphotovideo")
+            ):
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(1.5)
+                driver.execute_script("window.scrollTo(0, document.body.scrollHeight)")
+                time.sleep(1)
+
+            elif any(
+                s in effective_domain
+                for s in ("costco", "homedepot", "lowes")
+            ):
+                time.sleep(random.uniform(4, 7))
+                for _ in range(5):
+                    driver.execute_script(
+                        "window.scrollTo(0, document.body.scrollHeight)"
+                    )
+                    time.sleep(random.uniform(1.0, 2.0))
+                time.sleep(random.uniform(2, 4))
+
+            if "bhphotovideo" in effective_domain:
+                time.sleep(2)
+
+            page_source = driver.page_source
+            body_len = len(page_source)
+
+            if body_len < 50000:
+                if "walmart" in effective_domain or "bestbuy" in effective_domain:
+                    logging.warning(
+                        f"[{datetime.now()}] Possible bot wall for "
+                        f"{effective_domain}, body_len={body_len}"
+                    )
+                    _LAST_SELENIUM_FAILURE = {"reason": "bot_wall", "url": url}
+                    dom_save = (
+                        "walmart.com"
+                        if "walmart" in effective_domain
+                        else "bestbuy.com"
+                    )
+                    _debug_save_failure(
+                        dom_save,
+                        mode_dbg,
+                        q_dbg,
+                        "selenium",
+                        "bot_wall",
+                        url=url,
+                        html=page_source,
+                    )
+                    return None
+                logging.info(
+                    f"[{datetime.now()}] Short HTML for {effective_domain}, "
+                    f"body_len={body_len} — attempting parse anyway"
+                )
+
+            return BeautifulSoup(page_source, "html.parser")
+        finally:
+            driver.quit()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] Selenium error for {url}: {exc}")
+        _LAST_SELENIUM_FAILURE = {
+            "reason": "selenium_error",
+            "url": url,
+            "error": str(exc),
+        }
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Per-site search result extractors
+# ---------------------------------------------------------------------------
+
+def _abs(href: str, base: str) -> str:
+    if href and not href.startswith("http"):
+        return urljoin(base, href)
+    return href or ""
+
+
+def _canonical_listing_url(url: str) -> str:
+    if not url:
+        return ""
+    u = url.split("/ref=")[0].split("?")[0].rstrip("/")
+    return u
+
+
+def _dedupe_rows_by_url(rows: list[dict], url_key: str) -> list[dict]:
+    seen: set[str] = set()
+    out = []
+    for r in rows:
+        u = _canonical_listing_url(r.get(url_key) or "")
+        if not u or u in seen:
+            continue
+        seen.add(u)
+        out.append(r)
+    return out
+
+
+def _amazon_search_url_more_results(url: str) -> str:
+    if "num=" in url:
+        return url
+    sep = "&" if "?" in url else "?"
+    return f"{url}{sep}num=50"
+
+
+def _amazon_page2_soup(page2_url: str) -> BeautifulSoup | None:
+    """Try HTTP first; Selenium fallback when Amazon throttles page-2 requests."""
+    soup2 = _fetch_soup(page2_url, debug_domain="amazon.com")
+    if soup2:
+        return soup2
+    logging.info(f"[{datetime.now()}] Amazon page 2: HTTP failed, trying Selenium")
+    return _fetch_soup_selenium(page2_url, domain="amazon.com")
+
+
+def _missing_name_count(rows: list[dict], key: str, min_chars: int = 2) -> int:
+    return sum(
+        1 for r in rows
+        if not (r.get(key) or "").strip() or len((r.get(key) or "").strip()) <= min_chars
+    )
+
+
+def _missing_price_count(rows: list[dict], key: str) -> int:
+    return sum(1 for r in rows if r.get(key) is None)
+
+
+def _store_discovery_stats(
+    domain: str,
+    mode: str,
+    *,
+    scraped_pre_dedupe: int,
+    post_dedupe: int,
+    returned: int,
+    missing_name: int,
+    missing_price: int,
+    fetch_method: str = "unknown",
+    failure_reason: str = "ok",
+) -> None:
+    dup_removed = max(0, scraped_pre_dedupe - post_dedupe)
+    stats = {
+        "mode": mode,
+        "domain": domain,
+        "scraped_count": scraped_pre_dedupe,
+        "after_dedupe_count": post_dedupe,
+        "duplicates_removed": dup_removed,
+        "returned_count": returned,
+        "missing_name_rows": missing_name,
+        "missing_price_rows": missing_price,
+        "fetch_method": fetch_method,
+        "failure_reason": failure_reason,
+    }
+    LAST_DISCOVERY_STATS[f"{domain}::{mode}"] = stats
+    logging.info(
+        f"[STATS] {mode} {domain} "
+        f"scraped={scraped_pre_dedupe} "
+        f"after_dedupe={post_dedupe} "
+        f"dup_removed={dup_removed} "
+        f"returned={returned} "
+        f"missing_name={missing_name} "
+        f"missing_price={missing_price} "
+        f"fetch_method={fetch_method} "
+        f"failure_reason={failure_reason}"
+    )
+
+
+def _amazon_item_title(item, link) -> str:
+    brand = ""
+    brand_el = item.select_one("h2.a-size-mini span.a-size-medium.a-color-base")
+    if brand_el:
+        brand = brand_el.get_text(" ", strip=True)
+
+    for sel in (
+        ".s-title-instructions-style a.a-link-normal",
+        "a.a-link-normal.s-line-clamp-2",
+        "a.a-link-normal.s-line-clamp-3",
+        "a.a-link-normal.a-text-normal",
+    ):
+        el = item.select_one(sel)
+        if not el:
+            continue
+        t = el.get_text(" ", strip=True)
+        if len(t) > 8:
+            if brand and not t.lower().startswith(brand.lower()):
+                return f"{brand} {t}".strip()
+            return t
+    for sel in (
+        "h2 span.a-text-normal",
+        "h2 span.a-size-medium.a-color-base",
+        "h2 span.a-size-base-plus",
+        "h2 span.a-size-medium",
+        "h2 .a-text-normal",
+        "h2",
+    ):
+        el = item.select_one(sel)
+        if el:
+            t = el.get_text(strip=True)
+            if len(t) > 8:
+                return t
+    if link:
+        aria = (link.get("aria-label") or "").strip()
+        if len(aria) > 8:
+            return aria
+        t = link.get_text(" ", strip=True)
+        if len(t) > 8:
+            return t
+    if brand:
+        return brand
+    return ""
+
+
+def _target_item_title(item, link) -> str:
+    el = item.select_one('[data-test="product-title"]')
+    if el:
+        t = el.get_text(" ", strip=True)
+        if len(t) > 2:
+            return t
+    if link:
+        for sel in ("span", "div"):
+            inner = link.select_one(sel)
+            if inner:
+                t = inner.get_text(" ", strip=True)
+                if len(t) > 2:
+                    return t
+        img = link.select_one("img[alt]")
+        if img and img.get("alt"):
+            alt = img["alt"].strip()
+            if len(alt) > 3 and "target" not in alt.lower():
+                return alt
+        aria = (link.get("aria-label") or "").strip()
+        if len(aria) > 2:
+            return aria
+        t = link.get_text(" ", strip=True)
+        if len(t) > 2:
+            return t
+    h = item.select_one("h3, h2")
+    if h:
+        t = h.get_text(strip=True)
+        if len(t) > 2:
+            return t
+    return ""
+
+
+def _find_walmart_listing_root(link_tag, max_hops: int = 28):
+    """Walk ancestors until a likely product tile (data-item-id or tile root)."""
+    n = link_tag
+    for _ in range(max_hops):
+        if n is None or getattr(n, "name", None) == "body":
+            break
+        if n.get("data-item-id"):
+            return n
+        aid = (n.get("data-automation-id") or "").lower()
+        if "product" in aid and "tile" in aid:
+            return n
+        if n.get("data-testid") == "list-view-item":
+            return n
+        n = n.parent
+    n = link_tag
+    for _ in range(6):
+        if n is None:
+            break
+        n = n.parent
+    return n
+
+
+def _walmart_extract_price(root) -> float | None:
+    """
+    Walmart splits the price across separate DOM elements:
+      <span class="price-characteristic">168</span>   ← dollars
+      <span class="price-mantissa">00</span>          ← cents (no dot!)
+
+    Grabbing the container div with get_text() concatenates them as "16800"
+    which clean_price then parses as 16800.00.  Never read the container raw.
+
+    Strategy (in priority order):
+      1. itemprop="price" content attribute — exact decimal string
+      2. itemprop="price" text — complete price like "$168.00"
+      3. characteristic + mantissa parsed separately and joined with a "."
+      4. $X.XX regex over the container text (regex requires a dot)
+    """
+    if not root:
+        return None
+
+    # 1 & 2 — itemprop attribute / text (most reliable)
+    for sel in ('span[itemprop="price"]', '[itemprop="price"]'):
+        el = root.select_one(sel)
+        if el:
+            p = clean_price(el.get("content"))
+            if p:
+                return p
+            p = clean_price(el.get_text())
+            if p:
+                return p
+
+    # 3 — parse characteristic (dollars) + mantissa (cents) separately
+    price_wrap = root.select_one('[data-automation-id="product-price"]')
+    scope = price_wrap or root
+    char_el = scope.select_one('[class*="price-characteristic"]')
+    mant_el = scope.select_one('[class*="price-mantissa"]')
+    if char_el:
+        char_txt = re.sub(r"[^\d]", "", char_el.get_text())
+        mant_txt = re.sub(r"[^\d]", "", mant_el.get_text() if mant_el else "")
+        if char_txt:
+            decimal_str = f"{char_txt}.{mant_txt}" if mant_txt else char_txt
+            p = clean_price(decimal_str)
+            if p:
+                return p
+
+    # 4 — require a "$X.XX" pattern so we never accidentally parse "16800"
+    if scope:
+        p = _first_dollar_price_in_text(scope.get_text(" ", strip=True))
+        if p:
+            return p
+
+    return None
+
+
+def _bestbuy_is_product_listing_url(url: str) -> bool:
+    """PLP/PDP links: legacy /site/, /p/, or Next.js /product/.../sku/..."""
+    if not url:
+        return False
+    u = url.lower()
+    if "/site/" in u:
+        return True
+    if "/product/" in u and "/sku/" in u:
+        return True
+    if "bestbuy.com" in u and "/p/" in u:
+        return True
+    return False
+
+
+def _bestbuy_price_from_text_tile(text: str) -> float | None:
+    """First plausible shelf price from visible text (Next.js PLP often omits old price nodes)."""
+    for m in re.finditer(r"\$\s*[\d,]+\.\d{2}", text):
+        p = clean_price(m.group(0))
+        if p and 1.0 <= p <= 25_000:
+            return p
+    return None
+
+
+def _bestbuy_price_from_plp_anchor(anchor) -> float | None:
+    """Walk up from title link; prefer a small ancestor so we do not grab cart totals."""
+    n = anchor
+    for _ in range(22):
+        n = n.parent if n else None
+        if n is None or getattr(n, "name", None) == "body":
+            break
+        txt = n.get_text(" ", strip=True)
+        if len(txt) > 3800:
+            continue
+        p = _bestbuy_price_from_text_tile(txt)
+        if p:
+            return p
+    n = anchor
+    for _ in range(30):
+        n = n.parent if n else None
+        if n is None:
+            break
+        p = _bestbuy_price_from_text_tile(n.get_text(" ", strip=True))
+        if p:
+            return p
+    return None
+
+
+def _bestbuy_title_link_from_tile(item) -> Tag | None:
+    """Product title <a> inside a tile (old + new PLP)."""
+    for sel in (
+        "a.sku-title[href]",
+        "h4.sku-title a[href]",
+        ".sku-header a[href]",
+        "a[class*='sku-title'][href]",
+        "a[href*='/product/'][href*='/sku/']",
+        "a[href*='/site/'][href*='.p']",
+    ):
+        a = item.select_one(sel)
+        if a and a.get("href"):
+            return a
+    return None
+
+
+def _bestbuy_price_from_item(item) -> float | None:
+    sels = (
+        ".priceView-customer-price span",
+        ".priceView-hero-price span",
+        "[data-testid='customer-price'] span",
+        "[data-testid='customer-price']",
+        "div[class*='priceView'] span[aria-hidden='true']",
+        ".pricing-price__regular-price",
+        "span[class*='priceView']",
+        ".priceView-layout-large .priceView-customer-price",
+        "div[data-testid='price-block'] span",
+        ".customer-price",
+        "span.customer-price",
+        "div.customer-price",
+        "[class*='customer-price']",
+    )
+    for sel in sels:
+        el = item.select_one(sel)
+        if el:
+            p = clean_price(el.get_text())
+            if p:
+                return p
+    return None
+
+
+def _iter_bestbuy_product_nodes(soup):
+    """Yield unique product row elements (handles class/DOM changes)."""
+    selectors = (
+        ".sku-item",
+        "li.sku-item",
+        "[class*='sku-item']",
+        "[data-testid='shop-product-card']",
+        "div[data-testid='product-card']",
+        "li[class*='productCard']",
+    )
+    seen: set[int] = set()
+    for sel in selectors:
+        for node in soup.select(sel):
+            i = id(node)
+            if i in seen:
+                continue
+            seen.add(i)
+            yield node
+
+
+def _iter_bestbuy_title_anchors(soup):
+    """New PLP: title links that may sit outside legacy .sku-item tiles."""
+    seen: set[int] = set()
+    for sel in (
+        'a.sku-title[href*="/product/"]',
+        'a.sku-title[href*="/site/"]',
+        'a[href*="bestbuy.com/product/"][href*="/sku/"]',
+    ):
+        for a in soup.select(sel):
+            i = id(a)
+            if i in seen:
+                continue
+            seen.add(i)
+            yield a
+
+
+def _amazon_listing_original_price(item) -> float | None:
+    el = item.select_one(".a-price.a-text-price span.a-offscreen")
+    if el:
+        p = clean_price(el.get_text())
+        if p:
+            return p
+    strike = item.select_one('[data-a-strike="true"]')
+    if strike:
+        so = strike.select_one("span.a-offscreen")
+        if so:
+            p = clean_price(so.get_text())
+            if p:
+                return p
+        p = clean_price(strike.get_text())
+        if p:
+            return p
+    for node in item.find_all(string=re.compile(r"List\s*Price", re.I)):
+        parent = getattr(node, "parent", None)
+        for _ in range(5):
+            if parent is None:
+                break
+            p = _first_dollar_price_in_text(parent.get_text(" ", strip=True))
+            if p:
+                return p
+            parent = getattr(parent, "parent", None)
+    return None
+
+
+def _walmart_listing_original_price(root) -> float | None:
+    if not root:
+        return None
+    for sel in (
+        '[data-testid="was-price"]',
+        '[class*="strike-through"]',
+        '[class*="was-price"]',
+        '[data-automation-id*="was"]',
+        "s",
+        "del",
+    ):
+        el = root.select_one(sel)
+        if el:
+            p = clean_price(el.get_text())
+            if p:
+                return p
+    wrap = root.select_one('[data-automation-id="product-price"]') or root
+    txt = wrap.get_text(" ", strip=True) if wrap else ""
+    dollar_prices: list[float] = []
+    for m in re.finditer(r"\$\s*[\d,]+\.\d{2}", txt):
+        cp = clean_price(m.group(0))
+        if cp:
+            dollar_prices.append(cp)
+    if len(dollar_prices) >= 2:
+        hi, lo = max(dollar_prices), min(dollar_prices)
+        if hi > lo * 1.05:
+            return hi
+    return None
+
+
+def _target_listing_original_price(item) -> float | None:
+    el = item.select_one(
+        '[data-test="product-regular-price"], '
+        '[data-testid="product-regular-price"]'
+    )
+    if el:
+        p = clean_price(el.get_text())
+        if p:
+            return p
+    for span in item.select("span"):
+        t = span.get_text(" ", strip=True).lower()
+        if re.search(r"\breg\.?\b", t):
+            p = clean_price(span.get_text())
+            if p:
+                return p
+            par = span.parent
+            if par:
+                p = _first_dollar_price_in_text(par.get_text(" ", strip=True))
+                if p:
+                    return p
+    return None
+
+
+def _newegg_listing_original_price(item) -> float | None:
+    el = item.select_one(
+        ".price-was-data, li.price-was, [class*='price-was'], .price-was"
+    )
+    if el:
+        p = clean_price(el.get_text())
+        if p:
+            return p
+    return None
+
+
+def _ebay_listing_original_price(item_scope) -> float | None:
+    for sel in (".original-price", ".STRIKETHROUGH", ".s-item__price--previous"):
+        el = item_scope.select_one(sel)
+        if el:
+            p = clean_price(el.get_text())
+            if p:
+                return p
+    return None
+
+
+def _ebay_original_from_link(link, max_hops: int = 22) -> float | None:
+    p = link
+    for _ in range(max_hops):
+        if p is None:
+            break
+        o = _ebay_listing_original_price(p)
+        if o:
+            return o
+        p = p.parent
+    return None
+
+
+def _bestbuy_listing_original_price(scope) -> float | None:
+    if not scope:
+        return None
+    orig_el = scope.select_one(
+        '.pricing-price__regular-price, [data-testid="regular-price"], '
+        '[class*="regular-price"], .pricing-price__was-price, '
+        's.regular-price, .customer-price.strike-through'
+    )
+    if orig_el:
+        p = clean_price(orig_el.get_text())
+        if p:
+            return p
+    t = scope.get_text(" ", strip=True)
+    if t and re.search(r"\bwas\b", t, re.I):
+        p = _first_dollar_price_in_text(t)
+        if p:
+            return p
+    return None
+
+
+def _bestbuy_one_row(
+    link: Tag,
+    tile: Tag | None,
+    base: str,
+) -> tuple[str, float, str, float | None] | None:
+    href = _abs(link.get("href", ""), base)
+    if not _bestbuy_is_product_listing_url(href):
+        return None
+    href = href.split("/ref=")[0]
+    name = link.get_text(" ", strip=True) or ""
+    if len(name) < 3:
+        inner = link.select_one("span.nc-product-title, span.line-clamp-3")
+        if inner:
+            name = inner.get_text(" ", strip=True)
+    if len(name) < 3 and tile is not None:
+        t_el = tile.select_one(".sku-title, [data-testid='product-title']")
+        if t_el:
+            name = t_el.get_text(" ", strip=True)
+    price = None
+    if tile is not None:
+        price = _bestbuy_price_from_item(tile)
+    if not price:
+        price = _bestbuy_price_from_plp_anchor(link)
+    if not price or len(name.strip()) < 2:
+        return None
+    scope = tile if tile is not None else link.parent
+    orig = _bestbuy_listing_original_price(scope) if scope else None
+    return (name, price, href, orig)
+
+
+def _extract_amazon_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    base = "https://www.amazon.com"
+    raw_rows: list[dict] = []
+    for item in soup.select('[data-component-type="s-search-result"]'):
+        if len(raw_rows) >= max_items:
+            break
+        link = item.select_one('h2 a.a-link-normal')
+        if not link:
+            link = item.select_one('a.a-link-normal[href*="/dp/"]')
+        if not link:
+            continue
+        href = _abs(link.get("href", ""), base)
+        href = href.split("/ref=")[0]
+        name = _amazon_item_title(item, link)
+        price_el = item.select_one('.a-price .a-offscreen')
+        if not price_el:
+            price_el = item.select_one('.a-price span')
+        price = clean_price(price_el.get_text() if price_el else None)
+        if not price or not href:
+            continue
+        orig = _amazon_listing_original_price(item)
+        raw_rows.append({
+            "url": href,
+            "price": price,
+            "name_found": name,
+            "original_price": orig,
+        })
+    if not raw_rows:
+        logging.warning(f"[{datetime.now()}] Amazon: 0 results extracted. "
+                        f"Selectors found: s-search-result={len(soup.select('[data-component-type]'))}")
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Amazon",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+def _extract_bestbuy_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    base = "https://www.bestbuy.com"
+    raw_rows: list[dict] = []
+    seen: set[str] = set()
+
+    def push(row: tuple[str, float, str, float | None] | None) -> None:
+        if not row or len(raw_rows) >= max_items:
+            return
+        name, price, href, orig = row
+        u = _canonical_listing_url(href)
+        if not u or u in seen:
+            return
+        seen.add(u)
+        raw_rows.append({
+            "url": href,
+            "price": price,
+            "name_found": name[:500],
+            "original_price": orig,
+        })
+
+    for item in _iter_bestbuy_product_nodes(soup):
+        link = _bestbuy_title_link_from_tile(item)
+        if link:
+            push(_bestbuy_one_row(link, item, base))
+
+    for link in _iter_bestbuy_title_anchors(soup):
+        if len(raw_rows) >= max_items:
+            break
+        push(_bestbuy_one_row(link, None, base))
+
+    if not raw_rows:
+        logging.warning(
+            f"[{datetime.now()}] Best Buy: 0 results extracted. "
+            f"sku-items={len(soup.select('.sku-item'))}, "
+            f"sku-title-product={len(soup.select('a.sku-title[href*=\"/product/\"]'))}, "
+            f"body_len={len(soup.get_text())}"
+        )
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Best Buy",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+def _extract_newegg_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    base = "https://www.newegg.com"
+    raw_rows: list[dict] = []
+    for item in soup.select('.item-cell, .item-container'):
+        if len(raw_rows) >= max_items:
+            break
+        link = item.select_one('a.item-title')
+        if not link:
+            link = item.select_one('.item-info a')
+        if not link:
+            continue
+        href = _abs(link.get("href", ""), base)
+        name = link.get_text(strip=True)
+        price_el = item.select_one('li.price-current')
+        price = clean_price(price_el.get_text() if price_el else None)
+        if not price or not href:
+            continue
+        orig = _newegg_listing_original_price(item)
+        raw_rows.append({
+            "url": href,
+            "price": price,
+            "name_found": name,
+            "original_price": orig,
+        })
+    if not raw_rows:
+        logging.warning(f"[{datetime.now()}] Newegg: 0 results extracted. "
+                        f"item-cells={len(soup.select('.item-cell'))}")
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Newegg",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+def _extract_walmart_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    base = "https://www.walmart.com"
+    raw_rows: list[dict] = []
+    seen = set()
+    for link_tag in soup.select(
+        'a[href*="/ip/"], a.product-title-link, '
+        '[data-item-id] a[href*="/ip/"]'
+    ):
+        if len(raw_rows) >= max_items:
+            break
+        href = _abs(link_tag.get("href", ""), base)
+        if href in seen:
+            continue
+        seen.add(href)
+        name = link_tag.get_text(" ", strip=True) or ""
+        root = _find_walmart_listing_root(link_tag)
+        if not root:
+            continue
+        price = _walmart_extract_price(root)
+        if not price or not href:
+            continue
+        orig = _walmart_listing_original_price(root)
+        raw_rows.append({
+            "url": href,
+            "price": price,
+            "name_found": name[:200],
+            "original_price": orig,
+        })
+    if not raw_rows:
+        logging.warning(f"[{datetime.now()}] Walmart: 0 results extracted. "
+                        f"ip-links={len(soup.select('a[href*=\"/ip/\"]'))}, "
+                        f"body_len={len(soup.get_text())}")
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Walmart",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+def _ebay_normalize_itm_url(href: str) -> str:
+    if not href or "/itm/" not in href:
+        return ""
+    if href.startswith("//"):
+        href = "https:" + href
+    if href.startswith("/"):
+        href = "https://www.ebay.com" + href
+    if "ebay.com" not in href.lower():
+        return ""
+    return href.split("?")[0].split("#")[0]
+
+
+def _ebay_listing_price(item_scope, link) -> float | None:
+    for sel in (
+        ".s-item__price",
+        ".s-card__price",
+        "[class*='__price']",
+        "span[class*='price']",
+    ):
+        el = item_scope.select_one(sel)
+        if el:
+            p = clean_price(el.get_text())
+            if p:
+                return p
+    p = _first_dollar_price_in_text(item_scope.get_text(" ", strip=True))
+    if p:
+        return p
+    return _ebay_listing_price_from_ancestors(link)
+
+
+def _ebay_listing_price_from_ancestors(link, max_hops: int = 26) -> float | None:
+    p = link
+    for _ in range(max_hops):
+        p = p.parent if p else None
+        if p is None:
+            break
+        pr = _first_dollar_price_in_text(p.get_text(" ", strip=True))
+        if pr:
+            return pr
+    return None
+
+
+def _extract_ebay_listings(soup, max_n: int) -> list[dict]:
+    """SRP markup varies; combine card selectors with /itm/ link fallback."""
+    seen: set[str] = set()
+    out: list[dict] = []
+
+    def push(
+        name: str,
+        price: float | None,
+        href: str,
+        *,
+        item_scope=None,
+        link_for_orig=None,
+    ) -> None:
+        if len(out) >= max_n or not price or not name or len(name.strip()) < 2:
+            return
+        if name.lower().startswith("shop on ebay"):
+            return
+        u = _ebay_normalize_itm_url(href)
+        if not u or not re.search(r"/itm/\d+", u) or u in seen:
+            return
+        seen.add(u)
+        orig = None
+        if item_scope is not None:
+            orig = _ebay_listing_original_price(item_scope)
+        if orig is None and link_for_orig is not None:
+            orig = _ebay_original_from_link(link_for_orig)
+        out.append({
+            "url": u,
+            "price": price,
+            "name_found": name[:500],
+            "original_price": orig,
+        })
+
+    cards = soup.select(".s-item, li.s-card, div[class*='s-card']")
+    for item in cards:
+        if len(out) >= max_n:
+            break
+        link = item.select_one(
+            "a.s-item__link, .s-item__link, a[href*='/itm/']"
+        )
+        if not link:
+            continue
+        href = link.get("href", "")
+        name_el = item.select_one(
+            ".s-item__title, .s-card__title, [role='heading'], "
+            "h3, .s-card__subtitle"
+        )
+        name = (
+            name_el.get_text(" ", strip=True)
+            if name_el
+            else link.get_text(" ", strip=True)
+        )
+        price = _ebay_listing_price(item, link)
+        push(name, price, href, item_scope=item, link_for_orig=link)
+
+    if len(out) < max_n:
+        for link in soup.select("a[href*='/itm/']"):
+            if len(out) >= max_n:
+                break
+            href = link.get("href", "")
+            u = _ebay_normalize_itm_url(href)
+            if not u or u in seen:
+                continue
+            if not re.search(r"/itm/\d+", u):
+                continue
+            name = (
+                link.get_text(" ", strip=True)
+                or (link.get("title") or "")
+                or (link.get("aria-label") or "")
+            )
+            if len(name) < 4:
+                continue
+            price = _ebay_listing_price_from_ancestors(link)
+            push(name, price, href, link_for_orig=link)
+
+    if not out:
+        logging.warning(
+            f"[{datetime.now()}] eBay: 0 results; "
+            f"s-item={len(soup.select('.s-item'))}, "
+            f"itm_a={len(soup.select('a[href*=\"/itm/\"]'))}"
+        )
+    return out
+
+
+def _extract_ebay_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    raw_rows = _extract_ebay_listings(soup, max_items)
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="eBay",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+def _extract_target_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+    apply_quality_pipeline: bool = True,
+):
+    base = "https://www.target.com"
+    raw_rows: list[dict] = []
+    seen = set()
+
+    for item in soup.select(
+        '[data-test="product-details"], '
+        '[data-test="@web/site-top-of-funnel/ProductCardWrapper"]'
+    ):
+        if len(raw_rows) >= max_items:
+            break
+        link = item.select_one('a[data-test="product-title"], a[href*="/p/"]')
+        if not link:
+            continue
+        href = _abs(link.get("href", ""), base)
+        if href in seen:
+            continue
+        seen.add(href)
+        name = _target_item_title(item, link)
+        price_el = item.select_one(
+            '[data-test="current-price"], span[data-test="current-price"], '
+            'span[class*="Price"], span[class*="CurrentPrice"]'
+        )
+        price = clean_price(price_el.get_text() if price_el else None)
+        if not price or not href:
+            continue
+        orig = _target_listing_original_price(item)
+        raw_rows.append({
+            "url": href,
+            "price": price,
+            "name_found": name[:200],
+            "original_price": orig,
+        })
+
+    if not raw_rows:
+        for link_tag in soup.select('a[href*="/p/"]'):
+            if len(raw_rows) >= max_items:
+                break
+            href = _abs(link_tag.get("href", ""), base)
+            if href in seen:
+                continue
+            seen.add(href)
+            parent = link_tag
+            item = link_tag.parent
+            for _ in range(12):
+                parent = parent.parent
+                if parent is None:
+                    break
+                if parent.get("data-test") == "product-details":
+                    item = parent
+                    break
+            name = _target_item_title(item, link_tag)
+            price_el = item.select_one(
+                '[data-test="current-price"], span[class*="Price"]'
+            )
+            price = clean_price(price_el.get_text() if price_el else None)
+            if not price or not href:
+                continue
+            orig = _target_listing_original_price(item)
+            raw_rows.append({
+                "url": href,
+                "price": price,
+                "name_found": name[:200],
+                "original_price": orig,
+            })
+
+    if not raw_rows:
+        logging.warning(f"[{datetime.now()}] Target: 0 results extracted. "
+                        f"product-details={len(soup.select('[data-test=\"product-details\"]'))}, "
+                        f"p-links={len(soup.select('a[href*=\"/p/\"]'))}, "
+                        f"body_len={len(soup.get_text())}")
+    if not apply_quality_pipeline:
+        return raw_rows
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Target",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+def _extract_costco_listings(soup, max_n: int) -> list[dict]:
+    base = "https://www.costco.com"
+    out: list[dict] = []
+    seen: set[str] = set()
+
+    tiles = soup.select('[data-testid^="ProductTile"]')
+    for tile in tiles:
+        if len(out) >= max_n:
+            break
+        link = tile.select_one('a[href*=".product."]')
+        if not link:
+            continue
+        href = link.get("href", "")
+        u = _canonical_listing_url(_abs(href, base))
+        if not u or u in seen:
+            continue
+        title_el = tile.select_one(
+            'h3, [data-testid*="title"], [data-testid*="Title"]'
+        )
+        name = (
+            title_el.get_text(" ", strip=True)
+            if title_el
+            else link.get_text(" ", strip=True)
+        )
+        pel = tile.select_one(
+            '[data-testid^="Text_Price"], [data-testid*="price"], '
+            'span[class*="price"]'
+        )
+        price = clean_price(pel.get_text() if pel else None)
+        if not price:
+            price = _first_dollar_price_in_text(tile.get_text(" ", strip=True))
+        if not price or len(name.strip()) < 2:
+            continue
+        seen.add(u)
+        out.append({
+            "url": _abs(href, base).split("?")[0],
+            "price": price,
+            "name_found": name[:500],
+            "original_price": _extract_original_price(tile),
+        })
+
+    if len(out) < max_n:
+        for a in soup.select('a[href*=".product."]'):
+            if len(out) >= max_n:
+                break
+            href = a.get("href", "")
+            u = _canonical_listing_url(_abs(href, base))
+            if not u or u in seen:
+                continue
+            name = (
+                a.get_text(" ", strip=True)
+                or (a.get("aria-label") or "")
+                or (a.get("title") or "")
+            )
+            price = None
+            p = a.parent
+            for _ in range(14):
+                if p is None:
+                    break
+                price = _first_dollar_price_in_text(p.get_text(" ", strip=True))
+                if price:
+                    break
+                p = p.parent
+            if not price or len(name.strip()) < 2:
+                continue
+            seen.add(u)
+            out.append({
+                "url": _abs(href, base).split("?")[0],
+                "price": price,
+                "name_found": name[:500],
+                "original_price": _extract_original_price(p) if p else None,
+            })
+
+    if not out:
+        logging.warning(
+            f"[{datetime.now()}] Costco: 0 results; "
+            f"ProductTile={len(soup.select('[data-testid^=\"ProductTile\"]'))}, "
+            f"product_links={len(soup.select('a[href*=\".product.\"]'))}"
+        )
+    return out
+
+
+def _extract_costco_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    raw_rows = _extract_costco_listings(soup, max_items)
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Costco",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+def _extract_homedepot_listings(soup, max_n: int) -> list[dict]:
+    base = "https://www.homedepot.com"
+    out: list[dict] = []
+    seen: set[str] = set()
+    pods = soup.select(
+        '[data-testid="product-pod"], [data-testid^="product-pod"], .product-pod'
+    )
+    for pod in pods:
+        if len(out) >= max_n:
+            break
+        link = pod.select_one('a[href*="/p/"]')
+        if not link:
+            continue
+        href = _abs(link.get("href", ""), base)
+        if not re.search(r"/p/[^/]+/\d", href):
+            continue
+        u = _canonical_listing_url(href)
+        if not u or u in seen:
+            continue
+        name = link.get_text(" ", strip=True) or ""
+        pel = pod.select_one(
+            '[data-testid="product-price"], [data-testid*="price"], '
+            '[class*="product-price"], [class*="price__"], span.price__numbers'
+        )
+        price = clean_price(pel.get_text() if pel else None)
+        if not price:
+            price = _first_dollar_price_in_text(pod.get_text(" ", strip=True))
+        if not price or len(name.strip()) < 2:
+            continue
+        seen.add(u)
+        out.append({
+            "url": href.split("?")[0],
+            "price": price,
+            "name_found": name[:500],
+            "original_price": _extract_original_price(pod),
+        })
+
+    if len(out) < max_n:
+        for a in soup.select('a[href*="/p/"]'):
+            if len(out) >= max_n:
+                break
+            href = _abs(a.get("href", ""), base)
+            if not re.search(r"/p/[^/]+/\d", href):
+                continue
+            u = _canonical_listing_url(href)
+            if not u or u in seen:
+                continue
+            name = (
+                a.get_text(" ", strip=True)
+                or (a.get("aria-label") or "")
+                or ""
+            )
+            price = None
+            p = a.parent
+            for _ in range(16):
+                if p is None:
+                    break
+                price = _first_dollar_price_in_text(p.get_text(" ", strip=True))
+                if price:
+                    break
+                p = p.parent
+            if not price or len(name.strip()) < 2:
+                continue
+            seen.add(u)
+            out.append({
+                "url": href.split("?")[0],
+                "price": price,
+                "name_found": name[:500],
+                "original_price": _extract_original_price(p) if p else None,
+            })
+
+    if not out:
+        logging.warning(
+            f"[{datetime.now()}] Home Depot: 0 results; "
+            f"pods={len(soup.select('[data-testid=product-pod]'))}, "
+            f"p_links={len(soup.select('a[href*=\"/p/\"]'))}"
+        )
+    return out
+
+
+def _extract_homedepot_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    raw_rows = _extract_homedepot_listings(soup, max_items)
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Home Depot",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+def _lowes_is_product_url(href: str) -> bool:
+    """Product PDPs include a numeric id segment; category /pd/ hubs do not."""
+    return bool(re.search(r"/pd/[^/]+/\d+", href, re.I))
+
+
+def _extract_lowes_listings(soup, max_n: int) -> list[dict]:
+    base = "https://www.lowes.com"
+    out: list[dict] = []
+    seen: set[str] = set()
+    tiles = soup.select(
+        '[data-selector="productTile"], [data-qa="productTile"], '
+        '[data-testid*="product-tile"], div.product-tile'
+    )
+    for tile in tiles:
+        if len(out) >= max_n:
+            break
+        link = tile.select_one('a[href*="/pd/"]')
+        if not link:
+            continue
+        href = _abs(link.get("href", ""), base)
+        if not _lowes_is_product_url(href):
+            continue
+        u = _canonical_listing_url(href)
+        if not u or u in seen:
+            continue
+        name = link.get_text(" ", strip=True) or ""
+        pel = tile.select_one(
+            '[data-testid="product-price"], [data-testid*="price"], '
+            'span.artful-price, div[data-testid="price"]'
+        )
+        price = clean_price(pel.get_text() if pel else None)
+        if not price:
+            price = _first_dollar_price_in_text(tile.get_text(" ", strip=True))
+        if not price or len(name.strip()) < 2:
+            continue
+        seen.add(u)
+        out.append({
+            "url": href.split("?")[0],
+            "price": price,
+            "name_found": name[:500],
+            "original_price": _extract_original_price(tile),
+        })
+
+    if len(out) < max_n:
+        for a in soup.select('a[href*="/pd/"]'):
+            if len(out) >= max_n:
+                break
+            href = _abs(a.get("href", ""), base)
+            if not _lowes_is_product_url(href):
+                continue
+            u = _canonical_listing_url(href)
+            if not u or u in seen:
+                continue
+            name = (
+                a.get_text(" ", strip=True)
+                or (a.get("aria-label") or "")
+                or ""
+            )
+            price = None
+            p = a.parent
+            for _ in range(16):
+                if p is None:
+                    break
+                price = _first_dollar_price_in_text(p.get_text(" ", strip=True))
+                if price:
+                    break
+                p = p.parent
+            if not price or len(name.strip()) < 2:
+                continue
+            seen.add(u)
+            out.append({
+                "url": href.split("?")[0],
+                "price": price,
+                "name_found": name[:500],
+                "original_price": _extract_original_price(p) if p else None,
+            })
+
+    if not out:
+        logging.warning(
+            f"[{datetime.now()}] Lowe's: 0 results; "
+            f"productTile={len(soup.select('[data-selector=productTile]'))}, "
+            f"pd_links={len(soup.select('a[href*=\"/pd/\"]'))}"
+        )
+    return out
+
+
+def _extract_lowes_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    raw_rows = _extract_lowes_listings(soup, max_items)
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Lowe's",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
+_SITE_EXTRACTORS = {
+    "amazon.com":        _extract_amazon_all,
+    "bestbuy.com":       _extract_bestbuy_all,
+    "newegg.com":        _extract_newegg_all,
+    "walmart.com":       _extract_walmart_all,
+    "ebay.com":          _extract_ebay_all,
+    "target.com":        _extract_target_all,
+    "costco.com":        _extract_costco_all,
+    "homedepot.com":     _extract_homedepot_all,
+    "lowes.com":         _extract_lowes_all,
+}
+
+
+# ---------------------------------------------------------------------------
+# Public API: discover_product
+# ---------------------------------------------------------------------------
+
+def _discover_product_rank_key(c: dict) -> tuple[float, float, float]:
+    """Identity match, structural fit, then price (add-product discovery)."""
+    im = float(c.get("_identity_match", 0.0))
+    sr = float(c.get("_structural_relevance", 0.0))
+    price = float(c["price"])
+    return (-im, -sr, price)
+
+
+def _pick_best(candidates: list[dict], target_price: float | None) -> list[dict]:
+    """
+    Rank eligible rows by structural fit, then price.
+
+    Under target: all at-or-below-target rows, best match first (not raw min-price).
+    Otherwise: one row — best match among all candidates, not merely the cheapest.
+    """
+    if not candidates:
+        return []
+    ranked = sorted(candidates, key=_discover_product_rank_key)
+    if target_price is not None:
+        under = [
+            dict(c, status_hint="watching")
+            for c in ranked
+            if c["price"] <= target_price
+        ]
+        if under:
+            return under
+    best = ranked[0]
+    out = dict(best)
+    out["status_hint"] = "above_target" if target_price is not None else "watching"
+    return [out]
+
+
+def _filter_discover_candidates(
+    candidates: list[dict],
+    product_name: str,
+    *,
+    name_key: str = "name_found",
+    url_key: str = "url",
+) -> list[dict]:
+    """
+    Classify → ``passes_eligibility`` (discovery_filters).
+
+    ``name_key`` / ``url_key`` map row dicts to titles and URLs (e.g. ``name_found``
+    + ``url`` for ``discover_product`` extractors).
+
+    Defaults mirror the Discover page: new_only + primary_only + exact brand.
+
+    If every candidate fails eligibility, returns an empty list — callers should
+    treat that as "no trustworthy match" (e.g. not_found), not show unfiltered junk.
+    """
+    if not candidates:
+        return candidates
+
+    try:
+        from discovery_filters import (
+            enrich_result_metadata,
+            passes_eligibility,
+            resolve_family_and_intent,
+        )
+    except ImportError:
+        return candidates
+
+    family, accessory_intent = resolve_family_and_intent(product_name)
+
+    kept: list[dict] = []
+    for c in candidates:
+        # Build a temporary row in the format enrich_result_metadata expects
+        row: dict = {
+            "product_name": c.get(name_key) or "",
+            "product_url": c.get(url_key) or "",
+        }
+        enrich_result_metadata(
+            row, product_name, family=family, accessory_intent=accessory_intent
+        )
+
+        ok = passes_eligibility(
+            row,
+            condition_filter="new_only",
+            product_filter="primary_only",
+            brand_filter="exact",
+            family=family,
+            accessory_intent=accessory_intent,
+            query_for_intent=product_name,
+        )
+        if ok:
+            # Attach metadata for downstream logging / debugging
+            c["_condition_class"] = row["condition_class"]
+            c["_product_kind"] = row["product_kind"]
+            c["_structural_relevance"] = row["structural_relevance"]
+            c["_identity_match"] = row.get("identity_match", 0.0)
+            c["_confidence"] = row.get("confidence", 0.0)
+            c["_listing_role"] = row.get("listing_role", "primary_product")
+            c["_enrich_query"] = row.get("_enrich_query", product_name)
+            kept.append(c)
+        else:
+            logging.info(
+                f"[{datetime.now()}] discovery eligibility excluded: "
+                f"name={(c.get(name_key) or '')[:80]!r} "
+                f"kind={row.get('product_kind')} "
+                f"condition={row.get('condition_class')} "
+                f"penalty={row.get('listing_penalty', 0):.2f}"
+            )
+
+    if kept:
+        best_conf = max(float(x.get("_confidence", 0.0)) for x in kept)
+        if best_conf < 0.3:
+            logging.warning(
+                f"[{datetime.now()}] discovery eligibility: best confidence "
+                f"{best_conf:.2f} < 0.3 for {product_name!r} — rejecting batch"
+            )
+            return []
+        logging.info(
+            f"[{datetime.now()}] discovery eligibility: "
+            f"{len(kept)}/{len(candidates)} candidates passed "
+            f"(product={product_name!r})"
+        )
+        return kept
+
+    logging.warning(
+        f"[{datetime.now()}] discovery eligibility: ALL {len(candidates)} "
+        f"candidates removed for {product_name!r} — returning empty (no eligible rows)."
+    )
+    return []
+
+
+def _discover_product_bhphoto(
+    product_name: str,
+    target_price: float | None,
+    search_url: str,
+    fc: dict,
+) -> list[dict]:
+    """B&H product search uses the same multi-row extractor as deal discovery."""
+    domain = "bhphotovideo.com"
+    candidates: list[dict] = []
+    fetch_method_used = "unknown"
+    last_soup: BeautifulSoup | None = None
+
+    soup = _fetch_soup(search_url, debug_domain=domain)
+    if soup:
+        last_soup = soup
+        fetch_method_used = "requests"
+        raw = _extract_bhphoto_multi(soup)
+        candidates = [
+            {
+                "url": r["product_url"],
+                "price": r["current_price"],
+                "name_found": (r.get("product_name") or "")[:500],
+                "discount_confirmed": _discount_confirmed(
+                    r.get("original_price"), r["current_price"]
+                ),
+            }
+            for r in raw
+        ]
+    if not candidates:
+        soup = _fetch_soup_selenium(
+            search_url, domain=domain, debug_meta=fc
+        )
+        if soup:
+            last_soup = soup
+            fetch_method_used = "selenium"
+            raw = _extract_bhphoto_multi(soup)
+            candidates = [
+                {
+                    "url": r["product_url"],
+                    "price": r["current_price"],
+                    "name_found": (r.get("product_name") or "")[:500],
+                    "discount_confirmed": _discount_confirmed(
+                        r.get("original_price"), r["current_price"]
+                    ),
+                }
+                for r in raw
+            ]
+
+    scraped_pre_dedupe = len(candidates)
+    candidates = _dedupe_rows_by_url(candidates, "url")
+    post_dedupe = len(candidates)
+
+    if not candidates:
+        fr = "no_rows" if last_soup else _discovery_failure_reason_no_soup()
+        _store_discovery_stats(
+            domain,
+            "discover_product",
+            scraped_pre_dedupe=scraped_pre_dedupe,
+            post_dedupe=post_dedupe,
+            returned=0,
+            missing_name=0,
+            missing_price=0,
+            fetch_method=fetch_method_used,
+            failure_reason=fr,
+        )
+        return []
+
+    # Stage 1 — eligibility gate (condition / accessory / brand)
+    product_name_bh = fc.get("query", "")
+    candidates = _filter_discover_candidates(candidates, product_name_bh)
+
+    if not candidates:
+        logging.warning(
+            f"[{datetime.now()}] No eligible candidates for {product_name_bh!r} "
+            f"on {domain} (all listings failed discovery filters)"
+        )
+        _store_discovery_stats(
+            domain,
+            "discover_product",
+            scraped_pre_dedupe=scraped_pre_dedupe,
+            post_dedupe=post_dedupe,
+            returned=0,
+            missing_name=0,
+            missing_price=0,
+            fetch_method=fetch_method_used,
+            failure_reason="no_eligible_candidates",
+        )
+        return []
+
+    filtered = _pick_best(candidates, target_price)
+    logging.info(
+        f"[{datetime.now()}] {domain}: returning {len(filtered)} results "
+        f"(from {post_dedupe} deduped, {scraped_pre_dedupe} scraped)"
+    )
+    _store_discovery_stats(
+        domain,
+        "discover_product",
+        scraped_pre_dedupe=scraped_pre_dedupe,
+        post_dedupe=post_dedupe,
+        returned=len(filtered),
+        missing_name=_missing_name_count(filtered, "name_found"),
+        missing_price=_missing_price_count(filtered, "price"),
+        fetch_method=fetch_method_used,
+        failure_reason="ok",
+    )
+    return filtered
+
+
+def discover_product(product_name: str, source: dict,
+                     target_price: float | None = None) -> list[dict]:
+    """
+    Search a retailer for *product_name* using the source's search_url_template.
+    Collects up to MAX_RESULTS_PER_SOURCE results and returns ALL eligible
+    candidates at or under target_price (best structural match first, then price).
+    If none are at or under target, returns the single best-matching listing
+    (structural fit, then price) with status_hint='above_target'.
+
+    Each dict has: url, price, name_found, status_hint, and usually
+    discount_confirmed (whether a ≥5% markdown was visible on the SRP).
+    Returns [] when the source yields nothing, or every hit fails eligibility
+    (accessory / condition / brand gates).
+    """
+    matches = discover_product_matches(
+        product_name,
+        source,
+        target_price=target_price,
+    )
+    return matches["verified"]
+
+    time.sleep(random.uniform(2, 5))
+
+    global _LAST_REQUESTS_FAILURE, _LAST_SELENIUM_FAILURE
+    _LAST_REQUESTS_FAILURE = None
+    _LAST_SELENIUM_FAILURE = None
+
+    query = quote_plus(product_name)
+    search_url = source["search_url_template"].replace("{query}", query)
+    domain = source["domain"]
+    if domain == "amazon.com":
+        search_url = _amazon_search_url_more_results(search_url)
+    if domain == "walmart.com":
+        search_url = _humanize_walmart_search_url(search_url)
+
+    logging.info(f"[{datetime.now()}] Discovering '{product_name}' on {domain}")
+
+    fc = {
+        "domain": domain,
+        "mode": "discover_product",
+        "query": product_name,
+    }
+
+    if domain == "bhphotovideo.com":
+        return _discover_product_bhphoto(
+            product_name, target_price, search_url, fc
+        )
+
+    extractor = _SITE_EXTRACTORS.get(domain)
+    if not extractor:
+        logging.warning(f"[{datetime.now()}] No extractor for {domain}")
+        _store_discovery_stats(
+            domain, "discover_product",
+            scraped_pre_dedupe=0, post_dedupe=0, returned=0,
+            missing_name=0, missing_price=0,
+            fetch_method="none",
+            failure_reason="no_extractor",
+        )
+        return []
+
+    candidates: list[dict] = []
+    last_soup: BeautifulSoup | None = None
+    fetch_method_used = "fetch_failed"
+
+    use_selenium_first = domain in _SELENIUM_PREFERRED
+    fc_wm_bb = fc if domain in ("walmart.com", "bestbuy.com") else None
+    ext_kw = {"query": product_name, "target_price": target_price}
+
+    if use_selenium_first:
+        logging.info(f"[{datetime.now()}] Using Selenium for {domain}")
+        soup = _fetch_soup_selenium(
+            search_url, domain=domain, debug_meta=fc
+        )
+        if soup:
+            last_soup = soup
+            fetch_method_used = "selenium"
+            candidates = extractor(soup, **ext_kw)
+            if candidates:
+                logging.info(
+                    f"[{datetime.now()}] {domain}: {len(candidates)} "
+                    f"results via Selenium"
+                )
+    else:
+        soup = _fetch_soup(
+            search_url, debug_domain=domain, failure_context=fc_wm_bb
+        )
+        if soup:
+            last_soup = soup
+            fetch_method_used = "requests"
+            candidates = extractor(soup, **ext_kw)
+            if candidates:
+                logging.info(
+                    f"[{datetime.now()}] {domain}: {len(candidates)} "
+                    f"results via requests"
+                )
+        if not candidates:
+            logging.info(
+                f"[{datetime.now()}] Falling back to Selenium for {domain}"
+            )
+            soup2 = _fetch_soup_selenium(
+                search_url, domain=domain, debug_meta=fc
+            )
+            if soup2:
+                last_soup = soup2
+                fetch_method_used = "selenium"
+                candidates = extractor(soup2, **ext_kw)
+                if candidates:
+                    logging.info(
+                        f"[{datetime.now()}] {domain}: {len(candidates)} "
+                        f"results via Selenium"
+                    )
+
+    if domain == "bestbuy.com" and not candidates:
+        logging.info(
+            f"[{datetime.now()}] Best Buy: retrying discovery via requests"
+        )
+        soup_bb = _fetch_soup(
+            search_url, debug_domain=domain, failure_context=fc_wm_bb
+        )
+        if soup_bb:
+            last_soup = soup_bb
+            fetch_method_used = "fallback"
+            c2 = extractor(soup_bb, **ext_kw)
+            if c2:
+                candidates = c2
+                logging.info(
+                    f"[{datetime.now()}] bestbuy.com: {len(candidates)} "
+                    f"results via requests (fallback)"
+                )
+
+    if domain == "amazon.com" and len(candidates) < MAX_RESULTS_PER_SOURCE:
+        sep = "&" if "?" in search_url else "?"
+        page2_url = f"{search_url}{sep}page=2"
+        time.sleep(random.uniform(2, 4))
+        logging.info(f"[{datetime.now()}] Fetching Amazon page 2")
+        soup2 = _amazon_page2_soup(page2_url)
+        if soup2:
+            page2 = extractor(soup2, **ext_kw)
+            candidates.extend(page2)
+            logging.info(f"[{datetime.now()}] Amazon page 2: +{len(page2)} results")
+
+    scraped_pre_dedupe = len(candidates)
+    candidates = _dedupe_rows_by_url(candidates, "url")
+    post_dedupe = len(candidates)
+
+    if not candidates:
+        logging.warning(f"[{datetime.now()}] No results for "
+                        f"'{product_name}' on {domain}")
+        fr = "no_rows" if last_soup else _discovery_failure_reason_no_soup()
+        if domain in ("walmart.com", "bestbuy.com") and last_soup is not None:
+            _debug_save_failure(
+                domain,
+                "discover_product",
+                product_name,
+                fetch_method_used,
+                "no_rows",
+                url=search_url,
+                html=str(last_soup),
+            )
+        _store_discovery_stats(
+            domain, "discover_product",
+            scraped_pre_dedupe=scraped_pre_dedupe, post_dedupe=post_dedupe,
+            returned=0,
+            missing_name=0, missing_price=0,
+            fetch_method=fetch_method_used,
+            failure_reason=fr,
+        )
+        return []
+
+    # Stage 1 — eligibility gate (condition / accessory / brand)
+    candidates = _filter_discover_candidates(candidates, product_name)
+
+    if not candidates:
+        logging.warning(
+            f"[{datetime.now()}] No eligible candidates for {product_name!r} on {domain} "
+            f"(all listings failed discovery filters)"
+        )
+        _store_discovery_stats(
+            domain, "discover_product",
+            scraped_pre_dedupe=scraped_pre_dedupe, post_dedupe=post_dedupe,
+            returned=0,
+            missing_name=0,
+            missing_price=0,
+            fetch_method=fetch_method_used,
+            failure_reason="no_eligible_candidates",
+        )
+        return []
+
+    # Stage 2 — rank eligible candidates (structural fit, then price)
+    filtered = _pick_best(candidates, target_price)
+    logging.info(f"[{datetime.now()}] {domain}: returning {len(filtered)} results "
+                 f"(from {post_dedupe} deduped, {scraped_pre_dedupe} scraped)")
+    _store_discovery_stats(
+        domain, "discover_product",
+        scraped_pre_dedupe=scraped_pre_dedupe, post_dedupe=post_dedupe,
+        returned=len(filtered),
+        missing_name=_missing_name_count(filtered, "name_found"),
+        missing_price=_missing_price_count(filtered, "price"),
+        fetch_method=fetch_method_used,
+        failure_reason="ok",
+    )
+    return filtered
+
+
+# ---------------------------------------------------------------------------
+# Public API: get_price_from_url
+# ---------------------------------------------------------------------------
+
+def get_price_from_url(url: str, source_name: str = "") -> float | None:
+    """
+    Fetch the current price from a known product page URL.
+    Returns the price as a float, or None on failure.
+    """
+    time.sleep(random.uniform(2, 5))
+    logging.info(f"[{datetime.now()}] Checking price at: {url}")
+
+    soup = _fetch_soup(url)
+    if soup:
+        for fn in (extract_price_from_json_ld, extract_price_from_meta,
+                   extract_price_from_html):
+            price = fn(soup)
+            if price is not None:
+                logging.info(f"[{datetime.now()}] Price ${price} from {source_name or url}")
+                return price
+
+    logging.info(f"[{datetime.now()}] Falling back to Selenium for {url}")
+    soup = _fetch_soup_selenium(url)
+    if soup:
+        for fn in (extract_price_from_json_ld, extract_price_from_meta,
+                   extract_price_from_html):
+            price = fn(soup)
+            if price is not None:
+                logging.info(f"[{datetime.now()}] Price ${price} via Selenium "
+                             f"from {source_name or url}")
+                return price
+
+    logging.warning(f"[{datetime.now()}] Could not extract price from: {url}")
+    return None
+
+
+# Backward-compatible alias
+get_price = get_price_from_url
+
+
+# ---------------------------------------------------------------------------
+# Multi-result discovery for Deal Discovery feature
+# ---------------------------------------------------------------------------
+
+def _extract_original_price(el) -> float | None:
+    """Try to find a strikethrough / was-price in a search result element."""
+    for sel in (
+        ".a-price.a-text-price span.a-offscreen",
+        "span.a-text-price .a-offscreen",
+        ".a-text-price",
+        '[data-a-strike="true"]',
+        '[data-testid="original-price"]',
+        '[data-test="product-regular-price"]',
+        ".price-was-data",
+        ".price-was",
+        "[class*='price-was']",
+        ".s-item__price--previous",
+        ".original-price",
+        ".STRIKETHROUGH",
+        "span[class*='was']",
+        "span[class*='strike']",
+        "span[class*='original']",
+        "span[class*='list-price']",
+        ".pricing-price__regular-price",
+        "[class*='regular-price']",
+        "del",
+        "s",
+        ".price-old",
+        ".rrp",
+    ):
+        tag = el.select_one(sel)
+        if tag:
+            p = clean_price(tag.get_text())
+            if p:
+                return p
+    return None
+
+
+def _extract_amazon_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    base = "https://www.amazon.com"
+    results = []
+    for item in soup.select('[data-component-type="s-search-result"]'):
+        if len(results) >= max_results:
+            break
+        link = item.select_one('h2 a.a-link-normal')
+        if not link:
+            link = item.select_one('a.a-link-normal[href*="/dp/"]')
+        if not link:
+            continue
+        href = _abs(link.get("href", ""), base)
+        href = href.split("/ref=")[0]
+        name = _amazon_item_title(item, link)
+        price_el = item.select_one('.a-price .a-offscreen')
+        if not price_el:
+            price_el = item.select_one('.a-price span')
+        price = clean_price(price_el.get_text() if price_el else None)
+        if not price or not href:
+            continue
+        orig = _amazon_listing_original_price(item)
+        results.append({
+            "product_name": name, "current_price": price,
+            "original_price": orig, "product_url": href,
+        })
+    return results
+
+
+def _extract_bestbuy_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    base = "https://www.bestbuy.com"
+    results = []
+    seen: set[str] = set()
+
+    def push(row: tuple[str, float, str, float | None] | None) -> None:
+        if not row or len(results) >= max_results:
+            return
+        name, price, href, orig = row
+        u = _canonical_listing_url(href)
+        if not u or u in seen:
+            return
+        seen.add(u)
+        results.append({
+            "product_name": name[:500],
+            "current_price": price,
+            "original_price": orig,
+            "product_url": href,
+        })
+
+    for item in _iter_bestbuy_product_nodes(soup):
+        link = _bestbuy_title_link_from_tile(item)
+        if link:
+            push(_bestbuy_one_row(link, item, base))
+
+    for link in _iter_bestbuy_title_anchors(soup):
+        if len(results) >= max_results:
+            break
+        push(_bestbuy_one_row(link, None, base))
+
+    return results
+
+
+def _extract_newegg_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    base = "https://www.newegg.com"
+    results = []
+    for item in soup.select('.item-cell, .item-container'):
+        if len(results) >= max_results:
+            break
+        link = item.select_one('a.item-title')
+        if not link:
+            link = item.select_one('.item-info a')
+        if not link:
+            continue
+        href = _abs(link.get("href", ""), base)
+        name = link.get_text(strip=True)
+        price_el = item.select_one('li.price-current')
+        price = clean_price(price_el.get_text() if price_el else None)
+        if not price or not href:
+            continue
+        orig = _newegg_listing_original_price(item)
+        results.append({
+            "product_name": name, "current_price": price,
+            "original_price": orig, "product_url": href,
+        })
+    return results
+
+
+def _extract_walmart_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    base = "https://www.walmart.com"
+    results = []
+    seen = set()
+    for link_tag in soup.select('a[href*="/ip/"]'):
+        if len(results) >= max_results:
+            break
+        href = _abs(link_tag.get("href", ""), base)
+        if href in seen:
+            continue
+        seen.add(href)
+        name = link_tag.get_text(" ", strip=True) or ""
+        root = _find_walmart_listing_root(link_tag)
+        if not root:
+            continue
+        price = _walmart_extract_price(root)
+        if not price:
+            continue
+        orig = _walmart_listing_original_price(root)
+        results.append({
+            "product_name": name[:200], "current_price": price,
+            "original_price": orig, "product_url": href,
+        })
+    return results
+
+
+def _extract_target_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    rows = _extract_target_all(
+        soup,
+        max_items=max_results,
+        apply_quality_pipeline=False,
+    )
+    out = []
+    for r in rows:
+        href = r["url"]
+        name = r["name_found"]
+        price = r["price"]
+        if not href or not price:
+            continue
+        out.append({
+            "product_name": name,
+            "current_price": price,
+            "original_price": r.get("original_price"),
+            "product_url": href,
+        })
+    return out
+
+
+def _bhphoto_normalize_price(p: float) -> float:
+    """B&H sometimes exposes money as cent integers (11999 → 119.99) in markup."""
+    if 500 <= p <= 99999:
+        alt = round(p / 100.0, 2)
+        if 4.99 <= alt <= 4999.99:
+            return alt
+    return p
+
+
+def _bhphoto_price_from_container(root) -> float | None:
+    if not root:
+        return None
+    sels = (
+        '[data-selenium="pricingPrice"]',
+        '[data-selenium="itemPrice"]',
+        '[data-selenium="price"]',
+        '[itemprop="price"]',
+        'span[class*="price"]',
+        'div[class*="price"]',
+    )
+    for sel in sels:
+        el = root.select_one(sel)
+        if el:
+            p = clean_price(el.get_text())
+            if p and 0 < p < 100_000:
+                return p
+    for el in root.select('[data-selenium*="rice"]'):
+        p = clean_price(el.get_text())
+        if p and 0 < p < 100_000:
+            return p
+    return None
+
+
+def _bhphoto_product_anchor_from_card(card: Tag | None) -> Tag | None:
+    """Prefer the product title link, not the first /c/product/ link in DOM order."""
+    if not card:
+        return None
+    for sel in (
+        'a[data-selenium="miniProductPageProductNameLink"][href*="/c/product/"]',
+        'a[data-selenium="listingProductName"][href*="/c/product/"]',
+    ):
+        a = card.select_one(sel)
+        if a and "/c/product/" in (a.get("href") or ""):
+            return a
+    for tag_name in ("h1", "h2", "h3", "h4", "h5"):
+        for h in card.find_all(tag_name):
+            a = h.select_one('a[href*="/c/product/"]')
+            if a:
+                return a
+    for el in card.find_all(True):
+        ds = (el.get("data-selenium") or "")
+        if "roductName" in ds or "roductname" in ds.lower():
+            a = el.select_one('a[href*="/c/product/"]')
+            if a:
+                return a
+        classes = " ".join(el.get("class") or [])
+        if classes and re.search(r"producttitle|product.name", classes, re.I):
+            a = el.select_one('a[href*="/c/product/"]')
+            if a:
+                return a
+    return None
+
+
+def _bhphoto_name_from_title_anchor(link: Tag | None) -> str:
+    """Product title comes only from the title anchor (text + title/aria)."""
+    if not link:
+        return ""
+    name = link.get_text(" ", strip=True)
+    if len(name) < 4 or re.match(
+        r"^\d{1,6}\s*Reviews?$", name, re.IGNORECASE
+    ):
+        name = (
+            (link.get("title") or link.get("aria-label") or "").strip()
+        )
+    return name
+
+
+def _bhphoto_price_from_ancestor(link: Tag | None, max_hops: int = 22):
+    """Walk up from title anchor to a node that contains a price."""
+    root = link
+    price = None
+    for _ in range(max_hops):
+        root = root.parent if root else None
+        if root is None:
+            break
+        price = _bhphoto_price_from_container(root)
+        if price is not None and 0 < price < 50_000:
+            break
+    return price, root
+
+
+def _bhphoto_row_is_junk_name(name: str) -> bool:
+    if len(name or "") < 4:
+        return True
+    if re.match(r"^\d{1,6}\s*Reviews?$", name, re.IGNORECASE):
+        return True
+    nl = name.lower()
+    if "search within" in nl or nl.startswith("filter"):
+        return True
+    return False
+
+
+def _bhphoto_log_extract_debug(
+    index: int,
+    name: str,
+    href: str,
+    card_el: Tag | None,
+    title_anchor: Tag | None,
+) -> None:
+    if _BHPHOTO_DEBUG_FIRST_N <= 0 or index >= _BHPHOTO_DEBUG_FIRST_N:
+        return
+    can = _canonical_listing_url(href)
+    card_snip = ""
+    if card_el is not None:
+        card_snip = card_el.get_text(" ", strip=True)[:120]
+    anchor_txt = (
+        title_anchor.get_text(" ", strip=True) if title_anchor is not None else ""
+    )
+    match = name.strip() == anchor_txt.strip()
+    logging.info(
+        f"[{datetime.now()}] B&H extract debug #{index}: "
+        f"name_found={name[:100]!r} "
+        f"url={href[:160]!r} "
+        f"canonical={can[:140]!r} "
+        f"title_anchor_match={match} "
+        f"anchor_preview={anchor_txt[:100]!r} "
+        f"card_preview_120={card_snip!r}"
+    )
+
+
+def _extract_bhphoto_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    base = "https://www.bhphotovideo.com"
+    results = []
+    blocks = soup.select('[data-selenium="miniProductPage"]')
+    if not blocks:
+        blocks = soup.select('div.listing-item, li.listing-item')
+
+    for item in blocks:
+        if len(results) >= max_results:
+            break
+        link = _bhphoto_product_anchor_from_card(item)
+        if not link:
+            continue
+        href = _abs(link.get("href", ""), base)
+        if "/c/product/" not in href:
+            continue
+        name = _bhphoto_name_from_title_anchor(link)
+        price = _bhphoto_price_from_container(item)
+        if price is None:
+            p2, _ = _bhphoto_price_from_ancestor(link)
+            price = p2
+        if price is not None:
+            price = _bhphoto_normalize_price(price)
+        if not price or not href or _bhphoto_row_is_junk_name(name):
+            continue
+        orig = _extract_original_price(item)
+        _bhphoto_log_extract_debug(len(results), name, href, item, link)
+        results.append({
+            "product_name": name,
+            "current_price": price,
+            "original_price": orig,
+            "product_url": href,
+        })
+
+    if not results:
+        seen: set[str] = set()
+        # Title-first anchors document order: name and URL always from same <a>.
+        ordered_links = soup.select(
+            'a[data-selenium="miniProductPageProductNameLink"][href*="/c/product/"], '
+            'a[data-selenium="listingProductName"][href*="/c/product/"], '
+            'h1 a[href*="/c/product/"], h2 a[href*="/c/product/"], '
+            'h3 a[href*="/c/product/"], h4 a[href*="/c/product/"], '
+            'h5 a[href*="/c/product/"]'
+        )
+        for link in ordered_links:
+            if len(results) >= max_results:
+                break
+            href = _canonical_listing_url(_abs(link.get("href", ""), base))
+            if not href or "/c/product/" not in href or href in seen:
+                continue
+            seen.add(href)
+            name = _bhphoto_name_from_title_anchor(link)
+            if _bhphoto_row_is_junk_name(name):
+                continue
+            price, root = _bhphoto_price_from_ancestor(link)
+            if not price or price >= 50_000:
+                continue
+            price = _bhphoto_normalize_price(price)
+            if not price or price >= 50_000:
+                continue
+            card_for_debug = None
+            p = link
+            for _ in range(24):
+                p = p.parent if p else None
+                if p is None:
+                    break
+                if p.get("data-selenium") == "miniProductPage":
+                    card_for_debug = p
+                    break
+                cl = (p.get("class") or [])
+                if isinstance(cl, str):
+                    cl = [cl]
+                if any("listing-item" in c for c in cl):
+                    card_for_debug = p
+                    break
+            if card_for_debug is None:
+                card_for_debug = root
+            orig = _extract_original_price(root) if root else None
+            _bhphoto_log_extract_debug(len(results), name, href, card_for_debug, link)
+            results.append({
+                "product_name": name,
+                "current_price": price,
+                "original_price": orig,
+                "product_url": href,
+            })
+    merged: dict[str, dict] = {}
+    for r in results:
+        u = _canonical_listing_url(r["product_url"])
+        p = r["current_price"]
+        prev = merged.get(u)
+        if prev is None or p < prev["current_price"]:
+            merged[u] = r
+    results = list(merged.values())[:max_results]
+
+    if not results:
+        n_links = len(soup.select('a[href*="/c/product/"]'))
+        ttl = soup.title.get_text(strip=True) if soup.title else ""
+        logging.warning(
+            f"[{datetime.now()}] B&H: extracted 0 deals; "
+            f"/c/product/ links={n_links}, title={ttl[:120]!r}"
+        )
+    return results
+
+
+def _extract_ebay_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    rows = _extract_ebay_listings(soup, max_results)
+    return [
+        {
+            "product_name": r["name_found"],
+            "current_price": r["price"],
+            "original_price": r.get("original_price"),
+            "product_url": r["url"],
+        }
+        for r in rows
+    ]
+
+
+def _extract_costco_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    rows = _extract_costco_listings(soup, max_results)
+    return [
+        {
+            "product_name": r["name_found"],
+            "current_price": r["price"],
+            "original_price": r.get("original_price"),
+            "product_url": r["url"],
+        }
+        for r in rows
+    ]
+
+
+def _extract_homedepot_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    rows = _extract_homedepot_listings(soup, max_results)
+    return [
+        {
+            "product_name": r["name_found"],
+            "current_price": r["price"],
+            "original_price": r.get("original_price"),
+            "product_url": r["url"],
+        }
+        for r in rows
+    ]
+
+
+def _extract_lowes_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    rows = _extract_lowes_listings(soup, max_results)
+    return [
+        {
+            "product_name": r["name_found"],
+            "current_price": r["price"],
+            "original_price": r.get("original_price"),
+            "product_url": r["url"],
+        }
+        for r in rows
+    ]
+
+
+_MULTI_EXTRACTORS = {
+    "amazon.com":       _extract_amazon_multi,
+    "bestbuy.com":      _extract_bestbuy_multi,
+    "newegg.com":       _extract_newegg_multi,
+    "walmart.com":      _extract_walmart_multi,
+    "ebay.com":         _extract_ebay_multi,
+    "target.com":       _extract_target_multi,
+    "bhphotovideo.com": _extract_bhphoto_multi,
+    "costco.com":       _extract_costco_multi,
+    "homedepot.com":    _extract_homedepot_multi,
+    "lowes.com":        _extract_lowes_multi,
+}
+
+STRICT_TRACKING_DOMAINS = {
+    "amazon.com",
+    "bestbuy.com",
+    "costco.com",
+    "newegg.com",
+    "target.com",
+    "walmart.com",
+}
+STRICT_MAX_CANDIDATES = int(os.getenv("STRICT_MAX_CANDIDATES", "8"))
+
+
+@dataclass(frozen=True)
+class SourceAdapter:
+    domain: str
+    search_extractor: callable
+    selenium_preferred: bool = False
+
+
+_SOURCE_ADAPTERS = {
+    domain: SourceAdapter(
+        domain=domain,
+        search_extractor=extractor,
+        selenium_preferred=domain in _SELENIUM_PREFERRED,
+    )
+    for domain, extractor in _MULTI_EXTRACTORS.items()
+}
+
+
+def _strict_search_url(source: dict, query: str) -> str:
+    encoded = quote_plus(query)
+    search_url = source["search_url_template"].replace("{query}", encoded)
+    domain = source["domain"]
+    if domain == "amazon.com":
+        search_url = _amazon_search_url_more_results(search_url)
+    if domain == "walmart.com":
+        search_url = _humanize_walmart_search_url(search_url)
+    return search_url
+
+
+def _fetch_search_results_soup(search_url: str, domain: str) -> tuple[BeautifulSoup | None, str]:
+    soup = None
+    fetch_method = "fetch_failed"
+    if domain in _SELENIUM_PREFERRED:
+        soup = _fetch_soup_selenium(search_url, domain=domain, debug_meta={"mode": "strict_search", "query": search_url})
+        if soup:
+            fetch_method = "selenium"
+    else:
+        soup = _fetch_soup(search_url, debug_domain=domain)
+        if soup:
+            fetch_method = "requests"
+        if not soup:
+            soup = _fetch_soup_selenium(search_url, domain=domain, debug_meta={"mode": "strict_search", "query": search_url})
+            if soup:
+                fetch_method = "selenium"
+    return soup, fetch_method
+
+
+def _search_listing_candidates(
+    search_query: str,
+    source: dict,
+    *,
+    max_results: int = MAX_RESULTS_PER_SOURCE,
+) -> list[dict]:
+    domain = source["domain"]
+    adapter = _SOURCE_ADAPTERS.get(domain)
+    if not adapter:
+        return []
+    search_url = _strict_search_url(source, search_query)
+    logging.info(f"[{datetime.now()}] Strict candidate search '{search_query}' on {domain}")
+    soup, fetch_method = _fetch_search_results_soup(search_url, domain)
+    if not soup:
+        logging.warning(f"[{datetime.now()}] Strict candidate search failed on {domain}")
+        _store_discovery_stats(
+            domain,
+            "strict_search",
+            scraped_pre_dedupe=0,
+            post_dedupe=0,
+            returned=0,
+            missing_name=0,
+            missing_price=0,
+            fetch_method=fetch_method,
+            failure_reason=_discovery_failure_reason_no_soup(),
+        )
+        return []
+    raw = adapter.search_extractor(soup, max_results=max_results)
+    if domain == "amazon.com" and len(raw) < max_results:
+        sep = "&" if "?" in search_url else "?"
+        soup2 = _amazon_page2_soup(f"{search_url}{sep}page=2")
+        if soup2:
+            raw.extend(adapter.search_extractor(soup2, max_results=max_results))
+    for row in raw:
+        if row.get("product_name"):
+            row["product_name"] = clean_listing_title(str(row["product_name"]))
+    raw = _dedupe_rows_by_url(raw, "product_url")
+    logging.info(
+        f"[{datetime.now()}] Strict candidate search on {domain}: "
+        f"{len(raw)} candidate URLs"
+    )
+    return raw
+
+
+def _fetch_listing_soup(url: str, source_domain: str) -> tuple[BeautifulSoup | None, str]:
+    soup = _fetch_soup(url, debug_domain=source_domain)
+    if soup:
+        return soup, "requests"
+    soup = _fetch_soup_selenium(url, domain=source_domain, debug_meta={"mode": "strict_verify", "query": url})
+    if soup:
+        return soup, "selenium"
+    return None, "fetch_failed"
+
+
+def _verification_row(candidate: dict, verification, target_price: float | None) -> dict:
+    price = verification.current_price
+    status_hint = "watching"
+    if verification.status == "ambiguous":
+        status_hint = "pending_confirmation"
+    elif verification.status == "rejected":
+        status_hint = "not_found"
+    elif price is None:
+        status_hint = "quarantined"
+    elif target_price is not None and price <= target_price:
+        status_hint = "deal_found"
+    row = {
+        "url": candidate.get("product_url") or candidate.get("url"),
+        "price": price,
+        "name_found": clean_listing_title(
+            verification.product_name or candidate.get("product_name") or ""
+        ),
+        "status_hint": status_hint,
+    }
+    row.update(verification_result_to_fields(verification))
+    return row
+
+
+def verify_candidate_listing(
+    spec: ProductSpec,
+    source: dict,
+    candidate: dict,
+):
+    url = candidate.get("product_url") or candidate.get("url") or ""
+    title_hint = candidate.get("product_name") or candidate.get("name_found") or spec.raw_query
+    if not url:
+        return None
+    soup, _fetch_method = _fetch_listing_soup(url, source["domain"])
+    if not soup:
+        return verify_listing(
+            spec,
+            fallback_listing_fingerprint(
+                url,
+                title_hint,
+                current_price=None,
+                family_hint=spec.family,
+            ),
+        )
+    price = extract_price_from_soup(soup)
+    fingerprint = fingerprint_listing_document(
+        url,
+        soup,
+        current_price=price,
+        family_hint=spec.family,
+    )
+    return verify_listing(spec, fingerprint)
+
+
+def discover_product_matches(
+    product_name: str,
+    source: dict,
+    *,
+    target_price: float | None = None,
+    max_candidates: int = STRICT_MAX_CANDIDATES,
+) -> dict[str, list[dict]]:
+    spec = parse_product_spec(product_name)
+    search_query = spec.canonical_query or product_name
+    candidates = _search_listing_candidates(
+        search_query,
+        source,
+        max_results=max(MAX_RESULTS_PER_SOURCE, max_candidates),
+    )
+    verified: list[dict] = []
+    ambiguous: list[dict] = []
+    rejected = 0
+    for candidate in candidates[:max_candidates]:
+        verification = verify_candidate_listing(spec, source, candidate)
+        if verification is None:
+            continue
+        row = _verification_row(candidate, verification, target_price)
+        if verification.status == "verified":
+            verified.append(row)
+        elif verification.status == "ambiguous":
+            ambiguous.append(row)
+        else:
+            rejected += 1
+    verified.sort(
+        key=lambda row: (
+            0 if row.get("match_label") == "verified_exact" else 1,
+            row.get("price") is None,
+            float(row.get("price") or 1e9),
+        )
+    )
+    ambiguous.sort(key=lambda row: (row.get("price") is None, float(row.get("price") or 1e9)))
+    logging.info(
+        f"[{datetime.now()}] Strict tracking discovery on {source['domain']}: "
+        f"{len(verified)} verified, {len(ambiguous)} ambiguous, {rejected} rejected "
+        f"for {product_name!r}"
+    )
+    return {"verified": verified, "ambiguous": ambiguous}
+
+
+def revalidate_product_source(ps_row) -> dict[str, Any]:
+    spec = product_spec_from_row(ps_row)
+    source = {
+        "id": ps_row["source_id"],
+        "name": ps_row["source_name"],
+        "domain": ps_row["domain"],
+        "search_url_template": ps_row["search_url_template"],
+    }
+    current_candidate = {
+        "product_url": ps_row.get("discovered_url"),
+        "product_name": ps_row.get("matched_product_name") or ps_row.get("product_name"),
+        "current_price": ps_row.get("current_price"),
+    }
+    verification = verify_candidate_listing(spec, source, current_candidate)
+    if verification and verification.status == "verified":
+        return {
+            "status": "verified",
+            "verified": [_verification_row(current_candidate, verification, ps_row.get("target_price"))],
+            "ambiguous": [],
+        }
+    matches = discover_product_matches(
+        spec.raw_query,
+        source,
+        target_price=ps_row.get("target_price"),
+    )
+    if matches["verified"]:
+        return {"status": "rediscovered", **matches}
+    if verification and verification.status == "ambiguous":
+        matches["ambiguous"].insert(0, _verification_row(current_candidate, verification, ps_row.get("target_price")))
+    if matches["ambiguous"]:
+        return {"status": "pending_confirmation", **matches}
+    if verification and verification.health_state == "quarantined":
+        return {"status": "quarantined", "verified": [], "ambiguous": []}
+    return {"status": "not_found", "verified": [], "ambiguous": []}
+
+
+def _budget_query(query: str, max_price: float | None) -> str:
+    """For budget searches (< $75), append price hint to bias retailer results."""
+    if max_price is not None and max_price < 75:
+        return f"{query} under ${int(max_price)}"
+    return query
+
+
+def discover_deals(query: str, source: dict, max_price: float | None = None,
+                   max_results: int = MAX_RESULTS_PER_SOURCE) -> list[dict]:
+    """
+    Search a retailer for *query*, returning up to *max_results* products.
+    Each result dict has: product_name, current_price, original_price,
+    discount_percent, product_url.
+    """
+    time.sleep(random.uniform(2, 5))
+
+    global _LAST_REQUESTS_FAILURE, _LAST_SELENIUM_FAILURE
+    _LAST_REQUESTS_FAILURE = None
+    _LAST_SELENIUM_FAILURE = None
+
+    search_query = _budget_query(query, max_price)
+    encoded = quote_plus(search_query)
+    search_url = source["search_url_template"].replace("{query}", encoded)
+    domain = source["domain"]
+    if domain == "amazon.com":
+        search_url = _amazon_search_url_more_results(search_url)
+    if domain == "walmart.com":
+        search_url = _humanize_walmart_search_url(search_url)
+
+    logging.info(f"[{datetime.now()}] Deal discovery '{search_query}' on {domain}")
+
+    extractor = _MULTI_EXTRACTORS.get(domain)
+    if not extractor:
+        logging.warning(f"[{datetime.now()}] No multi-extractor for {domain}")
+        _store_discovery_stats(
+            domain, "discover_deals",
+            scraped_pre_dedupe=0, post_dedupe=0, returned=0,
+            missing_name=0, missing_price=0,
+            fetch_method="none",
+            failure_reason="no_extractor",
+        )
+        return []
+
+    fc = {
+        "domain": domain,
+        "mode": "discover_deals",
+        "query": search_query,
+    }
+    fc_wm_bb = fc if domain in ("walmart.com", "bestbuy.com") else None
+
+    soup: BeautifulSoup | None = None
+    fetch_method_used = "fetch_failed"
+    use_selenium_first = domain in _SELENIUM_PREFERRED
+
+    if use_selenium_first:
+        logging.info(
+            f"[{datetime.now()}] Using Selenium for discovery on {domain}"
+        )
+        soup = _fetch_soup_selenium(
+            search_url, domain=domain, debug_meta=fc
+        )
+        if soup:
+            fetch_method_used = "selenium"
+    else:
+        soup = _fetch_soup(
+            search_url, debug_domain=domain, failure_context=fc_wm_bb
+        )
+        if soup:
+            fetch_method_used = "requests"
+        if not soup:
+            logging.info(
+                f"[{datetime.now()}] Trying Selenium for discovery on {domain}"
+            )
+            soup = _fetch_soup_selenium(
+                search_url, domain=domain, debug_meta=fc
+            )
+            if soup:
+                fetch_method_used = "selenium"
+
+    if not soup:
+        logging.warning(
+            f"[{datetime.now()}] Could not fetch {domain} for discovery"
+        )
+        _store_discovery_stats(
+            domain, "discover_deals",
+            scraped_pre_dedupe=0, post_dedupe=0, returned=0,
+            missing_name=0, missing_price=0,
+            fetch_method=fetch_method_used,
+            failure_reason=_discovery_failure_reason_no_soup(),
+        )
+        return []
+
+    raw = extractor(soup, max_results=max_results)
+
+    if domain == "amazon.com" and len(raw) < max_results:
+        sep = "&" if "?" in search_url else "?"
+        page2_url = f"{search_url}{sep}page=2"
+        time.sleep(random.uniform(2, 4))
+        logging.info(f"[{datetime.now()}] Fetching Amazon page 2 for discovery")
+        soup2 = _amazon_page2_soup(page2_url)
+        if soup2:
+            page2 = extractor(soup2, max_results=max_results)
+            raw.extend(page2)
+            logging.info(f"[{datetime.now()}] Amazon discovery page 2: "
+                         f"+{len(page2)} results")
+
+    if domain in ("walmart.com", "bestbuy.com") and not raw:
+        _debug_save_failure(
+            domain,
+            "discover_deals",
+            search_query,
+            fetch_method_used,
+            "no_rows",
+            url=search_url,
+            html=str(soup),
+        )
+
+    scraped_pre_dedupe = len(raw)
+    raw = _dedupe_rows_by_url(raw, "product_url")
+    post_dedupe = len(raw)
+
+    raw = _apply_discovery_quality_pipeline(
+        raw,
+        query=search_query,
+        max_price=max_price,
+        label=_retailer_log_label(domain),
+        price_key="current_price",
+        name_key="product_name",
+    )
+    # Eligibility (condition / accessory / brand) runs in hf_utils.process_discovery_results
+    # only, using the user's filter_* form values — avoids double gates that disagree.
+
+    out = []
+    for r in raw:
+        cp = r["current_price"]
+        op = r["original_price"]
+        if op and op > cp:
+            r["discount_percent"] = round(((op - cp) / op) * 100, 1)
+        else:
+            r["discount_percent"] = 0.0
+        out.append(r)
+
+    fail_reason = "no_rows" if scraped_pre_dedupe == 0 else "ok"
+
+    logging.info(
+        f"[{datetime.now()}] Discovery on {domain}: {len(out)} final results "
+        f"(deduped={post_dedupe} before quality filters)"
+    )
+    _store_discovery_stats(
+        domain, "discover_deals",
+        scraped_pre_dedupe=scraped_pre_dedupe, post_dedupe=post_dedupe,
+        returned=len(out),
+        missing_name=_missing_name_count(out, "product_name"),
+        missing_price=_missing_price_count(out, "current_price"),
+        fetch_method=fetch_method_used,
+        failure_reason=fail_reason,
+    )
+    return out
+

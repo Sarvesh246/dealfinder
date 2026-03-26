@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Settings — PricePulse{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Settings page ───────────────────────────────────────────────── */
+  .settings-outer { display: flex; justify-content: center; }
+
+  .settings-card {
+    width: 100%; max-width: 640px; padding: 36px;
+    border-radius: var(--radius);
+  }
+
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-secondary);
+    margin-bottom: 20px; transition: color 180ms ease;
+  }
+  .back-link:hover { color: var(--text-primary); }
+
+  .settings-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: 24px;
+    font-weight: 700; color: var(--text-primary); margin-bottom: 6px;
+  }
+  .settings-subtitle {
+    font-size: 14px; color: var(--text-secondary); margin-bottom: 28px;
+    max-width: 480px;
+  }
+
+  /* ── Source list ──────────────────────────────────────────────────── */
+  .source-list { display: flex; flex-direction: column; }
+
+  .source-item {
+    display: flex; align-items: center; gap: 12px; padding: 14px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .source-item:last-child { border-bottom: none; }
+
+  .source-item-dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+  }
+  .source-item-info { flex: 1; min-width: 0; }
+  .source-item-name {
+    font-size: 14px; font-weight: 600; color: var(--text-primary);
+  }
+  .source-item-domain {
+    font-size: 12px; color: var(--text-muted); margin-top: 1px;
+  }
+  .source-item-count {
+    font-size: 12px; color: var(--text-muted); white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ── Toggle switch ───────────────────────────────────────────────── */
+  .toggle-switch {
+    position: relative; display: inline-block; cursor: pointer; flex-shrink: 0;
+  }
+  .toggle-switch input { display: none; }
+  .toggle-track {
+    display: block; width: 40px; height: 22px; border-radius: 999px;
+    background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border);
+    transition: all 200ms ease; position: relative;
+  }
+  .toggle-thumb {
+    display: block; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--text-muted); position: absolute; top: 2px; left: 2px;
+    transition: all 200ms ease;
+  }
+  .toggle-switch input:checked + .toggle-track {
+    background: rgba(124,92,252,0.3); border-color: rgba(124,92,252,0.5);
+  }
+  .toggle-switch input:checked + .toggle-track .toggle-thumb {
+    background: var(--accent-purple); transform: translateX(18px);
+  }
+
+  /* ── Save button ─────────────────────────────────────────────────── */
+  .btn-save {
+    padding: 10px 20px; font-size: 14px; margin-top: 24px;
+  }
+
+  /* ── Responsive ──────────────────────────────────────────────────── */
+  @media (max-width: 639px) {
+    .settings-card { padding: 24px 16px; }
+    .source-item { flex-wrap: wrap; gap: 8px; }
+    .btn-save { width: 100%; justify-content: center; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-outer">
+  <div class="card settings-card fade-in">
+
+    <!-- Back link -->
+    <a href="{{ url_for('index') }}" class="back-link">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+      Back to Dashboard
+    </a>
+
+    <h1 class="settings-title">Source Settings</h1>
+    <p class="settings-subtitle">
+      Manage which stores are available for product tracking. Disabling a source globally
+      pauses checking but keeps existing data.
+    </p>
+
+    <form method="POST" action="{{ url_for('settings_sources_save') }}">
+      <div class="source-list">
+        {% for s in sources | default([], true) %}
+        <div class="source-item">
+          <span class="source-item-dot" style="background:{{ s.logo_color | default('#7C5CFC') }}"></span>
+
+          <div class="source-item-info">
+            <div class="source-item-name">{{ s.name }}</div>
+            <div class="source-item-domain">{{ s.domain }}</div>
+          </div>
+
+          <span class="source-item-count">
+            {{ s.product_count | default(0) }}
+            {{ 'product' if (s.product_count | default(0)) == 1 else 'products' }}
+          </span>
+
+          <label class="toggle-switch">
+            <input type="checkbox" name="source_ids" value="{{ s.id }}"
+                   {% if s.enabled %}checked{% endif %} />
+            <span class="toggle-track"><span class="toggle-thumb"></span></span>
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+
+      <button type="submit" class="btn-primary btn-save">Save Settings</button>
+    </form>
+
+  </div>
+</div>
+{% endblock %}

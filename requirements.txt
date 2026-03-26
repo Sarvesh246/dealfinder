@@ -1,0 +1,10 @@
+flask
+requests
+beautifulsoup4
+selenium
+webdriver-manager
+apscheduler
+python-dotenv
+lxml
+huggingface_hub
+pytest

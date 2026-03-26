@@ -1,0 +1,26 @@
+# Wake the app and run a full price check on a schedule (Railway free / serverless).
+# Repo secrets: RAILWAY_APP_URL (e.g. https://xxx.up.railway.app), CHECK_CRON_SECRET (same as Railway).
+name: Price check cron
+
+on:
+  schedule:
+    # Every 6 hours UTC (adjust if you prefer another timezone).
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger remote /check
+        env:
+          BASE_URL: ${{ secrets.RAILWAY_APP_URL }}
+          TOKEN: ${{ secrets.CHECK_CRON_SECRET }}
+        run: |
+          set -e
+          if [ -z "$BASE_URL" ] || [ -z "$TOKEN" ]; then
+            echo "Set repository secrets RAILWAY_APP_URL and CHECK_CRON_SECRET." >&2
+            exit 1
+          fi
+          BASE_URL="${BASE_URL%/}"
+          curl -fsS -G "${BASE_URL}/check" --data-urlencode "token=${TOKEN}"

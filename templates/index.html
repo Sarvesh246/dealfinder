@@ -1,0 +1,356 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — PricePulse{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Stats bar ───────────────────────────────────────────────────── */
+  .stats-bar { display: flex; gap: 16px; margin-bottom: 32px; }
+  .stat-card { flex: 1; padding: 20px 24px; display: flex; flex-direction: column; gap: 4px; }
+  .stat-icon { font-size: 20px; margin-bottom: 6px; line-height: 1; }
+  .stat-label { font-size: 10px; font-weight: 600; letter-spacing: 1.3px; text-transform: uppercase; color: var(--text-muted); }
+  .stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 36px; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
+  .stat-value.deal-color { color: var(--price-good); }
+  .stat-desc { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+
+  /* ── Product grid ────────────────────────────────────────────────── */
+  .products-grid { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── Product card ────────────────────────────────────────────────── */
+  .product-card { padding: 0; cursor: default; }
+  .product-card:hover { transform: translateY(-2px); }
+  .pc-section { padding: 20px 24px; }
+  .pc-divider { height: 1px; background: var(--glass-border); }
+
+  /* Header */
+  .pc-header {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  }
+  .pc-name {
+    font-size: 17px; font-weight: 600; color: var(--text-primary);
+    line-height: 1.3; margin: 0;
+  }
+  .pc-header-right {
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  .pc-target {
+    font-family: 'Space Grotesk', sans-serif; font-size: 13px;
+    font-weight: 600; color: var(--text-secondary); white-space: nowrap;
+  }
+
+  /* Badges */
+  .badge {
+    flex-shrink: 0; display: inline-flex; align-items: center;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.6px;
+    text-transform: uppercase; padding: 4px 10px; border-radius: 999px;
+    white-space: nowrap; line-height: 1;
+  }
+  .badge-deal {
+    background: rgba(0,229,160,0.12); color: var(--price-good);
+    border: 1px solid rgba(0,229,160,0.28);
+  }
+  .badge-watching {
+    background: rgba(58,159,255,0.10); color: var(--accent-blue);
+    border: 1px solid rgba(58,159,255,0.22);
+  }
+  .badge-not_found {
+    background: rgba(255,79,106,0.10); color: var(--price-bad);
+    border: 1px solid rgba(255,79,106,0.22);
+  }
+
+  /* Best price section */
+  .pc-best-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 1.2px;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;
+  }
+  .pc-best-row {
+    display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  }
+  .pc-best-price {
+    font-family: 'Space Grotesk', sans-serif; font-size: 28px;
+    font-weight: 700; line-height: 1;
+  }
+  .pc-best-source { font-size: 14px; color: var(--text-secondary); }
+  .pc-best-store-link {
+    color: var(--accent-blue); font-weight: 600; text-decoration: underline;
+    text-underline-offset: 3px; transition: color 180ms ease;
+  }
+  .pc-best-store-link:hover { color: var(--text-primary); }
+  .pc-best-away { font-size: 13px; color: var(--text-muted); margin-left: auto; }
+  .pc-best-away.reached { color: var(--price-good); font-weight: 600; }
+  .pc-best-none { font-size: 14px; color: var(--text-muted); font-style: italic; }
+
+  /* Progress */
+  .progress-wrap { margin-top: 12px; }
+  .progress-track {
+    height: 4px; border-radius: 999px;
+    background: rgba(255,255,255,0.07); overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent-purple), var(--accent-teal));
+    transition: width 600ms ease;
+  }
+
+  /* Sources list */
+  .pc-sources-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 1.2px;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px;
+  }
+  .source-row {
+    display: flex; align-items: center; gap: 10px; padding: 6px 0;
+  }
+  .source-row + .source-row {
+    border-top: 1px solid rgba(255,255,255,0.03);
+  }
+  .source-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .source-name {
+    font-size: 13px; color: var(--text-secondary); min-width: 80px;
+  }
+  .source-name-link {
+    color: var(--accent-blue); font-weight: 500; text-decoration: underline;
+    text-underline-offset: 2px; transition: color 180ms ease;
+  }
+  .source-name-link:hover { color: var(--text-primary); }
+  .source-price {
+    font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600;
+  }
+  .source-change { font-size: 12px; margin-left: auto; white-space: nowrap; }
+  .source-change.down { color: var(--price-good); }
+  .source-change.up { color: var(--price-bad); }
+  .source-change.flat { color: var(--text-muted); }
+  .source-status-text {
+    font-size: 13px; color: var(--text-muted); font-style: italic; margin-left: auto;
+  }
+  .source-status-text.error { color: var(--price-bad); font-style: normal; }
+
+  /* Footer */
+  .pc-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
+  }
+  .checked-at { font-size: 12px; color: var(--text-muted); }
+  .pc-actions { display: flex; gap: 6px; align-items: center; }
+  .action-btn {
+    font-size: 12px; font-weight: 500; color: var(--text-secondary);
+    padding: 6px 12px; border-radius: 8px;
+    border: 1px solid var(--glass-border); background: transparent;
+    cursor: pointer; transition: all 180ms ease; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: inherit; line-height: 1.3;
+  }
+  .action-btn:hover {
+    color: var(--text-primary); background: var(--glass-hover);
+    border-color: rgba(255,255,255,0.15);
+  }
+  .action-btn.delete:hover {
+    color: var(--price-bad); border-color: rgba(255,79,106,0.3);
+    background: rgba(255,79,106,0.08);
+  }
+
+  /* ── Empty state ─────────────────────────────────────────────────── */
+  .empty-state {
+    padding: 64px 32px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .empty-icon { font-size: 48px; line-height: 1; margin-bottom: 4px; }
+  .empty-heading {
+    font-family: 'Space Grotesk', sans-serif; font-size: 18px;
+    font-weight: 600; color: var(--text-primary);
+  }
+  .empty-sub {
+    font-size: 14px; color: var(--text-secondary);
+    max-width: 340px; margin-bottom: 8px;
+  }
+  .btn-add-first { padding: 12px 24px; font-size: 14px; margin-top: 4px; }
+
+  /* ── Responsive ──────────────────────────────────────────────────── */
+  @media (max-width: 639px) {
+    .stats-bar { flex-direction: column; }
+    .pc-header { flex-direction: column; gap: 8px; }
+    .pc-header-right { align-self: flex-start; }
+    .pc-best-row { flex-direction: column; gap: 6px; }
+    .pc-best-away { margin-left: 0; }
+    .pc-footer { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <div class="card stat-card fade-in" style="animation-delay:0ms">
+      <div class="stat-icon">📦</div>
+      <div class="stat-label">Products Tracked</div>
+      <div class="stat-value">{{ total_products }}</div>
+      <div class="stat-desc">{{ 'product' if total_products == 1 else 'products' }} being watched</div>
+    </div>
+    <div class="card stat-card fade-in" style="animation-delay:80ms">
+      <div class="stat-icon">🏷️</div>
+      <div class="stat-label">Deals Found</div>
+      <div class="stat-value {% if deals_found > 0 %}deal-color{% endif %}">{{ deals_found }}</div>
+      <div class="stat-desc">{{ 'price' if deals_found == 1 else 'prices' }} at or below target</div>
+    </div>
+    <div class="card stat-card fade-in" style="animation-delay:160ms">
+      <div class="stat-icon">🕐</div>
+      <div class="stat-label">Last Checked</div>
+      <div class="stat-value" style="font-size:22px; padding-top:7px;">
+        {{ last_checked_global | relative_time if last_checked_global else '—' }}
+      </div>
+      <div class="stat-desc">most recent price scan</div>
+    </div>
+  </div>
+
+  <!-- Section heading -->
+  <div class="section-label">Tracked Products</div>
+
+  {% if products %}
+  <div class="products-grid">
+    {% for p in products %}
+    {% set sources_list = p.sources | default([], true) %}
+    {% set found_sources = sources_list | selectattr('current_price') | sort(attribute='current_price') | list %}
+    {% set best = found_sources[0] if found_sources else None %}
+    {% set status = price_status(p.current_price, p.target_price) %}
+    {% set pct = progress_pct(p.current_price, p.target_price) %}
+    {% set away = pct_away(p.current_price, p.target_price) %}
+
+    <div class="card product-card fade-in" style="animation-delay:{{ loop.index0 * 80 }}ms">
+
+      <!-- Header: name + target + badge -->
+      <div class="pc-section pc-header">
+        <h3 class="pc-name">{{ p.name or 'Unnamed Product' }}</h3>
+        <div class="pc-header-right">
+          <span class="pc-target">TARGET: {{ p.target_price | format_price }}</span>
+          <span class="badge badge-{{ status }}">
+            {% if status == 'deal' %}Deal Found
+            {% elif status == 'watching' %}Watching
+            {% else %}Not Found{% endif %}
+          </span>
+        </div>
+      </div>
+
+      <div class="pc-divider"></div>
+
+      <!-- Best price section -->
+      <div class="pc-section">
+        {% if best %}
+        <div class="pc-best-label">Best Price Found</div>
+        <div class="pc-best-row">
+          <span class="pc-best-price" style="color:{{ price_color(best.current_price, p.target_price) }}">
+            {{ best.current_price | format_price }}
+          </span>
+          <span class="pc-best-source">on
+            {% if best.discovered_url %}
+              <a href="{{ best.discovered_url }}" target="_blank" rel="noopener noreferrer" class="pc-best-store-link">{{ best.source_name }}</a>
+            {% else %}
+              {{ best.source_name }}
+            {% endif %}
+          </span>
+          <span class="pc-best-away {% if status == 'deal' %}reached{% endif %}">
+            {{ away if away else '' }}
+          </span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-track">
+            <div class="progress-fill" style="width:{{ pct }}%"></div>
+          </div>
+        </div>
+        {% elif sources_list %}
+        <div class="pc-best-label">Prices</div>
+        <div class="pc-best-none">No prices discovered yet</div>
+        {% else %}
+        <div class="pc-best-label">Current Price</div>
+        <div class="pc-best-row">
+          <span class="pc-best-price" style="color:{{ price_color(p.current_price, p.target_price) }}">
+            {{ p.current_price | format_price }}
+          </span>
+          <span class="pc-best-away {% if status == 'deal' %}reached{% endif %}">
+            {{ away if away else '' }}
+          </span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-track">
+            <div class="progress-fill" style="width:{{ pct }}%"></div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+
+      {% if sources_list %}
+      <div class="pc-divider"></div>
+
+      <!-- All sources -->
+      <div class="pc-section">
+        <div class="pc-sources-label">All Sources</div>
+        {% for s in sources_list %}
+        <div class="source-row">
+          <span class="source-dot" style="background:{% if s.status in ['not_found','error'] %}var(--text-muted){% else %}{{ s.logo_color | default('#7C5CFC') }}{% endif %}"></span>
+          <span class="source-name">
+            {% if s.discovered_url and s.current_price and s.status not in ['not_found','error'] %}
+              <a href="{{ s.discovered_url }}" target="_blank" rel="noopener noreferrer" class="source-name-link">{{ s.source_name }}</a>
+            {% else %}
+              {{ s.source_name }}
+            {% endif %}
+          </span>
+
+          {% if s.current_price and s.status not in ['not_found','error'] %}
+            <span class="source-price" style="color:{{ price_color(s.current_price, p.target_price) }}">
+              {{ s.current_price | format_price }}
+            </span>
+            {% if s.previous_price is defined and s.previous_price is not none %}
+              {% if s.current_price < s.previous_price %}
+                <span class="source-change down">↓ dropped ${{ "%.2f" | format(s.previous_price - s.current_price) }}</span>
+              {% elif s.current_price > s.previous_price %}
+                <span class="source-change up">↑ went up ${{ "%.2f" | format(s.current_price - s.previous_price) }}</span>
+              {% else %}
+                <span class="source-change flat">→ unchanged</span>
+              {% endif %}
+            {% endif %}
+          {% elif s.status == 'error' %}
+            <span class="source-status-text error">blocked — try again later</span>
+          {% else %}
+            <span class="source-status-text">not found</span>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="pc-divider"></div>
+
+      <!-- Footer: timestamp + actions -->
+      <div class="pc-section pc-footer">
+        <span class="checked-at">
+          {% if p.last_checked %}Checked {{ p.last_checked | relative_time }}
+          {% else %}Not checked yet{% endif %}
+        </span>
+        <div class="pc-actions">
+          <a href="{{ url_for('product_sources_page', product_id=p.id) }}" class="action-btn">Edit Sources</a>
+          <a href="{{ url_for('product_detail', product_id=p.id) }}" class="action-btn">History</a>
+          <form method="POST" action="{{ url_for('delete_product_route', product_id=p.id) }}"
+                onsubmit="return confirm('Remove this product and all tracking data?')" style="display:inline">
+            <button type="submit" class="action-btn delete">Delete</button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <!-- Empty state -->
+  <div class="card empty-state fade-in">
+    <div class="empty-icon">📭</div>
+    <div class="empty-heading">Nothing tracked yet</div>
+    <p class="empty-sub">Add your first product to start watching for deals across multiple stores.</p>
+    <a href="{{ url_for('add_page') }}" class="btn-primary btn-add-first">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+      Add Your First Product
+    </a>
+  </div>
+  {% endif %}
+
+{% endblock %}

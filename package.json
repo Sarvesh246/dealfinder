@@ -1,0 +1,7 @@
+{
+  "name": "deal-finder",
+  "private": true,
+  "scripts": {
+    "dev": "python app.py"
+  }
+}

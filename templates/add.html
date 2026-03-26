@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+{% block title %}Find Deals — PricePulse{% endblock %}
+
+{% block head %}
+<style>
+  /* ── Add-product page ────────────────────────────────────────────── */
+  .add-outer { display: flex; justify-content: center; }
+
+  .add-card {
+    width: 100%; max-width: 520px; padding: 36px;
+    border-radius: var(--radius);
+  }
+
+  .back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--text-secondary);
+    margin-bottom: 20px; transition: color 180ms ease;
+  }
+  .back-link:hover { color: var(--text-primary); }
+
+  .add-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: 24px;
+    font-weight: 700; color: var(--text-primary);
+    margin-bottom: 6px; line-height: 1.2;
+  }
+  .add-subtitle {
+    font-size: 14px; color: var(--text-secondary); margin-bottom: 28px;
+  }
+
+  /* Form */
+  .form-stack { display: flex; flex-direction: column; gap: 20px; }
+  .field { display: flex; flex-direction: column; gap: 7px; }
+
+  .field-label {
+    font-size: 12px; font-weight: 600; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--text-secondary);
+  }
+
+  .field-input {
+    width: 100%; background: rgba(255,255,255,0.05);
+    border: 1px solid var(--glass-border); border-radius: var(--radius-sm);
+    padding: 12px 16px; color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif; font-size: 14px; outline: none;
+    transition: border-color 180ms ease, box-shadow 180ms ease;
+    -webkit-appearance: none; appearance: none;
+  }
+  .field-input::placeholder { color: var(--text-muted); }
+  .field-input:focus {
+    border-color: var(--accent-purple);
+    box-shadow: 0 0 0 3px rgba(124,92,252,0.15);
+  }
+
+  /* Price field */
+  .price-field-wrap { position: relative; display: flex; align-items: center; }
+  .price-prefix {
+    position: absolute; left: 16px; font-size: 14px; font-weight: 600;
+    color: var(--text-secondary); pointer-events: none;
+    font-family: 'Space Grotesk', sans-serif; z-index: 1;
+  }
+  .field-input.price-input { padding-left: 30px; }
+
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  input[type=number] { -moz-appearance: textfield; }
+
+  .field-hint { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  /* ── Source chips ────────────────────────────────────────────────── */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); border: 0;
+  }
+
+  .source-chips {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+
+  .source-chip {
+    display: flex; align-items: center; gap: 8px;
+    padding: 11px 14px; border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border);
+    color: var(--text-muted); cursor: pointer;
+    transition: all 200ms ease; user-select: none;
+  }
+  .source-chip:hover {
+    background: rgba(255,255,255,0.06);
+    border-color: rgba(255,255,255,0.12);
+  }
+
+  .sr-only:checked + .source-chip {
+    background: rgba(124,92,252,0.15);
+    border-color: rgba(124,92,252,0.4);
+    color: var(--text-primary);
+    box-shadow: 0 0 16px rgba(124,92,252,0.1);
+  }
+
+  .chip-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; opacity: 0.5; transition: opacity 200ms ease;
+  }
+  .sr-only:checked + .source-chip .chip-dot { opacity: 1; }
+
+  .chip-name { font-size: 13px; font-weight: 500; }
+
+  .source-chips-all {
+    grid-column: 1 / -1;
+  }
+  .all-chip {
+    border-style: dashed;
+    font-weight: 600;
+  }
+  .source-chips--all-mode .source-chip:not(.all-chip) {
+    opacity: 0.42;
+    pointer-events: none;
+  }
+
+  /* Submit */
+  .btn-submit { width: 100%; height: 48px; font-size: 14px; margin-top: 8px; }
+
+  /* ── Loading state ───────────────────────────────────────────────── */
+  .loading-overlay {
+    display: none; flex-direction: column; align-items: center;
+    justify-content: center; padding: 48px 24px; gap: 16px; text-align: center;
+  }
+  .loading-overlay.active { display: flex; }
+
+  .loading-dots { display: flex; gap: 6px; }
+  .loading-dots span {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent-purple); opacity: 0.3;
+    animation: dotPulse 1.4s ease-in-out infinite;
+  }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes dotPulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50%      { opacity: 1;   transform: scale(1.1); }
+  }
+
+  .loading-text {
+    font-size: 15px; font-weight: 500; color: var(--text-secondary);
+  }
+  .loading-sub { font-size: 13px; color: var(--text-muted); }
+
+  /* ── Responsive ──────────────────────────────────────────────────── */
+  @media (max-width: 639px) {
+    .add-card { padding: 24px 16px; }
+    .source-chips { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- PricePulse add UI: discovery (no product URL field). If you do not see this in View Source, you are not hitting this server. -->
+<div class="add-outer">
+  <div class="card add-card fade-in">
+
+    <!-- Back link -->
+    <a href="{{ url_for('index') }}" class="back-link">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+      Back to Dashboard
+    </a>
+
+    <h1 class="add-title">Find the Best Deals</h1>
+    <p class="add-subtitle">Enter a product name and we'll search across multiple stores for the best prices.</p>
+
+    <!-- Form content (hidden when loading) -->
+    <div id="form-content">
+      <form method="POST" action="{{ url_for('add_product_route') }}" class="form-stack" id="add-form">
+
+        <!-- Product Name -->
+        <div class="field">
+          <label class="field-label" for="name">Product Name <span style="color:var(--price-bad)">*</span></label>
+          <input
+            class="field-input" type="text" id="name" name="name"
+            placeholder="e.g. Sony WH-1000XM5 Headphones"
+            maxlength="200" autocomplete="off" required
+          />
+          <span class="field-hint">Be specific for best results — include brand, model, and variant.</span>
+        </div>
+
+        <!-- Target Price -->
+        <div class="field">
+          <label class="field-label" for="target_price">Target Price <span style="color:var(--price-bad)">*</span></label>
+          <div class="price-field-wrap">
+            <span class="price-prefix">$</span>
+            <input
+              class="field-input price-input" type="number" id="target_price"
+              name="target_price" placeholder="0.00" step="0.01" min="0.01" required
+            />
+          </div>
+          <span class="field-hint">You'll be alerted when any source drops to or below this price.</span>
+        </div>
+
+        <!-- Sources to Search -->
+        <div class="field">
+          <label class="field-label">Sources to Search</label>
+          <div class="source-chips" id="source-chips">
+            <div class="source-chips-all">
+              <input type="checkbox" name="search_all_sources" value="1" id="search-all-sources" class="sr-only" />
+              <label for="search-all-sources" class="source-chip all-chip">
+                <span class="chip-dot" style="background:linear-gradient(135deg,var(--accent-purple),var(--accent-blue))"></span>
+                <span class="chip-name">All sources</span>
+              </label>
+            </div>
+            {% for s in sources | default([], true) %}
+            <input type="checkbox" name="source_ids" value="{{ s.id }}" id="source-{{ s.id }}"
+                   class="sr-only source-id-cb" {% if s.enabled %}checked{% endif %}
+                   data-name="{{ s.name }}" />
+            <label for="source-{{ s.id }}" class="source-chip">
+              <span class="chip-dot" style="background:{{ s.logo_color | default('#7C5CFC') }}"></span>
+              <span class="chip-name">{{ s.name }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          <span class="field-hint"><strong>All sources</strong> runs discovery on every store in the registry (including ones hidden from default filters). Otherwise pick individual stores.</span>
+        </div>
+
+        <!-- Submit -->
+        <button type="submit" class="btn-primary btn-submit" id="submit-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          Find Deals
+        </button>
+
+      </form>
+    </div>
+
+    <!-- Loading overlay (shown after submit) -->
+    <div class="loading-overlay" id="loading-state">
+      <div class="loading-dots">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="loading-text" id="loading-text">Finding the best results...</div>
+      <div class="loading-sub" id="loading-sub">This may take a couple minutes while we check each store.</div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById('add-form');
+  var formContent = document.getElementById('form-content');
+  var loadingState = document.getElementById('loading-state');
+  var loadingText  = document.getElementById('loading-text');
+  var loadingSub   = document.getElementById('loading-sub');
+  var chipWrap = document.getElementById('source-chips');
+  var allInput = document.getElementById('search-all-sources');
+  var loadingTimer = null;
+
+  if (!form) return;
+
+  function sourceIdInputs() {
+    return form.querySelectorAll('input.source-id-cb');
+  }
+
+  function applyAllMode(on) {
+    if (!chipWrap || !allInput) return;
+    chipWrap.classList.toggle('source-chips--all-mode', on);
+    sourceIdInputs().forEach(function (inp) {
+      inp.disabled = on;
+      if (on) inp.checked = false;
+    });
+  }
+
+  if (allInput) {
+    allInput.addEventListener('change', function () {
+      applyAllMode(allInput.checked);
+    });
+  }
+
+  sourceIdInputs().forEach(function (inp) {
+    inp.addEventListener('change', function () {
+      if (inp.checked && allInput) allInput.checked = false;
+      if (allInput && !allInput.checked) applyAllMode(false);
+    });
+  });
+
+  function buildLoadingMessages(names, useAll) {
+    var messages = ['Finding the best results...'];
+    if (useAll) {
+      messages.push(names.length ? 'Checking all ' + names.length + ' stores...' : 'Checking registered stores...');
+    } else if (names.length > 1) {
+      messages.push('Checking ' + names.length + ' stores...');
+    }
+    names.slice(0, 4).forEach(function (name) {
+      messages.push('Scanning ' + name + '...');
+    });
+    messages.push('Filtering out weak matches...');
+    messages.push('Verifying product pages...');
+    messages.push('Comparing prices across stores...');
+    messages.push('Wrapping things up...');
+    return messages;
+  }
+
+  function startLoadingMessages(names, useAll) {
+    var messages = buildLoadingMessages(names, useAll);
+    var idx = 0;
+    if (loadingTimer) window.clearInterval(loadingTimer);
+    if (loadingSub) {
+      loadingSub.textContent = 'This may take a couple minutes while we check each store.';
+    }
+    loadingText.textContent = messages[0];
+    loadingTimer = window.setInterval(function () {
+      idx = (idx + 1) % messages.length;
+      loadingText.textContent = messages[idx];
+    }, 2200);
+  }
+
+  form.addEventListener('submit', function (e) {
+    var useAll = allInput && allInput.checked;
+    if (!useAll) {
+      var any = false;
+      sourceIdInputs().forEach(function (inp) {
+        if (!inp.disabled && inp.checked) any = true;
+      });
+      if (!any) {
+        e.preventDefault();
+        alert('Select at least one store, or turn on All sources.');
+        return;
+      }
+    }
+
+    var names = [];
+    if (useAll) {
+      sourceIdInputs().forEach(function (el) {
+        names.push(el.getAttribute('data-name'));
+      });
+    } else {
+      form.querySelectorAll('input[name="source_ids"]:checked').forEach(function (el) {
+        names.push(el.getAttribute('data-name'));
+      });
+    }
+
+    formContent.style.display = 'none';
+    loadingState.classList.add('active');
+    startLoadingMessages(names, useAll);
+  });
+})();
+</script>
+{% endblock %}
