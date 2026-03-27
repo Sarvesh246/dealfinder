@@ -144,6 +144,88 @@ def test_dashboard_cards_link_to_product_detail(tmp_path, monkeypatch):
     assert 'role="link"' in html
 
 
+def test_bestbuy_links_use_redirect_routes_and_copy_fallback(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    product_id = database.add_product("PlayStation 5 Slim Console", 499.99)
+    ps_id = database.add_product_source(
+        product_id,
+        2,
+        discovered_url="https://www.bestbuy.com/product/playstation-5-slim-console-1tb-playstation-5/JXHQ37TYLC?utm_source=test",
+        current_price=499.99,
+        status="deal_found",
+        verification_state="verified",
+        health_state="healthy",
+    )
+    search_id = database.create_discovery_search("playstation 5", None, 550.0)
+    database.add_discovery_result(
+        search_id,
+        2,
+        "PlayStation 5 Slim Console – 1TB - PlayStation 5",
+        499.99,
+        None,
+        0,
+        "https://www.bestbuy.com/product/playstation-5-slim-console-1tb-playstation-5/JXHQ37TYLC?utm_source=test",
+        relevance_score=88,
+        deal_score=21,
+        discount_confirmed=0,
+        verification_label="verified_related",
+    )
+    result_id = database.get_discovery_results(search_id)[0]["id"]
+
+    client = app_module.app.test_client()
+
+    dashboard = client.get("/")
+    dashboard_html = dashboard.get_data(as_text=True)
+    assert f'href="/open/source/{ps_id}"' in dashboard_html
+    assert 'data-copy-url="https://www.bestbuy.com/product/playstation-5-slim-console-1tb-playstation-5/JXHQ37TYLC"' in dashboard_html
+
+    product_page = client.get(f"/product/{product_id}")
+    product_html = product_page.get_data(as_text=True)
+    assert f'href="/open/source/{ps_id}"' in product_html
+    assert "try the copied link in another browser" in product_html.lower()
+
+    discovery = client.get(f"/discover/results/{search_id}")
+    discovery_html = discovery.get_data(as_text=True)
+    assert f'href="/open/discovery-result/{result_id}"' in discovery_html
+    assert 'data-copy-url="https://www.bestbuy.com/product/playstation-5-slim-console-1tb-playstation-5/JXHQ37TYLC"' in discovery_html
+
+    open_source = client.get(f"/open/source/{ps_id}")
+    assert open_source.status_code == 302
+    assert (
+        open_source.headers["Location"]
+        == "https://www.bestbuy.com/product/playstation-5-slim-console-1tb-playstation-5/JXHQ37TYLC"
+    )
+
+    open_discovery = client.get(f"/open/discovery-result/{result_id}")
+    assert open_discovery.status_code == 302
+    assert (
+        open_discovery.headers["Location"]
+        == "https://www.bestbuy.com/product/playstation-5-slim-console-1tb-playstation-5/JXHQ37TYLC"
+    )
+
+
+def test_non_bestbuy_source_redirect_stays_direct(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    product_id = database.add_product("Apple AirPods Pro 3", 199.0)
+    ps_id = database.add_product_source(
+        product_id,
+        1,
+        discovered_url="https://www.amazon.com/dp/B0001?tag=test",
+        current_price=199.0,
+        status="deal_found",
+        verification_state="verified",
+        health_state="healthy",
+    )
+
+    client = app_module.app.test_client()
+    response = client.get(f"/open/source/{ps_id}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"] == "https://www.amazon.com/dp/B0001"
+
+
 def test_manual_check_route_has_ip_cooldown(tmp_path, monkeypatch):
     _, app_module = _load_test_app(tmp_path, monkeypatch)
     calls = {"count": 0}

@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import parse_qsl, quote_plus, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -1671,12 +1671,108 @@ def _abs(href: str, base: str) -> str:
 def _canonical_listing_url(url: str) -> str:
     if not url:
         return ""
-    u = url.split("/ref=")[0].split("?")[0].rstrip("/")
-    return u
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+
+    if "/ref=" in raw:
+        raw = raw.split("/ref=", 1)[0]
+
+    parsed = urlparse(raw)
+    host = (parsed.netloc or "").lower()
+    if "bestbuy.com" in host or raw.startswith("/product/") or raw.startswith("/site/"):
+        return _canonical_bestbuy_listing_url(raw)
+
+    return raw.split("?")[0].split("#")[0].rstrip("/")
 
 
 def canonicalize_listing_url(url: str) -> str:
     return _canonical_listing_url((url or "").strip())
+
+
+def _canonical_bestbuy_listing_url(url: str) -> str:
+    parsed = urlparse(url)
+    host = (parsed.netloc or "").lower()
+    path = (parsed.path or "").strip()
+    if not host:
+        host = "www.bestbuy.com"
+    elif host == "bestbuy.com":
+        host = "www.bestbuy.com"
+
+    path = re.sub(r"/+", "/", path).rstrip("/")
+    if "/ref=" in path:
+        path = path.split("/ref=", 1)[0].rstrip("/")
+
+    keep_query: list[tuple[str, str]] = []
+    if path.startswith("/site/"):
+        keep_query = [
+            (key, value)
+            for key, value in parse_qsl(parsed.query, keep_blank_values=False)
+            if key.lower() == "skuid" and value
+        ]
+
+    return urlunparse(
+        (
+            "https",
+            host,
+            path,
+            "",
+            urlencode(keep_query, doseq=True),
+            "",
+        )
+    )
+
+
+def _bestbuy_extract_sku_hint(*nodes) -> str | None:
+    for node in nodes:
+        if not node:
+            continue
+        scan_nodes = [node]
+        parent = getattr(node, "parent", None)
+        for _ in range(6):
+            if not parent or getattr(parent, "name", None) == "body":
+                break
+            scan_nodes.append(parent)
+            parent = getattr(parent, "parent", None)
+
+        candidates = []
+        for scan_node in scan_nodes:
+            candidates.extend([
+                scan_node.get("data-sku-id"),
+                scan_node.get("data-product-id"),
+                scan_node.get("data-sku"),
+                scan_node.get("data-testid"),
+                scan_node.get("sku"),
+            ])
+        for child in node.select("[data-sku-id], [data-product-id], [data-sku], [data-testid], [sku]"):
+            candidates.extend([
+                child.get("data-sku-id"),
+                child.get("data-product-id"),
+                child.get("data-sku"),
+                child.get("data-testid"),
+                child.get("sku"),
+            ])
+        for candidate in candidates:
+            if not candidate:
+                continue
+            match = re.search(r"\b(\d{5,12})\b", str(candidate))
+            if match:
+                return match.group(1)
+    return None
+
+
+def _bestbuy_canonicalize_extracted_url(url: str, *nodes) -> str:
+    canonical = _canonical_bestbuy_listing_url(url)
+    if not canonical:
+        return canonical
+    parsed = urlparse(canonical)
+    path = parsed.path.rstrip("/")
+    if not path.startswith("/product/") or "/sku/" in path:
+        return canonical
+    sku_hint = _bestbuy_extract_sku_hint(*nodes)
+    if not sku_hint:
+        return canonical
+    return urlunparse(("https", "www.bestbuy.com", f"{path}/sku/{sku_hint}", "", "", ""))
 
 
 _DIRECT_NON_PRODUCT_PATHS = (
@@ -2397,7 +2493,7 @@ def _bestbuy_one_row(
     href = _abs(link.get("href", ""), base)
     if not _bestbuy_is_product_listing_url(href):
         return None
-    href = href.split("/ref=")[0]
+    href = _bestbuy_canonicalize_extracted_url(href, tile, link)
     name = link.get_text(" ", strip=True) or ""
     if len(name) < 3:
         inner = link.select_one("span.nc-product-title, span.line-clamp-3")

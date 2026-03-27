@@ -174,6 +174,37 @@
     display: inline-block;
     margin-bottom: 5px;
   }
+  .source-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 5px;
+  }
+  .source-copy-btn {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 180ms ease;
+    font-family: inherit;
+  }
+  .source-copy-btn:hover {
+    color: var(--text-primary);
+    border-color: rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.08);
+  }
+  .source-help-note {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-bottom: 6px;
+  }
   .source-card-copy {
     font-size: 11px;
     color: var(--text-muted);
@@ -378,7 +409,20 @@
       {% endif %}
 
       {% if ps.discovered_url %}
-        <a href="{{ ps.discovered_url }}" target="_blank" rel="noopener noreferrer" class="source-card-link">{{ ps.discovered_url }}</a>
+        <div class="source-card-actions">
+          <a href="{{ open_product_source_url(ps) }}" target="_blank" rel="noopener noreferrer" class="source-card-link">{{ canonical_external_url(ps.discovered_url) }}</a>
+          {% if is_bestbuy_external_url(ps.discovered_url, ps.domain) %}
+            <button
+              type="button"
+              class="source-copy-btn"
+              data-copy-url="{{ canonical_external_url(ps.discovered_url) }}"
+              aria-label="Copy Best Buy link for {{ product.name or ps.source_name }}"
+            >Copy Link</button>
+          {% endif %}
+        </div>
+        {% if is_bestbuy_external_url(ps.discovered_url, ps.domain) %}
+          <div class="source-help-note">If Best Buy blocks this browser session, try the copied link in another browser.</div>
+        {% endif %}
       {% endif %}
 
       <div class="source-card-copy">
@@ -454,4 +498,27 @@
     </div>
     {% endif %}
   </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    document.querySelectorAll("[data-copy-url]").forEach(function (button) {
+      button.addEventListener("click", async function () {
+        var copyUrl = button.getAttribute("data-copy-url");
+        if (!copyUrl) return;
+        try {
+          await navigator.clipboard.writeText(copyUrl);
+          var original = button.textContent;
+          button.textContent = "Copied";
+          window.setTimeout(function () {
+            button.textContent = original;
+          }, 1400);
+        } catch (error) {
+          window.prompt("Copy this link:", copyUrl);
+        }
+      });
+    });
+  })();
+</script>
 {% endblock %}

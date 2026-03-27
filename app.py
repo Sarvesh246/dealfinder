@@ -1193,6 +1193,46 @@ def pct_away(current, target, alert_mode="target_threshold") -> str:
     return f"{pct}% away from target"
 
 
+def canonical_external_url(url: str | None) -> str:
+    cleaned = canonicalize_listing_url(url or "") or (url or "").strip()
+    parsed = urlparse(cleaned)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return cleaned
+
+
+def external_domain(url: str | None, fallback: str | None = None) -> str:
+    if fallback:
+        domain = fallback.lower()
+    else:
+        domain = (urlparse(url or "").netloc or "").lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain
+
+
+def is_bestbuy_external_url(url: str | None, fallback: str | None = None) -> bool:
+    return external_domain(url, fallback=fallback) == "bestbuy.com"
+
+
+def open_product_source_url(product_source) -> str:
+    ps_id = None
+    if isinstance(product_source, dict):
+        ps_id = product_source.get("id")
+    elif hasattr(product_source, "keys"):
+        ps_id = product_source["id"]
+    return url_for("open_product_source", product_source_id=ps_id) if ps_id else "#"
+
+
+def open_discovery_result_url(result) -> str:
+    result_id = None
+    if isinstance(result, dict):
+        result_id = result.get("id")
+    elif hasattr(result, "keys"):
+        result_id = result["id"]
+    return url_for("open_discovery_result", result_id=result_id) if result_id else "#"
+
+
 app.jinja_env.filters["relative_time"] = format_relative_time
 app.jinja_env.filters["format_price"] = format_price
 app.jinja_env.globals.update(
@@ -1201,7 +1241,93 @@ app.jinja_env.globals.update(
     progress_pct=progress_pct,
     pct_away=pct_away,
     format_relative_time=format_relative_time,
+    canonical_external_url=canonical_external_url,
+    external_domain=external_domain,
+    is_bestbuy_external_url=is_bestbuy_external_url,
+    open_product_source_url=open_product_source_url,
+    open_discovery_result_url=open_discovery_result_url,
 )
+
+
+# ---------------------------------------------------------------------------
+# Routes — External source redirects
+# ---------------------------------------------------------------------------
+
+def _redirect_back_or(endpoint: str, **values):
+    target = request.referrer
+    if target:
+        return redirect(target)
+    return redirect(url_for(endpoint, **values))
+
+
+def _final_outbound_url(raw_url: str | None) -> str:
+    return canonical_external_url(raw_url)
+
+
+@app.route("/open/source/<int:product_source_id>")
+def open_product_source(product_source_id):
+    product_source = get_product_source_by_id(product_source_id)
+    if not product_source or not product_source["discovered_url"]:
+        flash("That source link is no longer available.", "error")
+        return _redirect_back_or("index")
+
+    original_url = product_source["discovered_url"]
+    final_url = _final_outbound_url(original_url)
+    if not final_url:
+        log_event(
+            "source.redirect",
+            outcome="invalid_url",
+            source_kind="product_source",
+            product_source_id=product_source_id,
+            original_url=original_url,
+        )
+        flash("That source link is malformed and could not be opened.", "error")
+        return _redirect_back_or("product_detail", product_id=product_source["product_id"])
+
+    log_event(
+        "source.redirect",
+        outcome="redirect",
+        source_kind="product_source",
+        product_source_id=product_source_id,
+        product_id=product_source["product_id"],
+        source_id=product_source["source_id"],
+        domain=external_domain(final_url, fallback=product_source["domain"]),
+        canonicalized=(final_url != (original_url or "").strip()),
+    )
+    return redirect(final_url, code=302)
+
+
+@app.route("/open/discovery-result/<int:result_id>")
+def open_discovery_result(result_id):
+    result = get_discovery_result_by_id(result_id)
+    if not result or not result["product_url"]:
+        flash("That result link is no longer available.", "error")
+        return _redirect_back_or("discover_page")
+
+    original_url = result["product_url"]
+    final_url = _final_outbound_url(original_url)
+    if not final_url:
+        log_event(
+            "source.redirect",
+            outcome="invalid_url",
+            source_kind="discovery_result",
+            discovery_result_id=result_id,
+            original_url=original_url,
+        )
+        flash("That result link is malformed and could not be opened.", "error")
+        return _redirect_back_or("discover_results", search_id=result["search_id"])
+
+    log_event(
+        "source.redirect",
+        outcome="redirect",
+        source_kind="discovery_result",
+        discovery_result_id=result_id,
+        search_id=result["search_id"],
+        source_id=result["source_id"],
+        domain=external_domain(final_url),
+        canonicalized=(final_url != (original_url or "").strip()),
+    )
+    return redirect(final_url, code=302)
 
 
 # ---------------------------------------------------------------------------

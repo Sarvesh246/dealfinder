@@ -77,6 +77,30 @@
     text-underline-offset: 3px; transition: color 180ms ease;
   }
   .pc-best-store-link:hover { color: var(--text-primary); }
+  .pc-best-store-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .copy-link-btn {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 180ms ease;
+    font-family: inherit;
+  }
+  .copy-link-btn:hover {
+    color: var(--text-primary);
+    border-color: rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.08);
+  }
   .pc-best-away { font-size: 13px; color: var(--text-muted); margin-left: auto; }
   .pc-best-away.reached { color: var(--price-good); font-weight: 600; }
   .pc-best-none { font-size: 14px; color: var(--text-muted); font-style: italic; }
@@ -270,7 +294,17 @@
           </span>
           <span class="pc-best-source">on
             {% if best.discovered_url %}
-              <a href="{{ best.discovered_url }}" target="_blank" rel="noopener noreferrer" class="pc-best-store-link">{{ best.source_name }}</a>
+              <span class="pc-best-store-actions">
+                <a href="{{ open_product_source_url(best) }}" target="_blank" rel="noopener noreferrer" class="pc-best-store-link">{{ best.source_name }}</a>
+                {% if is_bestbuy_external_url(best.discovered_url, best.domain) %}
+                  <button
+                    type="button"
+                    class="copy-link-btn"
+                    data-copy-url="{{ canonical_external_url(best.discovered_url) }}"
+                    aria-label="Copy Best Buy link for {{ p.name or best.source_name }}"
+                  >Copy Link</button>
+                {% endif %}
+              </span>
             {% else %}
               {{ best.source_name }}
             {% endif %}
@@ -320,7 +354,17 @@
           <span class="source-dot" style="background:{% if s.status in ['not_found','error'] %}var(--text-muted){% else %}{{ s.logo_color | default('#7C5CFC') }}{% endif %}"></span>
           <span class="source-name">
             {% if s.discovered_url and s.current_price and s.status not in ['not_found','error'] %}
-              <a href="{{ s.discovered_url }}" target="_blank" rel="noopener noreferrer" class="source-name-link">{{ s.source_name }}</a>
+              <span class="pc-best-store-actions">
+                <a href="{{ open_product_source_url(s) }}" target="_blank" rel="noopener noreferrer" class="source-name-link">{{ s.source_name }}</a>
+                {% if is_bestbuy_external_url(s.discovered_url, s.domain) %}
+                  <button
+                    type="button"
+                    class="copy-link-btn"
+                    data-copy-url="{{ canonical_external_url(s.discovered_url) }}"
+                    aria-label="Copy Best Buy link for {{ p.name or s.source_name }}"
+                  >Copy Link</button>
+                {% endif %}
+              </span>
             {% else %}
               {{ s.source_name }}
             {% endif %}
@@ -390,6 +434,25 @@
 {% block scripts %}
 <script>
   (function () {
+    document.querySelectorAll("[data-copy-url]").forEach(function (button) {
+      button.addEventListener("click", async function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var copyUrl = button.getAttribute("data-copy-url");
+        if (!copyUrl) return;
+        try {
+          await navigator.clipboard.writeText(copyUrl);
+          var original = button.textContent;
+          button.textContent = "Copied";
+          window.setTimeout(function () {
+            button.textContent = original;
+          }, 1400);
+        } catch (error) {
+          window.prompt("Copy this link:", copyUrl);
+        }
+      });
+    });
+
     function shouldIgnoreClick(target) {
       return !!target.closest("a, button, form, input, select, textarea, label");
     }

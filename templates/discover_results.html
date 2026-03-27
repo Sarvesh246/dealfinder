@@ -311,6 +311,12 @@
     gap: 12px; padding-top: 14px;
     border-top: 1px solid rgba(255,255,255,0.05);
   }
+  .result-link-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
 
   .result-view-link {
     font-size: 13px; color: var(--accent-blue);
@@ -318,6 +324,30 @@
     transition: opacity 180ms ease;
   }
   .result-view-link:hover { opacity: 0.8; }
+  .result-copy-btn {
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 180ms ease;
+    font-family: inherit;
+  }
+  .result-copy-btn:hover {
+    color: var(--text-primary);
+    border-color: rgba(255,255,255,0.18);
+    background: rgba(255,255,255,0.08);
+  }
+  .result-help-note {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
 
   .track-form { margin: 0; }
   .track-btn {
@@ -530,9 +560,19 @@
       {% endif %}
 
       <div class="result-bottom">
-        <a href="{{ r.product_url }}" target="_blank" rel="noopener noreferrer" class="result-view-link">
-          View on {{ r.source_name }} ↗
-        </a>
+        <div class="result-link-actions">
+          <a href="{{ open_discovery_result_url(r) }}" target="_blank" rel="noopener noreferrer" class="result-view-link">
+            View on {{ r.source_name }} ↗
+          </a>
+          {% if is_bestbuy_external_url(r.product_url) %}
+            <button
+              type="button"
+              class="result-copy-btn"
+              data-copy-url="{{ canonical_external_url(r.product_url) }}"
+              aria-label="Copy Best Buy link for {{ r.product_name }}"
+            >Copy Link</button>
+          {% endif %}
+        </div>
         <form method="POST" action="{{ url_for('discover_track', result_id=r.id) }}" class="track-form">
           <button type="submit" class="track-btn">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -543,6 +583,9 @@
           </button>
         </form>
       </div>
+      {% if is_bestbuy_external_url(r.product_url) %}
+      <div class="result-help-note">If Best Buy blocks this browser session, try the copied link in another browser.</div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
@@ -570,6 +613,23 @@
 {% block scripts %}
 <script>
 (function () {
+  document.querySelectorAll("[data-copy-url]").forEach(function (button) {
+    button.addEventListener("click", async function () {
+      var copyUrl = button.getAttribute("data-copy-url");
+      if (!copyUrl) return;
+      try {
+        await navigator.clipboard.writeText(copyUrl);
+        var original = button.textContent;
+        button.textContent = "Copied";
+        window.setTimeout(function () {
+          button.textContent = original;
+        }, 1400);
+      } catch (error) {
+        window.prompt("Copy this link:", copyUrl);
+      }
+    });
+  });
+
   var grid = document.getElementById('results-grid');
   if (!grid) return;
 

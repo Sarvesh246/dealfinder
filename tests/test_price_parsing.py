@@ -182,6 +182,35 @@ def test_bestbuy_product_listing_url_accepts_modern_product_paths():
     assert scraper._bestbuy_is_product_listing_url("/product/apple-airpods-pro-3-white/JJGCQLYK5F")
 
 
+def test_bestbuy_canonicalize_listing_url_preserves_site_skuid_and_strips_tracking():
+    assert (
+        scraper.canonicalize_listing_url(
+            "https://www.bestbuy.com/site/example-product.p?skuId=1234567&utm_source=test#frag"
+        )
+        == "https://www.bestbuy.com/site/example-product.p?skuId=1234567"
+    )
+
+
+def test_bestbuy_canonicalize_listing_url_enriches_modern_product_path_with_sku_hint():
+    soup = BeautifulSoup(
+        """
+        <li class="product-list-item" data-product-id="6376563" data-testid="6376563">
+            <a class="product-list-item-link" href="https://www.bestbuy.com/product/apple-airpods-pro-3-white/JJGCQLYK5F">
+                Apple - AirPods Pro 3, Wireless Active Noise Cancelling Earbuds - White
+            </a>
+            <div class="pricing-copy"><span>$199.99</span></div>
+        </li>
+        """,
+        "html.parser",
+    )
+
+    tile = soup.select_one("li")
+    link = soup.select_one("a")
+    url = scraper._bestbuy_canonicalize_extracted_url(link["href"], tile, link)
+
+    assert url == "https://www.bestbuy.com/product/apple-airpods-pro-3-white/JJGCQLYK5F/sku/6376563"
+
+
 def test_extract_price_from_soup_ignores_lower_renewed_offer_for_new_tracker():
     soup = BeautifulSoup(
         """
