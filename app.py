@@ -11,9 +11,10 @@ import json
 import logging
 import os
 import secrets
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
-from threading import Thread
+from threading import Lock, Thread
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
@@ -84,6 +85,10 @@ from scraper import (
 DISCOVERY_SOURCE_WORKERS = int(os.getenv("DISCOVERY_SOURCE_WORKERS", "4"))
 STRICT_SOURCE_WORKERS = int(os.getenv("STRICT_SOURCE_WORKERS", "4"))
 DISCOVERY_VERIFY_WORKERS = int(os.getenv("DISCOVERY_VERIFY_WORKERS", "4"))
+CHECK_COOLDOWN_SECONDS = int(os.getenv("CHECK_COOLDOWN_SECONDS", "60"))
+TRACK_RESULT_COOLDOWN_SECONDS = int(os.getenv("TRACK_RESULT_COOLDOWN_SECONDS", "5"))
+_COOLDOWN_LOCK = Lock()
+_COOLDOWN_STATE: dict[tuple[str, str, str], float] = {}
 
 
 def _first_discover_listing(rows):
@@ -415,6 +420,33 @@ app = Flask(
 app.secret_key = os.getenv("SECRET_KEY", "pricepulse-change-me-in-production")
 
 
+def _client_ip() -> str:
+    forwarded = request.headers.get("X-Forwarded-For", "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return (request.remote_addr or "unknown").strip() or "unknown"
+
+
+def _cooldown_key(bucket: str, extra: str = "") -> tuple[str, str, str]:
+    return (bucket, _client_ip(), extra)
+
+
+def _consume_cooldown(bucket: str, seconds: int, *, extra: str = "") -> bool:
+    if seconds <= 0:
+        return False
+    now = time.monotonic()
+    key = _cooldown_key(bucket, extra)
+    with _COOLDOWN_LOCK:
+        expires_at = _COOLDOWN_STATE.get(key, 0.0)
+        if expires_at > now:
+            return True
+        _COOLDOWN_STATE[key] = now + seconds
+        stale_keys = [k for k, expires in _COOLDOWN_STATE.items() if expires <= now]
+        for stale_key in stale_keys:
+            _COOLDOWN_STATE.pop(stale_key, None)
+    return False
+
+
 def _ensure_database_at_startup():
     """Run even under gunicorn (not only `python app.py`) so sources are always seeded."""
     with app.app_context():
@@ -492,7 +524,22 @@ _CHIP_CSS = """
     transition: all 200ms ease; user-select: none;
     font-size: 13px; font-weight: 500;
   }
-  .source-chip input[type="checkbox"] { display: none; }
+  .source-chip input[type="checkbox"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .source-chip:focus-within {
+    outline: 2px solid rgba(58, 159, 255, 0.95);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(58, 159, 255, 0.15);
+  }
   .source-chip.off {
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.08);
@@ -512,13 +559,20 @@ _CHIP_CSS = """
 _CHIP_JS = """
 <script>
 (function(){
+  function syncChip(chip) {
+    if (!chip) return;
+    var cb = chip.querySelector('input[type="checkbox"]');
+    if (!cb) return;
+    chip.classList.toggle('on', cb.checked);
+    chip.classList.toggle('off', !cb.checked);
+  }
+
   document.querySelectorAll('.source-chip').forEach(function(chip){
-    chip.addEventListener('click', function(e){
-      if(e.target.tagName==='INPUT') return;
-      var cb=chip.querySelector('input[type="checkbox"]');
-      cb.checked=!cb.checked;
-      chip.classList.toggle('on',cb.checked);
-      chip.classList.toggle('off',!cb.checked);
+    var cb = chip.querySelector('input[type="checkbox"]');
+    syncChip(chip);
+    if (!cb) return;
+    cb.addEventListener('change', function(){
+      syncChip(chip);
     });
   });
 })();
@@ -1994,6 +2048,19 @@ def discover_track(result_id):
         return redirect(url_for("discover_page"))
 
     result = dict(result)
+    if _consume_cooldown(
+        "discover_track",
+        TRACK_RESULT_COOLDOWN_SECONDS,
+        extra=str(result_id),
+    ):
+        flash(
+            "That result is already being processed. Please wait a moment before tracking it again.",
+            "info",
+        )
+        if result.get("search_id"):
+            return redirect(url_for("discover_results", search_id=result["search_id"]))
+        return redirect(url_for("discover_page"))
+
     search = get_discovery_search(result["search_id"]) if result.get("search_id") else None
     search = dict(search) if search else None
     spec, tracking_name = _promoted_tracking_spec(search, result)
@@ -2108,6 +2175,9 @@ def manual_check():
     if not _manual_check_authorized():
         logging.warning(f"[{datetime.now()}] /check rejected: unauthorized")
         flash("Not authorized to run a price check.", "error")
+        return redirect(url_for("index"))
+    if _consume_cooldown("manual_check", CHECK_COOLDOWN_SECONDS):
+        flash("A full price check just ran. Please wait a minute before starting another one.", "info")
         return redirect(url_for("index"))
     try:
         check_all_products()

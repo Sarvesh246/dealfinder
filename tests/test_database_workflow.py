@@ -210,3 +210,28 @@ def test_discovery_results_order_exact_then_named_then_category_then_related(tmp
         "category_primary",
         "related",
     ]
+
+
+def test_init_db_creates_read_path_indexes(tmp_path, monkeypatch):
+    import database
+
+    db_file = tmp_path / "price_tracker_test.db"
+    monkeypatch.setattr(database, "DB_PATH", str(db_file))
+    importlib.reload(database)
+    monkeypatch.setattr(database, "DB_PATH", str(db_file))
+    database.init_db()
+
+    conn = database.get_connection()
+    try:
+        product_sources_indexes = {row["name"] for row in conn.execute("PRAGMA index_list(product_sources)").fetchall()}
+        price_history_indexes = {row["name"] for row in conn.execute("PRAGMA index_list(price_history)").fetchall()}
+        discovery_indexes = {row["name"] for row in conn.execute("PRAGMA index_list(discovery_results)").fetchall()}
+        product_indexes = {row["name"] for row in conn.execute("PRAGMA index_list(products)").fetchall()}
+    finally:
+        conn.close()
+
+    assert "idx_product_sources_product_source" in product_sources_indexes
+    assert "idx_price_history_product_source_checked_at" in price_history_indexes
+    assert "idx_discovery_results_search_id" in discovery_indexes
+    assert "idx_products_alert_sent" in product_indexes
+    assert "idx_products_current_price" in product_indexes

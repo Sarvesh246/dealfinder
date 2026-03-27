@@ -91,6 +91,55 @@
 
   @media (max-width: 639px) {
     .history-summary { flex-direction: column; }
+    .table-card {
+      padding: 12px;
+      overflow: visible;
+    }
+    .table-card table,
+    .table-card thead,
+    .table-card tbody,
+    .table-card tr,
+    .table-card th,
+    .table-card td {
+      display: block;
+      width: 100%;
+    }
+    .table-card thead {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+    .table-card tbody {
+      display: grid;
+      gap: 12px;
+    }
+    .table-card tbody tr {
+      display: grid;
+      gap: 10px;
+      padding: 14px;
+      border: 1px solid var(--glass-border);
+      border-radius: var(--radius-sm);
+      background: rgba(255,255,255,0.03);
+    }
+    .table-card tbody tr:nth-child(even) { background: rgba(255,255,255,0.03); }
+    .table-card tbody td {
+      padding: 0;
+      display: grid;
+      gap: 4px;
+    }
+    .table-card tbody td::before {
+      content: attr(data-label);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
   }
 </style>
 {% endblock %}
@@ -169,10 +218,10 @@
         {% for row in price_history %}
         {% set diff = row.price - product.target_price %}
         <tr>
-          <td>{{ row.checked_at[:19].replace('T', ' ') }}</td>
+          <td data-label="Date Checked">{{ row.checked_at[:19].replace('T', ' ') }}</td>
 
           {% if has_sources %}
-          <td>
+          <td data-label="Source">
             <div class="td-source">
               {% if row.logo_color is defined and row.logo_color %}
                 <span class="td-dot" style="background:{{ row.logo_color }}"></span>
@@ -182,7 +231,7 @@
           </td>
           {% endif %}
 
-          <td>
+          <td data-label="Price">
             <span class="td-price
               {% if row.price <= product.target_price %}price-good
               {% elif row.price <= product.target_price * 1.10 %}price-warn
@@ -194,7 +243,7 @@
             {% endif %}
           </td>
 
-          <td>
+          <td data-label="vs Target">
             {% if diff <= 0 %}
               <span style="color:var(--price-good)">
                 ↓ ${{ "%.2f" | format(diff | abs) }} below target

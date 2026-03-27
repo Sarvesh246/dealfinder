@@ -202,6 +202,38 @@ def test_hf_relevance_cache_reuses_previous_scores(monkeypatch):
     assert [row["relevance_score"] for row in first] == [row["relevance_score"] for row in second]
 
 
+def test_hf_query_enhancement_cache_reuses_previous_response(monkeypatch):
+    engine = hf_utils.SmartEngine()
+
+    class FakeMessage:
+        content = "apple watch se"
+
+    class FakeChoice:
+        message = FakeMessage()
+
+    class FakeResponse:
+        choices = [FakeChoice()]
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = 0
+
+        def chat_completion(self, **kwargs):
+            self.calls += 1
+            return FakeResponse()
+
+    fake = FakeClient()
+    engine._client = fake
+    engine._enabled = True
+
+    first = engine.enhance_query("  apple watch se  ")
+    second = engine.enhance_query("  apple watch se  ")
+
+    assert first == "apple watch se"
+    assert second == "apple watch se"
+    assert fake.calls == 1
+
+
 def test_bestbuy_probe_html_success_skips_selenium_stages(monkeypatch):
     soup = BeautifulSoup("<html><body>bestbuy html</body></html>", "html.parser")
     source = {"domain": "bestbuy.com"}

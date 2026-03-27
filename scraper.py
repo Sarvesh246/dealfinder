@@ -2050,6 +2050,69 @@ def _amazon_listing_original_price(item) -> float | None:
     return None
 
 
+_AMAZON_SRP_PRICE_NOISE = re.compile(
+    r"(monthly|month|installment|payment|per\s+month|protection|warranty|shipping|delivery|add-?on|plan)",
+    re.I,
+)
+
+
+def _amazon_price_node_context(node) -> str:
+    parts: list[str] = []
+    current = node
+    for _ in range(2):
+        if current is None:
+            break
+        if hasattr(current, "get"):
+            attrs = " ".join(
+                str(current.get(key, ""))
+                for key in ("class", "id", "data-cy", "data-testid", "aria-label")
+            )
+            if attrs:
+                parts.append(attrs)
+        text_getter = getattr(current, "get_text", None)
+        if callable(text_getter):
+            text = text_getter(" ", strip=True)
+            if text:
+                parts.append(text)
+        current = getattr(current, "parent", None)
+    return " ".join(parts)
+
+
+def _amazon_price_node_is_noise(node) -> bool:
+    return bool(_AMAZON_SRP_PRICE_NOISE.search(_amazon_price_node_context(node)))
+
+
+def _amazon_listing_price(item) -> float | None:
+    preferred_selectors = (
+        ".priceToPay .a-offscreen",
+        ".a-price.priceToPay .a-offscreen",
+        '[data-a-color="base"] .a-offscreen',
+        '[data-a-size="xl"] .a-offscreen',
+        '[data-a-size="l"] .a-offscreen',
+    )
+    seen_nodes: set[int] = set()
+
+    for selector in preferred_selectors:
+        for node in item.select(selector):
+            seen_nodes.add(id(node))
+            if _amazon_price_node_is_noise(node):
+                continue
+            price = clean_price(node.get_text())
+            if price:
+                return price
+
+    for node in item.select(".a-price .a-offscreen"):
+        if id(node) in seen_nodes:
+            continue
+        if _amazon_price_node_is_noise(node):
+            continue
+        price = clean_price(node.get_text())
+        if price:
+            return price
+
+    return None
+
+
 def _walmart_listing_original_price(root) -> float | None:
     if not root:
         return None
@@ -2206,10 +2269,7 @@ def _extract_amazon_all(
         href = _abs(link.get("href", ""), base)
         href = href.split("/ref=")[0]
         name = _amazon_item_title(item, link)
-        price_el = item.select_one('.a-price .a-offscreen')
-        if not price_el:
-            price_el = item.select_one('.a-price span')
-        price = clean_price(price_el.get_text() if price_el else None)
+        price = _amazon_listing_price(item)
         if not price or not href:
             continue
         orig = _amazon_listing_original_price(item)
@@ -3557,10 +3617,7 @@ def _extract_amazon_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
         href = _abs(link.get("href", ""), base)
         href = href.split("/ref=")[0]
         name = _amazon_item_title(item, link)
-        price_el = item.select_one('.a-price .a-offscreen')
-        if not price_el:
-            price_el = item.select_one('.a-price span')
-        price = clean_price(price_el.get_text() if price_el else None)
+        price = _amazon_listing_price(item)
         if not price or not href:
             continue
         orig = _amazon_listing_original_price(item)
@@ -4805,4 +4862,3 @@ def discover_deals_for_queries(
         if len(source_rows) >= min_usable_results:
             break
     return source_rows
-

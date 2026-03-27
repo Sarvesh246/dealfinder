@@ -393,6 +393,29 @@ def _upgrade_discovery_results_schema(cursor):
             cursor.execute(f"ALTER TABLE discovery_results ADD COLUMN {col} {decl}")
 
 
+def _ensure_indexes(cursor) -> None:
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_product_sources_product_source "
+        "ON product_sources(product_id, source_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_price_history_product_source_checked_at "
+        "ON price_history(product_source_id, checked_at)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_discovery_results_search_id "
+        "ON discovery_results(search_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_products_alert_sent "
+        "ON products(alert_sent)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_products_current_price "
+        "ON products(current_price)"
+    )
+
+
 def init_db():
     """Create tables, seed sources, and migrate from v1 if needed."""
     try:
@@ -583,6 +606,7 @@ def init_db():
 
         _sync_product_specs(c)
         _recompute_all_product_best_prices(c)
+        _ensure_indexes(c)
 
         conn.commit()
         conn.close()

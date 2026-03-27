@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import threading
+from collections import OrderedDict
 from datetime import datetime
 from difflib import SequenceMatcher
 
@@ -48,6 +49,8 @@ QUERY_ENHANCE_MODEL = os.getenv(
     "meta-llama/Llama-3.2-1B-Instruct",
 )
 HF_RELEVANCE_CACHE_TTL_SECONDS = int(os.getenv("HF_RELEVANCE_CACHE_TTL_SECONDS", "600"))
+HF_QUERY_CACHE_TTL_SECONDS = int(os.getenv("HF_QUERY_CACHE_TTL_SECONDS", "600"))
+HF_QUERY_CACHE_MAX_ENTRIES = int(os.getenv("HF_QUERY_CACHE_MAX_ENTRIES", "256"))
 
 
 def _normalize_name(name: str) -> str:
@@ -68,6 +71,7 @@ class SmartEngine:
         self._client = None
         self._enabled = HF_AVAILABLE
         self._relevance_cache: dict[tuple[str, str], tuple[datetime, list[float]]] = {}
+        self._query_cache: OrderedDict[str, tuple[datetime, str]] = OrderedDict()
         self._cache_lock = threading.Lock()
         self._warm_started = False
         if self._enabled:
@@ -110,6 +114,31 @@ class SmartEngine:
         payload = json.dumps([_normalize_name(name) for name in product_names], separators=(",", ":"))
         titles_hash = hashlib.sha1(payload.encode("utf-8")).hexdigest()
         return normalized_query, titles_hash
+
+    def _query_cache_get(self, query: str) -> str | None:
+        key = (query or "").strip()
+        if not key:
+            return None
+        with self._cache_lock:
+            cached = self._query_cache.get(key)
+            if cached is None:
+                return None
+            cached_at, value = cached
+            if (datetime.now() - cached_at).total_seconds() > HF_QUERY_CACHE_TTL_SECONDS:
+                self._query_cache.pop(key, None)
+                return None
+            self._query_cache.move_to_end(key)
+            return value
+
+    def _query_cache_set(self, query: str, value: str) -> None:
+        key = (query or "").strip()
+        if not key:
+            return
+        with self._cache_lock:
+            self._query_cache[key] = (datetime.now(), value)
+            self._query_cache.move_to_end(key)
+            while len(self._query_cache) > max(1, HF_QUERY_CACHE_MAX_ENTRIES):
+                self._query_cache.popitem(last=False)
 
     # ------------------------------------------------------------------
     # 1.  Relevance scoring  (1 API call — sentence_similarity)
@@ -180,6 +209,10 @@ class SmartEngine:
         if not self.available:
             return query
 
+        cached = self._query_cache_get(query)
+        if cached is not None:
+            return cached
+
         try:
             msg = (
                 "Rewrite this into a single short product search term for Amazon "
@@ -201,6 +234,7 @@ class SmartEngine:
             cleaned = text.strip('"').strip("'").strip()
             cleaned = cleaned.split("\n")[0].strip()
             if 3 < len(cleaned) < 120:
+                self._query_cache_set(query, cleaned)
                 logging.info(f"[{datetime.now()}] HF query enhanced: "
                              f"'{query}' → '{cleaned}'")
                 return cleaned

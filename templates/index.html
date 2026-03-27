@@ -16,7 +16,7 @@
   .products-grid { display: flex; flex-direction: column; gap: 16px; }
 
   /* ── Product card ────────────────────────────────────────────────── */
-  .product-card { padding: 0; cursor: default; }
+  .product-card { padding: 0; cursor: pointer; position: relative; }
   .product-card:hover { transform: translateY(-2px); }
   .pc-section { padding: 20px 24px; }
   .pc-divider { height: 1px; background: var(--glass-border); }
@@ -231,7 +231,14 @@
     {% set pct = progress_pct(p.current_price, p.target_price, p.alert_mode) %}
     {% set away = pct_away(p.current_price, p.target_price, p.alert_mode) %}
 
-    <div class="card product-card fade-in" style="animation-delay:{{ loop.index0 * 80 }}ms">
+    <div
+      class="card product-card fade-in"
+      style="animation-delay:{{ loop.index0 * 80 }}ms"
+      data-detail-url="{{ url_for('product_detail', product_id=p.id) }}"
+      tabindex="0"
+      role="link"
+      aria-label="Open details for {{ p.name or 'this product' }}"
+    >
 
       <!-- Header: name + target + badge -->
       <div class="pc-section pc-header">
@@ -376,4 +383,34 @@
   </div>
   {% endif %}
 
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    function shouldIgnoreClick(target) {
+      return !!target.closest("a, button, form, input, select, textarea, label");
+    }
+
+    document.querySelectorAll(".product-card[data-detail-url]").forEach(function (card) {
+      function navigate() {
+        var href = card.getAttribute("data-detail-url");
+        if (href) window.location.href = href;
+      }
+
+      card.addEventListener("click", function (event) {
+        if (shouldIgnoreClick(event.target)) return;
+        navigate();
+      });
+
+      card.addEventListener("keydown", function (event) {
+        if ((event.key !== "Enter" && event.key !== " ") || shouldIgnoreClick(event.target)) {
+          return;
+        }
+        event.preventDefault();
+        navigate();
+      });
+    });
+  })();
+</script>
 {% endblock %}
