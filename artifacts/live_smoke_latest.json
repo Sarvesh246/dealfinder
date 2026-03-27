@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-03-27T13:57:14",
+  "cwd": "C:\\Projects\\Cursor\\Deal Finder",
+  "cases": [
+    {
+      "query": "nintendo switch",
+      "kind": "strict",
+      "domain": "amazon.com",
+      "seconds": 18.369,
+      "verified_count": 7,
+      "ambiguous_count": 0,
+      "top_name": "Nintendo Switch 32GB Video Game Console - Black (HAC-001) / CONSOLE ONLY (Renewed)"
+    },
+    {
+      "query": "steam deck",
+      "kind": "strict",
+      "domain": "amazon.com",
+      "seconds": 11.98,
+      "verified_count": 0,
+      "ambiguous_count": 0,
+      "top_name": null
+    },
+    {
+      "query": "meta quest 3",
+      "kind": "strict",
+      "domain": "amazon.com",
+      "seconds": 15.44,
+      "verified_count": 2,
+      "ambiguous_count": 0,
+      "top_name": "Meta Quest 3 512GB | VR Headset \u2014 Thirty Percent Sharper Resolution \u2014 2X Graphical Processing Power \u2014 Virtual Reality Without Wires \u2014 Access to 40+ Games with a 3-Month Trial of Meta Horizon+ Included : Everything Else"
+    },
+    {
+      "query": "tp-link archer ax55 router",
+      "kind": "strict",
+      "domain": "amazon.com",
+      "seconds": 20.062,
+      "verified_count": 1,
+      "ambiguous_count": 0,
+      "top_name": "TP-Link Dual-Band AX3000 Wi-Fi 6 Router Archer AX55 | Wireless Gigabit Internet Router for Home | EasyMesh Compatible | VPN Clients & Server | HomeShield, OFDMA, MU-MIMO | USB 3.0 | Secure by Design"
+    },
+    {
+      "query": "brother hl-l2460dw printer",
+      "kind": "strict",
+      "domain": "amazon.com",
+      "seconds": 13.58,
+      "verified_count": 0,
+      "ambiguous_count": 0,
+      "top_name": null
+    },
+    {
+      "query": "dyson v8 cordless vacuum",
+      "kind": "strict",
+      "domain": "amazon.com",
+      "seconds": 14.03,
+      "verified_count": 4,
+      "ambiguous_count": 0,
+      "top_name": "Amazon.com - Dyson V8 Cordless Vacuum Cleaner (Renewed)"
+    },
+    {
+      "query": "lego orchid",
+      "kind": "discovery",
+      "domain": "amazon.com",
+      "seconds": 2.325,
+      "results": 29,
+      "top_name": "Botanicals Mini Orchid Building Set - Artificial, Fake Orchid for Home Decor, Adults Ages 18+ - Gift for Birthdays - Indoor Plant Decorations for Table, Desk, Office - 10343"
+    },
+    {
+      "query": "standing desk",
+      "kind": "discovery",
+      "domain": "walmart.com",
+      "seconds": 18.263,
+      "results": 0,
+      "top_name": null
+    }
+  ],
+  "direct_link": {
+    "url": "https://www.amazon.com/Apple-Smartwatch-Starlight-Aluminum-Always/dp/B0FQF58VGQ",
+    "status": null,
+    "title": "Apple Watch SE 3 [GPS + Cellular 44mm] Smartwatch with Midnight Aluminum Case with Midnight Sport Band - M/L. Fitness and Sleep Trackers, Heart Rate Monitor, Always-On Display, Water Resistant",
+    "price": 249.0,
+    "reason": "exact_model_verified"
+  }
+}

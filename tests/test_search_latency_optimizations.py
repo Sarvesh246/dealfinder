@@ -113,6 +113,11 @@ def test_discover_deals_for_queries_stops_after_first_sufficient_alias(monkeypat
         ]
 
     monkeypatch.setattr(scraper, "discover_deals", fake_discover)
+    monkeypatch.setattr(
+        scraper,
+        "_apply_discovery_quality_pipeline",
+        lambda rows, query, max_price=None, label="", price_key="current_price", name_key="product_name": rows,
+    )
 
     rows = scraper.discover_deals_for_queries(
         ("alias one", "alias two"),
@@ -122,6 +127,47 @@ def test_discover_deals_for_queries_stops_after_first_sufficient_alias(monkeypat
 
     assert len(rows) == 8
     assert seen_queries == ["alias one"]
+
+
+def test_discover_deals_for_queries_continues_when_raw_rows_are_not_usable(monkeypatch):
+    source = {"domain": "amazon.com", "search_url_template": "https://www.amazon.com/s?k={query}"}
+    seen_queries = []
+
+    def fake_discover(query, source, max_price=None, max_results=50, *, context=None):
+        seen_queries.append(query)
+        if query == "alias one":
+            return [
+                {
+                    "product_name": "Accessory Row",
+                    "current_price": 19.99,
+                    "original_price": 29.99,
+                    "product_url": "https://example.com/accessory",
+                }
+            ]
+        return [
+            {
+                "product_name": f"Primary Row {i}",
+                "current_price": 99.0 + i,
+                "original_price": 129.0 + i,
+                "product_url": f"https://example.com/{i}",
+            }
+            for i in range(8)
+        ]
+
+    def fake_quality(rows, query, max_price=None, label="", price_key="current_price", name_key="product_name"):
+        return [row for row in rows if row["product_name"].startswith("Primary")]
+
+    monkeypatch.setattr(scraper, "discover_deals", fake_discover)
+    monkeypatch.setattr(scraper, "_apply_discovery_quality_pipeline", fake_quality)
+
+    rows = scraper.discover_deals_for_queries(
+        ("alias one", "alias two"),
+        source,
+        context=scraper.SearchExecutionContext(),
+    )
+
+    assert len(rows) == 9
+    assert seen_queries == ["alias one", "alias two"]
 
 
 def test_discover_deals_for_queries_breaks_after_repeated_empty_js_aliases(monkeypatch):

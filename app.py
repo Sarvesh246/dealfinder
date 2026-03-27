@@ -17,9 +17,10 @@ from datetime import date, datetime
 from threading import Lock, Thread
 from urllib.parse import urlparse
 
+from jinja2 import TemplateNotFound
 from dotenv import load_dotenv
 from flask import (
-    Flask, flash, redirect, render_template, render_template_string,
+    Flask, flash, jsonify, redirect, render_template,
     request, send_from_directory, url_for,
 )
 
@@ -57,17 +58,19 @@ from database import (
     get_product_source_candidates,
     get_product_source_by_id,
     get_product_sources,
+    get_runtime_diagnostics,
     get_source_by_id,
     init_db,
     mark_candidate_selected,
+    enqueue_manual_check_request,
     update_product,
     update_category,
     update_discovery_search_count,
     update_product_source,
     update_source_enabled,
 )
-from scheduler import check_all_products, create_scheduler, run_initial_backfill
 from hf_utils import get_smart_engine
+from observability import log_event
 from product_verifier import QueryType, parse_product_spec, verification_result_to_fields
 from scraper import (
     SearchExecutionContext,
@@ -89,6 +92,7 @@ CHECK_COOLDOWN_SECONDS = int(os.getenv("CHECK_COOLDOWN_SECONDS", "60"))
 TRACK_RESULT_COOLDOWN_SECONDS = int(os.getenv("TRACK_RESULT_COOLDOWN_SECONDS", "5"))
 _COOLDOWN_LOCK = Lock()
 _COOLDOWN_STATE: dict[tuple[str, str, str], float] = {}
+_WARMUPS_STARTED = False
 
 
 def _first_discover_listing(rows):
@@ -457,8 +461,30 @@ def _ensure_database_at_startup():
 
 
 _ensure_database_at_startup()
-Thread(target=get_smart_engine, daemon=True).start()
-Thread(target=start_browser_warmup, daemon=True).start()
+
+
+def _start_runtime_warmups() -> None:
+    global _WARMUPS_STARTED
+    if _WARMUPS_STARTED:
+        return
+    _WARMUPS_STARTED = True
+    Thread(target=get_smart_engine, daemon=True).start()
+    Thread(target=start_browser_warmup, daemon=True).start()
+
+
+_start_runtime_warmups()
+
+
+@app.after_request
+def _apply_response_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "geolocation=(), microphone=(), camera=(), payment=()",
+    )
+    return response
 
 
 def _manual_check_ui_token() -> str:
@@ -508,6 +534,117 @@ def favicon():
         "favicon.svg",
         mimetype="image/svg+xml",
         max_age=86400,
+    )
+
+
+@app.route("/healthz")
+def healthz():
+    sources = get_all_sources()
+    enabled_sources = sum(1 for source in sources if source["enabled"])
+    runtime = get_runtime_diagnostics()
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "pricepulse",
+            "checked_at": datetime.now().isoformat(),
+            "sources_total": len(sources),
+            "sources_enabled": enabled_sources,
+            "worker_online": runtime.get("worker_online", False),
+            "queue_depth": runtime.get("queue_depth", 0),
+        }
+    )
+
+
+@app.route("/readyz")
+def readyz():
+    runtime = get_runtime_diagnostics()
+    sources = get_all_sources()
+    enabled_sources = sum(1 for source in sources if source["enabled"])
+    return jsonify(
+        {
+            "status": "ready",
+            "service": "pricepulse",
+            "checked_at": datetime.now().isoformat(),
+            "database_ready": True,
+            "worker_online": runtime.get("worker_online", False),
+            "queue_depth": runtime.get("queue_depth", 0),
+            "last_job_status": runtime.get("last_job_status"),
+            "sources_enabled": enabled_sources,
+        }
+    )
+
+
+@app.route("/diagnostics")
+def diagnostics():
+    runtime = get_runtime_diagnostics()
+    return jsonify(
+        {
+            "status": "ok",
+            "service": "pricepulse",
+            "checked_at": datetime.now().isoformat(),
+            "runtime": runtime,
+        }
+    )
+
+
+def _render_error_page(status_code: int, title: str, message: str, primary_href: str, primary_label: str,
+                       secondary_href: str | None = None, secondary_label: str | None = None):
+    try:
+        return (
+            render_template(
+                "error_page.html",
+                status_code=status_code,
+                title=title,
+                message=message,
+                primary_href=primary_href,
+                primary_label=primary_label,
+                secondary_href=secondary_href,
+                secondary_label=secondary_label,
+            ),
+            status_code,
+        )
+    except TemplateNotFound:
+        secondary = (
+            f'<p><a href="{secondary_href}">{secondary_label}</a></p>'
+            if secondary_href and secondary_label
+            else ""
+        )
+        return (
+            (
+                "<!doctype html><html><head><meta charset='utf-8'>"
+                f"<title>{status_code} · {title}</title></head><body>"
+                f"<h1>{title}</h1><p>{message}</p>"
+                f"<p><a href='{primary_href}'>{primary_label}</a></p>"
+                f"{secondary}</body></html>"
+            ),
+            status_code,
+        )
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return _render_error_page(
+        404,
+        "Page not found",
+        "That page doesn’t exist or may have moved. You can head back to the dashboard or start a new search.",
+        url_for("index"),
+        "Back to Dashboard",
+        url_for("discover_page"),
+        "Find a Deal",
+    )
+
+
+@app.errorhandler(500)
+def server_error(error):
+    logging.exception("Unhandled application error", exc_info=error)
+    return _render_error_page(
+        500,
+        "Something went wrong",
+        "PricePulse hit an unexpected issue while loading this page. Try again in a moment, or run another search from the dashboard.",
+        url_for("index"),
+        "Back to Dashboard",
+        url_for("discover_page"),
+        "Find a Deal",
     )
 
 
@@ -780,7 +917,7 @@ TEMPLATE_PRODUCT = (
     "      {{ ps.status | replace('_',' ') | title }}</div>\n"
     "    {% if ps.verification_reason %}<div style=\"font-size:11px;color:var(--text-muted);margin-top:4px\">{{ ps.verification_reason | replace('_',' ') | title }}</div>{% endif %}\n"
     "    {% if ps.discovered_url %}\n"
-    '      <a href="{{ ps.discovered_url }}" target="_blank" rel="noopener" class="source-link">View on {{ ps.source_name }} \u2197</a>\n'
+    '      <a href="{{ ps.discovered_url }}" target="_blank" rel="noopener noreferrer" class="source-link">View on {{ ps.source_name }} \u2197</a>\n'
     "    {% endif %}\n"
     "  </div>\n"
     "  {% endfor %}\n"
@@ -908,7 +1045,7 @@ TEMPLATE_CONFIRMATIONS = (
     '          <form method="POST" action="{{ url_for(\'confirm_product_candidate\', product_id=product.id, candidate_id=candidate.id) }}">\n'
     '            <button class="btn-primary btn-sm" type="submit">Use This Match</button>\n'
     "          </form>\n"
-    '          <a class="confirm-link" href="{{ candidate.candidate_url }}" target="_blank" rel="noopener">Open Listing ↗</a>\n'
+    '          <a class="confirm-link" href="{{ candidate.candidate_url }}" target="_blank" rel="noopener noreferrer">Open Listing ↗</a>\n'
     '          <span class="confirm-badge">{{ candidate.match_label | replace("_"," ") | title }}</span>\n'
     "        </div>\n"
     "      </div>\n"
@@ -961,6 +1098,16 @@ TEMPLATE_SETTINGS = (
 # Jinja helpers
 # ---------------------------------------------------------------------------
 
+def _safe_float(value):
+    """Coerce DB/text values for comparisons and display; never raises."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def format_relative_time(ts: str | None) -> str:
     if not ts:
         return "Never"
@@ -983,25 +1130,37 @@ def format_relative_time(ts: str | None) -> str:
 
 
 def format_price(price) -> str:
-    if price is None:
+    n = _safe_float(price)
+    if n is None:
         return "N/A"
-    return f"${float(price):,.2f}"
+    return f"${n:,.2f}"
 
 
 def price_status(current, target, alert_mode="target_threshold") -> str:
     if current is None:
         return "not_found"
+    c = _safe_float(current)
+    if c is None:
+        return "not_found"
     if alert_mode == "any_drop" or target is None:
         return "watching"
-    return "deal" if float(current) <= float(target) else "watching"
+    t = _safe_float(target)
+    if t is None:
+        return "watching"
+    return "deal" if c <= t else "watching"
 
 
 def price_color(current, target, alert_mode="target_threshold") -> str:
     if current is None:
         return "var(--price-bad)"
+    c = _safe_float(current)
+    if c is None:
+        return "var(--price-bad)"
     if alert_mode == "any_drop" or target is None:
         return "var(--accent-blue)"
-    c, t = float(current), float(target)
+    t = _safe_float(target)
+    if t is None:
+        return "var(--accent-blue)"
     if c <= t:
         return "var(--price-good)"
     if c <= t * 1.10:
@@ -1011,18 +1170,23 @@ def price_color(current, target, alert_mode="target_threshold") -> str:
 
 def progress_pct(current, target, alert_mode="target_threshold") -> float:
     if alert_mode == "any_drop" or target is None:
-        return 100.0 if current is not None else 0.0
-    if current is None or target is None or float(target) == 0:
+        return 100.0 if _safe_float(current) is not None else 0.0
+    t = _safe_float(target)
+    c = _safe_float(current)
+    if c is None or t is None or t == 0:
         return 0.0
-    return round(min(100.0, (float(target) / float(current)) * 100), 1)
+    return round(min(100.0, (t / c) * 100), 1)
 
 
 def pct_away(current, target, alert_mode="target_threshold") -> str:
-    if current is None:
+    c = _safe_float(current)
+    if c is None:
         return ""
     if alert_mode == "any_drop" or target is None:
         return "Watching for a new lower price"
-    c, t = float(current), float(target)
+    t = _safe_float(target)
+    if t is None:
+        return "Watching for a new lower price"
     if c <= t:
         return "Target reached!"
     pct = round(((c - t) / t) * 100, 1)
@@ -1066,13 +1230,14 @@ def index():
         products.append(d)
 
     total_products = len(products)
-    deals_found = sum(
-        1 for p in products
-        if p.get("alert_mode") != "any_drop"
-        if p["current_price"] is not None
-        and p["target_price"] is not None
-        and float(p["current_price"]) <= float(p["target_price"])
-    )
+    deals_found = 0
+    for p in products:
+        if p.get("alert_mode") == "any_drop":
+            continue
+        c = _safe_float(p.get("current_price"))
+        t = _safe_float(p.get("target_price"))
+        if c is not None and t is not None and c <= t:
+            deals_found += 1
     last_checked_global = get_last_checked_time()
 
     return render_template(
@@ -1358,8 +1523,8 @@ def product_confirmations_page(product_id):
         )
         group["candidates"].append(dict(row))
 
-    return render_template_string(
-        TEMPLATE_CONFIRMATIONS,
+    return render_template(
+        "confirmations.html",
         product=dict(product),
         groups=list(grouped.values()),
     )
@@ -1439,8 +1604,8 @@ def product_sources_page(product_id):
     current_ps = get_product_sources(product_id)
     active_ids = {ps["source_id"] for ps in current_ps}
 
-    return render_template_string(
-        TEMPLATE_SOURCES,
+    return render_template(
+        "sources.html",
         product=dict(product),
         all_sources=all_sources,
         active_ids=active_ids,
@@ -1684,6 +1849,8 @@ def settings_page():
         "settings.html",
         sources=sources,
         notification_status=get_notification_status(),
+        runtime_diagnostics=get_runtime_diagnostics(),
+        last_checked_time=get_last_checked_time(),
     )
 
 
@@ -1811,6 +1978,7 @@ def discover_search():
     if not query:
         flash("Enter a search term to find deals.", "error")
         return redirect(url_for("discover_page"))
+    log_event("search.start", route="discover_search", query=query, category_id=category_id or None)
 
     try:
         max_price = float(max_price_str) if max_price_str else None
@@ -1980,18 +2148,27 @@ def discover_search():
     if not all_raw:
         if scraped_before_rank:
             flash(
-                f'No listings matched your filters or quality threshold for "{query}". '
+                f'No active deals across our supported stores matched your current filters for "{query}" right now. '
                 "Try including refurbished items, accessories, similar brands, or a different search term.",
                 "error",
             )
         else:
             flash(
-                f'No deals found for "{query}". Try broadening your search or raising your budget.',
+                f'No active deals are showing across our supported stores for "{query}" right now. '
+                "Try broadening your search or raising your budget.",
                 "error",
             )
     else:
         ai_note = " (AI-ranked)" if ai_enhanced else ""
         flash(f'Found {len(all_raw)} deals for "{query}"{ai_note}!', "success")
+    log_event(
+        "search.finish",
+        route="discover_search",
+        query=query,
+        result_count=len(all_raw),
+        ai_enhanced=ai_enhanced,
+        worker_online=get_runtime_diagnostics().get("worker_online", False),
+    )
 
     return redirect(url_for("discover_results", search_id=search_id))
 
@@ -2179,12 +2356,28 @@ def manual_check():
     if _consume_cooldown("manual_check", CHECK_COOLDOWN_SECONDS):
         flash("A full price check just ran. Please wait a minute before starting another one.", "info")
         return redirect(url_for("index"))
-    try:
-        check_all_products()
-        flash("Price check complete!", "success")
-    except Exception as exc:
-        logging.error(f"[{datetime.now()}] Manual check error: {exc}")
-        flash(f"Price check failed: {exc}", "error")
+    runtime = get_runtime_diagnostics()
+    request_id, created = enqueue_manual_check_request(requested_by=_client_ip())
+    if created:
+        log_event(
+            "job.requested",
+            job_name="manual_price_check",
+            requested_by=_client_ip(),
+            request_id=request_id,
+            worker_online=runtime.get("worker_online", False),
+        )
+        if runtime.get("worker_online"):
+            flash("Price check requested. The worker will pick it up shortly.", "success")
+        else:
+            flash(
+                "Price check queued. A worker needs to be running to process it automatically.",
+                "warning",
+            )
+    else:
+        if runtime.get("current_job_name") == "manual_price_check" or runtime.get("running_manual_checks", 0):
+            flash("A background price check is already running.", "info")
+        else:
+            flash("A price check is already queued for the worker.", "info")
     return redirect(url_for("index"))
 
 
@@ -2193,24 +2386,6 @@ def manual_check():
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Live reload: set FLASK_DEBUG=1 in .env (or environment). Werkzeug spawns a
-    # parent watchdog + child server; only start the scheduler in the child to
-    # avoid duplicate APScheduler instances.
     debug_mode = os.getenv("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
-    in_reloader_child = os.environ.get("WERKZEUG_RUN_MAIN") == "true"
-    scheduler = None
-    if (not debug_mode) or in_reloader_child:
-        scheduler = create_scheduler()
-        scheduler.start()
-        logging.info(f"[{datetime.now()}] APScheduler started.")
-        if os.getenv("ENABLE_STARTUP_BACKFILL", "1").lower() in ("1", "true", "yes"):
-            Thread(target=run_initial_backfill, daemon=True).start()
-            logging.info(f"[{datetime.now()}] Initial source backfill thread started.")
-
     port = int(os.getenv("PORT", "5000"))
-    try:
-        app.run(host="0.0.0.0", port=port, debug=debug_mode, use_reloader=debug_mode)
-    finally:
-        if scheduler is not None:
-            scheduler.shutdown(wait=False)
-            logging.info(f"[{datetime.now()}] Scheduler stopped.")
+    app.run(host="0.0.0.0", port=port, debug=debug_mode, use_reloader=debug_mode)

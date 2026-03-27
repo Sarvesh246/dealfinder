@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}{{ status_code }} · {{ title }} · PricePulse{% endblock %}
+{% block meta_description %}{{ message }}{% endblock %}
+
+{% block head %}
+<style>
+  .error-shell {
+    display: flex;
+    justify-content: center;
+  }
+  .error-card {
+    width: 100%;
+    max-width: 760px;
+    padding: 36px;
+    border-radius: var(--radius);
+  }
+  .error-code {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 18px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(124, 92, 252, 0.28);
+    background: rgba(124, 92, 252, 0.1);
+    color: #c7bcff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .error-title {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 34px;
+    line-height: 1.08;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    max-width: 560px;
+  }
+  .error-copy {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    max-width: 640px;
+    margin-bottom: 28px;
+  }
+  .error-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .error-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 18px;
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 180ms ease;
+  }
+  .error-secondary:hover {
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  @media (max-width: 639px) {
+    .error-card {
+      padding: 24px 18px;
+    }
+    .error-title {
+      font-size: 28px;
+    }
+    .error-actions {
+      flex-direction: column;
+    }
+    .error-actions .btn-primary,
+    .error-actions .error-secondary {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="error-shell">
+  <section class="card error-card fade-in" aria-labelledby="error-title">
+    <div class="error-code">{{ status_code }}</div>
+    <h1 class="error-title" id="error-title">{{ title }}</h1>
+    <p class="error-copy">{{ message }}</p>
+    <div class="error-actions">
+      <a href="{{ primary_href }}" class="btn-primary" style="min-height:46px;padding:0 20px;">{{ primary_label }}</a>
+      {% if secondary_href and secondary_label %}
+      <a href="{{ secondary_href }}" class="error-secondary">{{ secondary_label }}</a>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endblock %}

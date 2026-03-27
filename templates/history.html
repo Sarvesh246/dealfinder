@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}{{ product.name or 'Product' }} History — PricePulse{% endblock %}
+{% block title %}{{ product.name or 'Product' }} History â€” PricePulse{% endblock %}
+{% block meta_description %}Review the recorded price history for {{ product.name or 'this product' }} and compare current verified prices against your tracking goal or any-drop baseline.{% endblock %}
 
 {% block head %}
 <style>
-  /* ── History page ────────────────────────────────────────────────── */
   .history-back {
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 13px; color: var(--text-secondary);
@@ -28,7 +28,6 @@
     text-underline-offset: 3px;
   }
 
-  /* Summary row */
   .history-summary {
     display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
   }
@@ -47,7 +46,6 @@
     font-weight: 700; color: var(--text-primary);
   }
 
-  /* Table card */
   .table-card { padding: 0; overflow: hidden; }
   table { width: 100%; border-collapse: collapse; }
   thead tr { border-bottom: 1px solid var(--glass-border); }
@@ -61,8 +59,8 @@
     transition: background 180ms ease;
   }
   tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
-  tbody tr:hover           { background: rgba(255,255,255,0.04); }
-  tbody tr:last-child      { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.04); }
+  tbody tr:last-child { border-bottom: none; }
   tbody td {
     padding: 13px 20px; font-size: 14px; color: var(--text-secondary);
     vertical-align: middle;
@@ -145,8 +143,8 @@
 {% endblock %}
 
 {% block content %}
+{% set is_any_drop = product.alert_mode == 'any_drop' %}
 
-  <!-- Back link -->
   <a href="{{ url_for('index') }}" class="history-back">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <line x1="19" y1="12" x2="5" y2="12"></line>
@@ -157,17 +155,20 @@
 
   <h1 class="history-title">
     {{ product.name or 'Unnamed Product' }}
-    <span class="history-title-muted"> — Price History</span>
+    <span class="history-title-muted"> â€” Price History</span>
   </h1>
   <p class="history-meta">
-    Target: <strong style="color:var(--text-primary)">{{ product.target_price | format_price }}</strong>
+    {% if is_any_drop %}
+      Alert: <strong style="color:var(--text-primary)">Any drop</strong>
+    {% else %}
+      Target: <strong style="color:var(--text-primary)">{{ product.target_price | format_price }}</strong>
+    {% endif %}
     {% if product.created_at is defined and product.created_at %}
       &nbsp;&middot;&nbsp;
       <span>Added {{ product.created_at | relative_time }}</span>
     {% endif %}
   </p>
 
-  <!-- Summary chips -->
   {% if price_history %}
   {% set prices = price_history | map(attribute='price') | select | list %}
   <div class="history-summary fade-in">
@@ -177,8 +178,8 @@
     </div>
     {% if product.current_price is defined and product.current_price is not none %}
     <div class="summary-chip">
-      <span class="summary-chip-label">Current Price</span>
-      <span class="summary-chip-value" style="color:{{ price_color(product.current_price, product.target_price) }}">
+      <span class="summary-chip-label">{{ 'Current Best' if is_any_drop else 'Current Price' }}</span>
+      <span class="summary-chip-value" style="color:{{ price_color(product.current_price, product.target_price, product.alert_mode) }}">
         {{ product.current_price | format_price }}
       </span>
     </div>
@@ -200,10 +201,8 @@
   </div>
   {% endif %}
 
-  <!-- History table -->
   <div class="card table-card fade-in" style="animation-delay:80ms">
     {% if price_history %}
-
     {% set has_sources = price_history[0].source_name is defined %}
     <table>
       <thead>
@@ -211,12 +210,11 @@
           <th>Date Checked</th>
           {% if has_sources %}<th>Source</th>{% endif %}
           <th>Price</th>
-          <th>vs Target</th>
+          <th>{{ 'Price Change' if is_any_drop else 'vs Target' }}</th>
         </tr>
       </thead>
       <tbody>
         {% for row in price_history %}
-        {% set diff = row.price - product.target_price %}
         <tr>
           <td data-label="Date Checked">{{ row.checked_at[:19].replace('T', ' ') }}</td>
 
@@ -226,32 +224,49 @@
               {% if row.logo_color is defined and row.logo_color %}
                 <span class="td-dot" style="background:{{ row.logo_color }}"></span>
               {% endif %}
-              {{ row.source_name | default('—') }}
+              {{ row.source_name | default('â€”') }}
             </div>
           </td>
           {% endif %}
 
           <td data-label="Price">
             <span class="td-price
-              {% if row.price <= product.target_price %}price-good
+              {% if is_any_drop %}price-good
+              {% elif row.price <= product.target_price %}price-good
               {% elif row.price <= product.target_price * 1.10 %}price-warn
               {% else %}price-bad{% endif %}">
               ${{ "%.2f" | format(row.price) }}
             </span>
-            {% if row.price <= product.target_price %}
-              <span class="target-badge">✓ Deal</span>
+            {% if (not is_any_drop) and row.price <= product.target_price %}
+              <span class="target-badge">âœ“ Deal</span>
             {% endif %}
           </td>
 
-          <td data-label="vs Target">
-            {% if diff <= 0 %}
-              <span style="color:var(--price-good)">
-                ↓ ${{ "%.2f" | format(diff | abs) }} below target
-              </span>
+          <td data-label="{{ 'Price Change' if is_any_drop else 'vs Target' }}">
+            {% if is_any_drop %}
+              {% if loop.previtem %}
+                {% set change = row.price - loop.previtem.price %}
+                {% if change < 0 %}
+                  <span style="color:var(--price-good)">â†“ ${{ "%.2f" | format(change | abs) }}</span>
+                {% elif change > 0 %}
+                  <span style="color:var(--price-bad)">â†‘ ${{ "%.2f" | format(change) }}</span>
+                {% else %}
+                  <span style="color:var(--text-muted)">Unchanged</span>
+                {% endif %}
+              {% else %}
+                <span style="color:var(--text-muted)">Baseline</span>
+              {% endif %}
             {% else %}
-              <span style="color:var(--text-muted)">
-                ${{ "%.2f" | format(diff) }} above target
-              </span>
+              {% set diff = row.price - product.target_price %}
+              {% if diff <= 0 %}
+                <span style="color:var(--price-good)">
+                  â†“ ${{ "%.2f" | format(diff | abs) }} below target
+                </span>
+              {% else %}
+                <span style="color:var(--text-muted)">
+                  ${{ "%.2f" | format(diff) }} above target
+                </span>
+              {% endif %}
             {% endif %}
           </td>
         </tr>

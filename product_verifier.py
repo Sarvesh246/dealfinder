@@ -92,13 +92,21 @@ _MODEL_BRAND_HINTS: tuple[tuple[re.Pattern[str], str, str], ...] = (
     (re.compile(r"\brx\s*\d{3,4}\s*(?:xt)?\b", re.I), "gpu", "amd"),
     (re.compile(r"\bgalaxy\s*[sz]\s*\d{2,3}\b", re.I), "phone", "samsung"),
     (re.compile(r"\bpixel\s*[89]\b", re.I), "phone", "google"),
+    (re.compile(r"\bmx\s*master\s*3s?\b", re.I), "mouse", "logitech"),
     (re.compile(r"\bhl[- ]?l\d{4}[a-z]{1,3}\b", re.I), "printer", "brother"),
     (re.compile(r"\bmfc[- ]?l\d{4}[a-z]{1,3}\b", re.I), "printer", "brother"),
     (re.compile(r"\bdcp[- ]?l\d{4}[a-z]{1,3}\b", re.I), "printer", "brother"),
+    (re.compile(r"\bk[- ]?(?:express|mini|elite|compact|supreme)\b", re.I), "coffee_maker", "keurig"),
     (re.compile(r"\b(?:archer\s*)?(?:axe|ax|be|ac)\s*\d{1,4}\b", re.I), "router", "tp-link"),
+    (re.compile(r"\banker\s*737\b|\b737\s*power\s*bank\b", re.I), "power_bank", "anker"),
+    (re.compile(r"\blego\s+orchid\b", re.I), "building_set", "lego"),
     (re.compile(r"\bdyson\s*v(?:8|10|11|12|15)\b", re.I), "vacuum", "dyson"),
     (re.compile(r"\b(?:9[78]0|9[89]0)\s*(?:pro|evo)\b", re.I), "storage", "samsung"),
     (re.compile(r"\bsn\s*\d{3,4}x?\b", re.I), "storage", "wd"),
+    (re.compile(r"\bsteam\s*deck\s*oled\b|\bsteam\s*deck\b", re.I), "steam_deck", "valve"),
+    (re.compile(r"\bmeta\s*quest\s*3s?\b|\bquest\s*3s?\b", re.I), "meta_quest", "meta"),
+    (re.compile(r"\baeron\b", re.I), "office_chair", "herman miller"),
+    (re.compile(r"\bleap\s*v?2\b|\bgesture\b", re.I), "office_chair", "steelcase"),
 )
 
 _GENERIC_ACCESSORY = re.compile(
@@ -175,6 +183,9 @@ _FAMILY_QUERY_TERM = {
     "standing_desk": "standing desk",
     "printer": "printer",
     "router": "router",
+    "coffee_maker": "coffee maker",
+    "power_bank": "power bank",
+    "building_set": "building set",
     "vacuum": "vacuum",
     "storage": "ssd",
     "ps5": "console",
@@ -182,6 +193,9 @@ _FAMILY_QUERY_TERM = {
     "nintendo_switch": "console",
     "kindle_paperwhite": "ereader",
     "roku_ultra": "streaming player",
+    "steam_deck": "handheld",
+    "meta_quest": "vr headset",
+    "office_chair": "office chair",
 }
 
 
@@ -632,6 +646,11 @@ def fingerprint_listing_document(
     hard_block_signal = bool(
         family and family.get("hard_block") and family["hard_block"].search(signal_text)
     )
+    if family_id == "power_bank" and _has_family_signal(
+        signal_text,
+        ("power bank", "portable charger", "battery pack"),
+    ):
+        accessory_signal = False
     return ListingFingerprint(
         url=url,
         domain=urlparse(url).netloc.lower().replace("www.", ""),
@@ -730,12 +749,13 @@ def _primary_identity_blob(fingerprint: ListingFingerprint) -> str:
 
 
 def _required_tokens_present(text: str, tokens: tuple[str, ...]) -> bool:
-    structured = set(_extract_structured_tokens(text))
-    hard_tokens = set(_extract_hard_variant_tokens(text))
+    normalized_text = normalize_user_query(text)
+    structured = set(_extract_structured_tokens(normalized_text))
+    hard_tokens = set(_extract_hard_variant_tokens(normalized_text))
     for token in tokens:
         if token in structured or token in hard_tokens:
             continue
-        if _contains_token_phrase(text, token):
+        if _contains_token_phrase(normalized_text, token):
             continue
         return False
     return True

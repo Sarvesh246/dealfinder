@@ -30,6 +30,7 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
+from observability import log_event
 
 from product_verifier import (
     ProductSpec,
@@ -159,6 +160,15 @@ class SearchExecutionContext:
                 "usable_count": usable_count,
                 "failure_reason": failure_reason,
             }
+        log_event(
+            "search.probe",
+            domain=domain,
+            stage=stage,
+            fetch_method=fetch_method,
+            row_count=row_count,
+            usable_count=usable_count,
+            failure_reason=failure_reason,
+        )
 
     def get_probe_outcome(self, domain: str, url: str, stage: str) -> dict[str, Any] | None:
         with self._lock:
@@ -449,7 +459,7 @@ def start_browser_warmup() -> None:
 def _html_has_search_result_markers(html: str, domain: str) -> bool:
     body = (html or "").lower()
     markers = {
-        "bestbuy.com": ("/site/", "sku-item", "sku-title"),
+        "bestbuy.com": ("/site/", "/product/", "sku-item", "sku-title", "product-list-item", "product-list-item-link"),
         "walmart.com": ("/ip/", "data-item-id", "product-title"),
     }
     return any(token in body for token in markers.get(domain, ()))
@@ -1299,7 +1309,9 @@ def _fetch_soup(
 def _selenium_wait_selectors(domain: str, mode: str) -> tuple[str, ...]:
     search_selectors = {
         "bestbuy.com": (
-            "li.sku-item, .sku-item, [data-testid='shop-product-card'], a.sku-title[href*='/product/']",
+            "li.sku-item, .sku-item, li.product-list-item, .product-list-item, "
+            "a.product-list-item-link[href], [data-testid='shop-product-card'], "
+            "a.sku-title[href*='/product/']",
         ),
         "walmart.com": (
             "a[href*='/ip/'], [data-testid='product-title'], [data-item-id]",
@@ -2031,6 +2043,8 @@ def _bestbuy_is_product_listing_url(url: str) -> bool:
         return True
     if "/product/" in u and "/sku/" in u:
         return True
+    if "bestbuy.com/product/" in u or u.startswith("/product/"):
+        return True
     if "bestbuy.com" in u and "/p/" in u:
         return True
     return False
@@ -2072,6 +2086,8 @@ def _bestbuy_price_from_plp_anchor(anchor) -> float | None:
 def _bestbuy_title_link_from_tile(item) -> Tag | None:
     """Product title <a> inside a tile (old + new PLP)."""
     for sel in (
+        "a.product-list-item-link[href]",
+        ".product-title a[href]",
         "a.sku-title[href]",
         "h4.sku-title a[href]",
         ".sku-header a[href]",
@@ -2115,6 +2131,8 @@ def _iter_bestbuy_product_nodes(soup):
     selectors = (
         ".sku-item",
         "li.sku-item",
+        ".product-list-item",
+        "li.product-list-item",
         "[class*='sku-item']",
         "[data-testid='shop-product-card']",
         "div[data-testid='product-card']",
@@ -2134,9 +2152,11 @@ def _iter_bestbuy_title_anchors(soup):
     """New PLP: title links that may sit outside legacy .sku-item tiles."""
     seen: set[int] = set()
     for sel in (
+        "a.product-list-item-link[href]",
         'a.sku-title[href*="/product/"]',
         'a.sku-title[href*="/site/"]',
         'a[href*="bestbuy.com/product/"][href*="/sku/"]',
+        'a[href*="/site/"][class*="product-list-item-link"]',
     ):
         for a in soup.select(sel):
             i = id(a)
@@ -2270,23 +2290,40 @@ def _walmart_listing_original_price(root) -> float | None:
 def _target_listing_original_price(item) -> float | None:
     el = item.select_one(
         '[data-test="product-regular-price"], '
-        '[data-testid="product-regular-price"]'
+        '[data-testid="product-regular-price"], '
+        '[data-test="comparison-price"], '
+        '[data-testid="comparison-price"]'
     )
     if el:
-        p = clean_price(el.get_text())
-        if p:
-            return p
+        prices = _price_candidates_from_raw(el.get_text(" ", strip=True))
+        if prices:
+            current_hint = _target_current_price(item)
+            if current_hint is not None:
+                higher = [price for price in prices if price > current_hint * 1.02]
+                if higher:
+                    return min(higher)
+            return max(prices)
     for span in item.select("span"):
         t = span.get_text(" ", strip=True).lower()
         if re.search(r"\breg\.?\b", t):
-            p = clean_price(span.get_text())
-            if p:
-                return p
+            prices = _price_candidates_from_raw(span.get_text(" ", strip=True))
+            if prices:
+                current_hint = _target_current_price(item)
+                if current_hint is not None:
+                    higher = [price for price in prices if price > current_hint * 1.02]
+                    if higher:
+                        return min(higher)
+                return max(prices)
             par = span.parent
             if par:
-                p = _first_dollar_price_in_text(par.get_text(" ", strip=True))
-                if p:
-                    return p
+                prices = _price_candidates_from_raw(par.get_text(" ", strip=True))
+                if prices:
+                    current_hint = _target_current_price(item)
+                    if current_hint is not None:
+                        higher = [price for price in prices if price > current_hint * 1.02]
+                        if higher:
+                            return min(higher)
+                    return max(prices)
     return None
 
 
@@ -2336,6 +2373,15 @@ def _bestbuy_listing_original_price(scope) -> float | None:
         if p:
             return p
     t = scope.get_text(" ", strip=True)
+    comp_match = re.search(
+        r"(?:comp\.?\s*value|comparable value)\s*:?\s*\$?\s*([\d,]+\.\d{2})",
+        t,
+        re.I,
+    )
+    if comp_match:
+        p = clean_price(comp_match.group(1))
+        if p:
+            return p
     if t and re.search(r"\bwas\b", t, re.I):
         p = _first_dollar_price_in_text(t)
         if p:
@@ -2358,7 +2404,7 @@ def _bestbuy_one_row(
         if inner:
             name = inner.get_text(" ", strip=True)
     if len(name) < 3 and tile is not None:
-        t_el = tile.select_one(".sku-title, [data-testid='product-title']")
+        t_el = tile.select_one(".sku-title, .product-title, [data-testid='product-title']")
         if t_el:
             name = t_el.get_text(" ", strip=True)
     price = None
@@ -4988,6 +5034,7 @@ def discover_deals_for_queries(
 ) -> list[dict]:
     source_rows: list[dict] = []
     seen_urls: set[str] = set()
+    base_query = next((str(q).strip() for q in search_queries if str(q).strip()), "")
     for search_query in search_queries:
         if context and context.should_skip_domain(source["domain"]):
             break
@@ -5009,6 +5056,14 @@ def discover_deals_for_queries(
         elif not deals and context and source["domain"] in _SELENIUM_PREFERRED:
             if context.record_empty_result(source["domain"]) >= 2:
                 break
-        if len(source_rows) >= min_usable_results:
+        usable_rows = _apply_discovery_quality_pipeline(
+            [dict(row) for row in source_rows],
+            query=base_query or str(search_query),
+            max_price=max_price,
+            label=_retailer_log_label(source.get("domain") or source.get("name") or ""),
+            price_key="current_price",
+            name_key="product_name",
+        )
+        if len(usable_rows) >= min_usable_results:
             break
     return source_rows

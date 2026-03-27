@@ -67,6 +67,9 @@ def test_broad_device_line_queries_parse_as_named_products():
     ps5 = parse_product_spec("playstation 5")
     kindle = parse_product_spec("kindle paperwhite")
     roku = parse_product_spec("roku ultra")
+    steam_deck = parse_product_spec("steam deck")
+    quest = parse_product_spec("meta quest 3")
+    aeron = parse_product_spec("herman miller aeron")
 
     assert switch.query_type == "named_product"
     assert switch.family == "nintendo_switch"
@@ -83,6 +86,18 @@ def test_broad_device_line_queries_parse_as_named_products():
 
     assert roku.query_type == "named_product"
     assert roku.family == "roku_ultra"
+
+    assert steam_deck.query_type in {"exact_model", "named_product"}
+    assert steam_deck.family == "steam_deck"
+    assert steam_deck.brand in {"steam", "valve"}
+
+    assert quest.query_type == "exact_model"
+    assert quest.family == "meta_quest"
+    assert quest.brand == "meta"
+
+    assert aeron.query_type in {"exact_model", "named_product"}
+    assert aeron.family == "office_chair"
+    assert aeron.brand == "herman miller"
 
 
 def test_exact_headphone_page_is_verified():
@@ -304,6 +319,26 @@ def test_console_and_device_line_queries_reject_games_and_accessories():
     assert kindle_case["listing_role"] in {"different_type", "accessory"}
 
 
+def test_brand_sensitive_named_products_reject_unbranded_lookalikes():
+    lego_intent = parse_query_intent("lego orchid")
+    lego_clone = classify_with_intent(
+        "Orchid Flowers Bouquet Building Set, Botanical Collection Artificial Plant for Home Decor",
+        None,
+        lego_intent,
+    )
+    assert lego_clone["product_kind"] == "other_brand"
+    assert lego_clone["listing_role"] == "different_brand"
+
+    coffee_intent = parse_query_intent("keurig k-express")
+    generic_coffee = classify_with_intent(
+        "Single Serve Coffee Maker with 40oz Removable Reservoir",
+        None,
+        coffee_intent,
+    )
+    assert generic_coffee["product_kind"] == "other_brand"
+    assert generic_coffee["listing_role"] == "different_brand"
+
+
 def test_nintendo_switch_named_product_verifies_consoles_and_rejects_games():
     spec = parse_product_spec("nintendo switch")
 
@@ -446,6 +481,10 @@ def test_random_specific_queries_parse_with_model_intent():
     router = parse_product_spec("TP-Link Archer AX55 router")
     vacuum = parse_product_spec("Dyson V8 cordless vacuum")
     storage = parse_product_spec("Samsung 990 Pro 2TB")
+    coffee_maker = parse_product_spec("Keurig K-Express")
+    mouse = parse_product_spec("Logitech MX Master 3S")
+    power_bank = parse_product_spec("Anker 737 power bank")
+    lego = parse_product_spec("LEGO orchid")
 
     assert printer.query_type == "exact_model"
     assert printer.family == "printer"
@@ -468,6 +507,26 @@ def test_random_specific_queries_parse_with_model_intent():
     assert storage.family == "storage"
     assert storage.brand == "samsung"
     assert storage.model_token.lower() == "990 pro"
+
+    assert coffee_maker.query_type == "exact_model"
+    assert coffee_maker.family == "coffee_maker"
+    assert coffee_maker.brand == "keurig"
+    assert coffee_maker.model_token.lower() == "k-express"
+
+    assert mouse.query_type == "exact_model"
+    assert mouse.family == "mouse"
+    assert mouse.brand == "logitech"
+    assert mouse.model_token.lower() == "mx master 3s"
+
+    assert power_bank.query_type == "exact_model"
+    assert power_bank.family == "power_bank"
+    assert power_bank.brand == "anker"
+    assert power_bank.model_token == "737"
+
+    assert lego.query_type == "named_product"
+    assert lego.family == "building_set"
+    assert lego.brand == "lego"
+    assert "orchid" in lego.required_tokens
 
 
 def test_printer_router_and_vacuum_verification_reject_accessories_and_wrong_models():
@@ -616,6 +675,156 @@ def test_category_query_labels_primary_products_without_auto_verifying_identity(
         ),
     )
     assert converter_result.status == "rejected"
+
+
+def test_mouse_coffee_maker_power_bank_and_lego_queries_verify_specific_products():
+    mouse_spec = parse_product_spec("Logitech MX Master 3S")
+    mouse_exact = verify_listing(
+        mouse_spec,
+        fingerprint_listing_document(
+            "https://example.com/logitech-mx-master-3s",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Logitech MX Master 3S Wireless Performance Mouse" /></head>
+                <body><h1>Logitech MX Master 3S Wireless Performance Mouse</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=99.99,
+            family_hint=mouse_spec.family,
+        ),
+    )
+    assert mouse_exact.status == "verified"
+    assert mouse_exact.match_label == "verified_exact"
+
+    mouse_wrong = verify_listing(
+        mouse_spec,
+        fingerprint_listing_document(
+            "https://example.com/logitech-mx-vertical",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Logitech MX Vertical Wireless Ergonomic Mouse" /></head>
+                <body><h1>Logitech MX Vertical Wireless Ergonomic Mouse</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=79.99,
+            family_hint=mouse_spec.family,
+        ),
+    )
+    assert mouse_wrong.status == "rejected"
+    assert mouse_wrong.reason in {"different_model", "model_missing"}
+
+    coffee_spec = parse_product_spec("Keurig K-Express")
+    coffee_exact = verify_listing(
+        coffee_spec,
+        fingerprint_listing_document(
+            "https://example.com/keurig-k-express",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Keurig K-Express Single Serve K-Cup Pod Coffee Maker" /></head>
+                <body><h1>Keurig K-Express Single Serve K-Cup Pod Coffee Maker</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=69.99,
+            family_hint=coffee_spec.family,
+        ),
+    )
+    assert coffee_exact.status == "verified"
+    assert coffee_exact.match_label == "verified_exact"
+
+    coffee_accessory = verify_listing(
+        coffee_spec,
+        fingerprint_listing_document(
+            "https://example.com/keurig-water-filter",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Water Filter Starter Kit for Keurig Coffee Makers" /></head>
+                <body><h1>Water Filter Starter Kit for Keurig Coffee Makers</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=14.99,
+            family_hint=coffee_spec.family,
+        ),
+    )
+    assert coffee_accessory.status == "rejected"
+    assert coffee_accessory.reason in {"compatible_or_wrong_type", "accessory_or_bundle", "family_negative_signal"}
+
+    power_spec = parse_product_spec("Anker 737 power bank")
+    power_exact = verify_listing(
+        power_spec,
+        fingerprint_listing_document(
+            "https://example.com/anker-737-power-bank",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Anker 737 Power Bank 24,000mAh Portable Charger" /></head>
+                <body><h1>Anker 737 Power Bank 24,000mAh Portable Charger</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=109.99,
+            family_hint=power_spec.family,
+        ),
+    )
+    assert power_exact.status == "verified"
+    assert power_exact.match_label == "verified_exact"
+
+    power_wrong = verify_listing(
+        power_spec,
+        fingerprint_listing_document(
+            "https://example.com/anker-prime-power-bank",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Anker Prime Power Bank Portable Charger" /></head>
+                <body><h1>Anker Prime Power Bank Portable Charger</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=125.99,
+            family_hint=power_spec.family,
+        ),
+    )
+    assert power_wrong.status in {"rejected", "ambiguous"}
+    assert power_wrong.reason in {"different_model", "model_missing", "model_not_proven"}
+
+    lego_spec = parse_product_spec("LEGO orchid")
+    lego_exact = verify_listing(
+        lego_spec,
+        fingerprint_listing_document(
+            "https://example.com/lego-orchid",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="LEGO Botanicals Orchid Building Set for Adults" /></head>
+                <body><h1>LEGO Botanicals Orchid Building Set for Adults</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=49.99,
+            family_hint=lego_spec.family,
+        ),
+    )
+    assert lego_exact.status == "verified"
+    assert lego_exact.match_label == "verified_named"
+
+    lego_accessory = verify_listing(
+        lego_spec,
+        fingerprint_listing_document(
+            "https://example.com/lego-orchid-light-kit",
+            BeautifulSoup(
+                """
+                <html><head><meta property="og:title" content="Light Kit Compatible with LEGO Orchid Building Set" /></head>
+                <body><h1>Light Kit Compatible with LEGO Orchid Building Set</h1></body></html>
+                """,
+                "html.parser",
+            ),
+            current_price=19.99,
+            family_hint=lego_spec.family,
+        ),
+    )
+    assert lego_accessory.status == "rejected"
+    assert lego_accessory.reason in {"compatible_or_wrong_type", "accessory_or_bundle", "family_negative_signal"}
 
 
 def test_extract_price_prefers_real_product_price_over_warranty_offer():

@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ product.name or 'Product' }} — PricePulse{% endblock %}
 
+{% block meta_description %}Track {{ product.name or 'this product' }} across verified sources, review price history, and confirm the current best real price without following noisy or mismatched listings.{% endblock %}
+
 {% block head %}
 <style>
   .detail-back {

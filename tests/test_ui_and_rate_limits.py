@@ -91,6 +91,44 @@ def test_product_detail_and_history_templates_include_mobile_table_markup(tmp_pa
     assert 'data-label="vs Target"' in history_html
 
 
+def test_history_template_supports_any_drop_mode(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    product_id = database.add_product(
+        "Apple AirPods Pro 3",
+        None,
+        alert_mode="any_drop",
+        origin_type="direct_link",
+    )
+    ps_id = database.add_product_source(
+        product_id,
+        1,
+        discovered_url="https://example.com/airpods-pro-3",
+        current_price=189.0,
+        status="watching",
+        verification_state="verified",
+        health_state="healthy",
+        tracking_mode="direct_url",
+    )
+    database.add_price_history(ps_id, 199.0)
+    database.add_price_history(ps_id, 189.0)
+    database.compute_best_price(product_id)
+
+    product = dict(database.get_product_by_id(product_id))
+    price_history = database.get_price_history(product_id)
+    with app_module.app.test_request_context("/history/render"):
+        history_html = render_template(
+            "history.html",
+            product=product,
+            price_history=price_history,
+        )
+
+    assert "Alert: <strong" in history_html
+    assert "Any drop" in history_html
+    assert "Price Change" in history_html
+    assert "Baseline" in history_html
+
+
 def test_dashboard_cards_link_to_product_detail(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
 
@@ -107,13 +145,24 @@ def test_dashboard_cards_link_to_product_detail(tmp_path, monkeypatch):
 
 
 def test_manual_check_route_has_ip_cooldown(tmp_path, monkeypatch):
-    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    _, app_module = _load_test_app(tmp_path, monkeypatch)
     calls = {"count": 0}
 
-    def fake_check_all_products():
+    def fake_enqueue(requested_by=None):
         calls["count"] += 1
+        return 123, True
 
-    monkeypatch.setattr(app_module, "check_all_products", fake_check_all_products)
+    monkeypatch.setattr(app_module, "enqueue_manual_check_request", fake_enqueue)
+    monkeypatch.setattr(
+        app_module,
+        "get_runtime_diagnostics",
+        lambda: {
+            "worker_online": True,
+            "current_job_name": None,
+            "running_manual_checks": 0,
+            "queue_depth": 0,
+        },
+    )
 
     client = app_module.app.test_client()
     first = client.get("/check")
@@ -125,6 +174,52 @@ def test_manual_check_route_has_ip_cooldown(tmp_path, monkeypatch):
     assert "Please wait a minute before starting another one." in second.get_data(as_text=True)
     assert 'aria-live="polite"' in second.get_data(as_text=True)
     assert 'class="flash-dismiss"' in second.get_data(as_text=True)
+
+
+def test_app_sets_security_headers_and_healthz(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    client = app_module.app.test_client()
+
+    home = client.get("/")
+    assert home.status_code == 200
+    assert home.headers["X-Content-Type-Options"] == "nosniff"
+    assert home.headers["X-Frame-Options"] == "SAMEORIGIN"
+    assert home.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "geolocation=()" in home.headers["Permissions-Policy"]
+
+    health = client.get("/healthz")
+    payload = health.get_json()
+    assert health.status_code == 200
+    assert payload["status"] == "ok"
+    assert payload["service"] == "pricepulse"
+    assert payload["sources_total"] >= payload["sources_enabled"] >= 0
+
+    ready = client.get("/readyz")
+    ready_payload = ready.get_json()
+    assert ready.status_code == 200
+    assert ready_payload["status"] == "ready"
+    assert ready_payload["database_ready"] is True
+
+    diagnostics = client.get("/diagnostics")
+    diagnostics_payload = diagnostics.get_json()
+    assert diagnostics.status_code == 200
+    assert diagnostics_payload["status"] == "ok"
+    assert "runtime" in diagnostics_payload
+    assert "queue_depth" in diagnostics_payload["runtime"]
+
+
+def test_missing_page_renders_friendly_error_screen(tmp_path, monkeypatch):
+    _, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    client = app_module.app.test_client()
+    response = client.get("/definitely-missing-page")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 404
+    assert "Page not found" in html
+    assert "Back to Dashboard" in html
+    assert "Find a Deal" in html
 
 
 def test_discover_track_route_has_result_cooldown(tmp_path, monkeypatch):

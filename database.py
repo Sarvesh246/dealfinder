@@ -6,7 +6,7 @@ Supports multi-source product discovery: products → product_sources → price_
 import sqlite3
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 from product_verifier import parse_product_spec, product_spec_to_fields
@@ -183,6 +183,10 @@ def get_connection():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0).isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -414,6 +418,14 @@ def _ensure_indexes(cursor) -> None:
         "CREATE INDEX IF NOT EXISTS idx_products_current_price "
         "ON products(current_price)"
     )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_manual_check_requests_status_requested_at "
+        "ON manual_check_requests(status, requested_at)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_worker_job_runs_job_name_created_at "
+        "ON worker_job_runs(job_name, created_at)"
+    )
 
 
 def init_db():
@@ -597,6 +609,55 @@ def init_db():
                 FOREIGN KEY (product_source_id) REFERENCES product_sources(id) ON DELETE CASCADE
             )
         """)
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS worker_runtime (
+                singleton_id         INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                worker_id            TEXT,
+                heartbeat_at         TEXT,
+                lease_until          TEXT,
+                current_job_name     TEXT,
+                current_job_trigger  TEXT,
+                current_job_started_at TEXT,
+                last_job_name        TEXT,
+                last_job_status      TEXT,
+                last_job_started_at  TEXT,
+                last_job_finished_at TEXT,
+                last_job_error       TEXT
+            )
+        """)
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS worker_job_runs (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                job_name      TEXT NOT NULL,
+                trigger_type  TEXT NOT NULL,
+                requested_by  TEXT,
+                status        TEXT NOT NULL,
+                worker_id     TEXT,
+                created_at    TEXT NOT NULL,
+                started_at    TEXT,
+                finished_at   TEXT,
+                error         TEXT
+            )
+        """)
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS manual_check_requests (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                requested_at  TEXT NOT NULL,
+                requested_by  TEXT,
+                status        TEXT NOT NULL DEFAULT 'queued',
+                worker_id     TEXT,
+                started_at    TEXT,
+                finished_at   TEXT,
+                error         TEXT
+            )
+        """)
+
+        c.execute(
+            "INSERT OR IGNORE INTO worker_runtime (singleton_id) VALUES (1)"
+        )
 
         _sync_default_sources(c)
 
@@ -1511,6 +1572,397 @@ def get_best_source_url(product_id):
     except Exception as exc:
         logging.error(f"[{datetime.now()}] get_best_source_url({product_id}) error: {exc}")
         return ""
+
+
+# ---------------------------------------------------------------------------
+# Worker runtime, leases, and manual-check queue
+# ---------------------------------------------------------------------------
+
+def acquire_worker_lease(worker_id: str, lease_seconds: int = 90) -> bool:
+    now = _utcnow_iso()
+    lease_until = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=max(15, lease_seconds))).replace(
+        microsecond=0
+    ).isoformat()
+    try:
+        conn = get_connection()
+        conn.execute("INSERT OR IGNORE INTO worker_runtime (singleton_id) VALUES (1)")
+        cur = conn.execute(
+            """
+            UPDATE worker_runtime
+            SET worker_id = ?,
+                heartbeat_at = ?,
+                lease_until = ?,
+                current_job_name = CASE
+                    WHEN worker_id IS NULL OR worker_id = ? THEN current_job_name
+                    ELSE NULL
+                END,
+                current_job_trigger = CASE
+                    WHEN worker_id IS NULL OR worker_id = ? THEN current_job_trigger
+                    ELSE NULL
+                END,
+                current_job_started_at = CASE
+                    WHEN worker_id IS NULL OR worker_id = ? THEN current_job_started_at
+                    ELSE NULL
+                END
+            WHERE singleton_id = 1
+              AND (
+                    worker_id IS NULL
+                    OR worker_id = ?
+                    OR lease_until IS NULL
+                    OR lease_until < ?
+                  )
+            """,
+            (worker_id, now, lease_until, worker_id, worker_id, worker_id, worker_id, now),
+        )
+        conn.commit()
+        conn.close()
+        return cur.rowcount > 0
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] acquire_worker_lease error: {exc}")
+        return False
+
+
+def heartbeat_worker_lease(worker_id: str, lease_seconds: int = 90) -> bool:
+    now = _utcnow_iso()
+    lease_until = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=max(15, lease_seconds))).replace(
+        microsecond=0
+    ).isoformat()
+    try:
+        conn = get_connection()
+        cur = conn.execute(
+            """
+            UPDATE worker_runtime
+            SET heartbeat_at = ?, lease_until = ?
+            WHERE singleton_id = 1 AND worker_id = ?
+            """,
+            (now, lease_until, worker_id),
+        )
+        conn.commit()
+        conn.close()
+        return cur.rowcount > 0
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] heartbeat_worker_lease error: {exc}")
+        return False
+
+
+def release_worker_lease(worker_id: str) -> None:
+    try:
+        conn = get_connection()
+        conn.execute(
+            """
+            UPDATE worker_runtime
+            SET worker_id = NULL,
+                heartbeat_at = NULL,
+                lease_until = NULL,
+                current_job_name = NULL,
+                current_job_trigger = NULL,
+                current_job_started_at = NULL
+            WHERE singleton_id = 1 AND worker_id = ?
+            """,
+            (worker_id,),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] release_worker_lease error: {exc}")
+
+
+def begin_worker_job(
+    worker_id: str,
+    job_name: str,
+    trigger_type: str,
+    requested_by: str | None = None,
+) -> int | None:
+    now = _utcnow_iso()
+    try:
+        conn = get_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("INSERT OR IGNORE INTO worker_runtime (singleton_id) VALUES (1)")
+        runtime = conn.execute(
+            "SELECT worker_id, current_job_name FROM worker_runtime WHERE singleton_id = 1"
+        ).fetchone()
+        if not runtime or runtime["worker_id"] != worker_id:
+            conn.rollback()
+            conn.close()
+            return None
+        if runtime["current_job_name"]:
+            conn.rollback()
+            conn.close()
+            return None
+        conn.execute(
+            """
+            UPDATE worker_runtime
+            SET current_job_name = ?,
+                current_job_trigger = ?,
+                current_job_started_at = ?
+            WHERE singleton_id = 1 AND worker_id = ?
+            """,
+            (job_name, trigger_type, now, worker_id),
+        )
+        cur = conn.execute(
+            """
+            INSERT INTO worker_job_runs (
+                job_name, trigger_type, requested_by, status, worker_id, created_at, started_at
+            ) VALUES (?, ?, ?, 'running', ?, ?, ?)
+            """,
+            (job_name, trigger_type, requested_by, worker_id, now, now),
+        )
+        run_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+        return run_id
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] begin_worker_job error: {exc}")
+        return None
+
+
+def finish_worker_job(worker_id: str, run_id: int, status: str, error: str | None = None) -> None:
+    finished_at = _utcnow_iso()
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT job_name, started_at FROM worker_job_runs WHERE id = ?",
+            (run_id,),
+        ).fetchone()
+        job_name = row["job_name"] if row else None
+        started_at = row["started_at"] if row else None
+        conn.execute(
+            """
+            UPDATE worker_job_runs
+            SET status = ?, finished_at = ?, error = ?
+            WHERE id = ?
+            """,
+            (status, finished_at, error, run_id),
+        )
+        conn.execute(
+            """
+            UPDATE worker_runtime
+            SET current_job_name = NULL,
+                current_job_trigger = NULL,
+                current_job_started_at = NULL,
+                last_job_name = ?,
+                last_job_status = ?,
+                last_job_started_at = ?,
+                last_job_finished_at = ?,
+                last_job_error = ?
+            WHERE singleton_id = 1 AND worker_id = ?
+            """,
+            (job_name, status, started_at, finished_at, error, worker_id),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] finish_worker_job error: {exc}")
+
+
+def enqueue_manual_check_request(requested_by: str | None = None) -> tuple[int | None, bool]:
+    now = _utcnow_iso()
+    try:
+        conn = get_connection()
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM manual_check_requests
+            WHERE status IN ('queued', 'running')
+            ORDER BY requested_at ASC
+            LIMIT 1
+            """
+        ).fetchone()
+        if existing:
+            conn.close()
+            return existing["id"], False
+        cur = conn.execute(
+            """
+            INSERT INTO manual_check_requests (requested_at, requested_by, status)
+            VALUES (?, ?, 'queued')
+            """,
+            (now, requested_by),
+        )
+        request_id = cur.lastrowid
+        conn.commit()
+        conn.close()
+        return request_id, True
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] enqueue_manual_check_request error: {exc}")
+        return None, False
+
+
+def claim_next_manual_check_request(worker_id: str) -> sqlite3.Row | None:
+    now = _utcnow_iso()
+    try:
+        conn = get_connection()
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """
+            SELECT *
+            FROM manual_check_requests
+            WHERE status = 'queued'
+            ORDER BY requested_at ASC
+            LIMIT 1
+            """
+        ).fetchone()
+        if not row:
+            conn.rollback()
+            conn.close()
+            return None
+        cur = conn.execute(
+            """
+            UPDATE manual_check_requests
+            SET status = 'running',
+                worker_id = ?,
+                started_at = ?,
+                error = NULL
+            WHERE id = ? AND status = 'queued'
+            """,
+            (worker_id, now, row["id"]),
+        )
+        if cur.rowcount == 0:
+            conn.rollback()
+            conn.close()
+            return None
+        claimed = conn.execute(
+            "SELECT * FROM manual_check_requests WHERE id = ?",
+            (row["id"],),
+        ).fetchone()
+        conn.commit()
+        conn.close()
+        return claimed
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] claim_next_manual_check_request error: {exc}")
+        return None
+
+
+def complete_manual_check_request(
+    request_id: int,
+    worker_id: str,
+    status: str,
+    error: str | None = None,
+) -> None:
+    finished_at = _utcnow_iso()
+    try:
+        conn = get_connection()
+        conn.execute(
+            """
+            UPDATE manual_check_requests
+            SET status = ?, worker_id = ?, finished_at = ?, error = ?
+            WHERE id = ?
+            """,
+            (status, worker_id, finished_at, error, request_id),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] complete_manual_check_request error: {exc}")
+
+
+def requeue_manual_check_request(request_id: int) -> None:
+    try:
+        conn = get_connection()
+        conn.execute(
+            """
+            UPDATE manual_check_requests
+            SET status = 'queued',
+                worker_id = NULL,
+                started_at = NULL,
+                finished_at = NULL,
+                error = NULL
+            WHERE id = ?
+            """,
+            (request_id,),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] requeue_manual_check_request error: {exc}")
+
+
+def get_runtime_diagnostics(stale_after_seconds: int = 120) -> dict[str, object]:
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    diagnostics: dict[str, object] = {
+        "worker_online": False,
+        "worker_id": None,
+        "heartbeat_at": None,
+        "lease_until": None,
+        "current_job_name": None,
+        "current_job_trigger": None,
+        "current_job_started_at": None,
+        "last_job_name": None,
+        "last_job_status": None,
+        "last_job_started_at": None,
+        "last_job_finished_at": None,
+        "last_job_error": None,
+        "queue_depth": 0,
+        "queued_manual_checks": 0,
+        "running_manual_checks": 0,
+        "last_periodic_check": None,
+        "last_manual_check": None,
+        "last_backfill": None,
+        "recent_jobs": [],
+    }
+    try:
+        conn = get_connection()
+        runtime = conn.execute(
+            "SELECT * FROM worker_runtime WHERE singleton_id = 1"
+        ).fetchone()
+        if runtime:
+            diagnostics.update(dict(runtime))
+            heartbeat_at = runtime["heartbeat_at"]
+            if heartbeat_at:
+                try:
+                    heartbeat_dt = datetime.fromisoformat(heartbeat_at)
+                    diagnostics["worker_online"] = (
+                        now - heartbeat_dt
+                    ).total_seconds() <= max(30, stale_after_seconds)
+                except ValueError:
+                    diagnostics["worker_online"] = False
+        queue_counts = conn.execute(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM manual_check_requests
+            WHERE status IN ('queued', 'running')
+            GROUP BY status
+            """
+        ).fetchall()
+        for row in queue_counts:
+            if row["status"] == "queued":
+                diagnostics["queued_manual_checks"] = row["count"]
+            elif row["status"] == "running":
+                diagnostics["running_manual_checks"] = row["count"]
+        diagnostics["queue_depth"] = (
+            diagnostics["queued_manual_checks"] + diagnostics["running_manual_checks"]
+        )
+        for job_name, key in (
+            ("periodic_price_check", "last_periodic_check"),
+            ("manual_price_check", "last_manual_check"),
+            ("startup_backfill", "last_backfill"),
+        ):
+            row = conn.execute(
+                """
+                SELECT id, status, started_at, finished_at, error, trigger_type
+                FROM worker_job_runs
+                WHERE job_name = ?
+                ORDER BY COALESCE(finished_at, started_at, created_at) DESC
+                LIMIT 1
+                """,
+                (job_name,),
+            ).fetchone()
+            diagnostics[key] = dict(row) if row else None
+        recent = conn.execute(
+            """
+            SELECT id, job_name, trigger_type, status, requested_by, worker_id,
+                   created_at, started_at, finished_at, error
+            FROM worker_job_runs
+            ORDER BY COALESCE(finished_at, started_at, created_at) DESC
+            LIMIT 8
+            """
+        ).fetchall()
+        diagnostics["recent_jobs"] = [dict(row) for row in recent]
+        conn.close()
+        return diagnostics
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] get_runtime_diagnostics error: {exc}")
+        diagnostics["error"] = str(exc)
+        return diagnostics
 
 
 # ---------------------------------------------------------------------------

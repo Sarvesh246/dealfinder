@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block title %}Confirm Matches — {{ product.name }} — PricePulse{% endblock %}
+
+{% block head %}
+<style>
+  .confirm-shell { display: flex; justify-content: center; }
+  .confirm-card {
+    width: 100%;
+    max-width: 920px;
+    padding: 36px;
+    border-radius: var(--radius);
+  }
+  .confirm-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    transition: color 180ms ease;
+  }
+  .confirm-back:hover { color: var(--text-primary); }
+  .confirm-title {
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+  .confirm-copy {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.65;
+    margin-bottom: 24px;
+    max-width: 720px;
+  }
+  .confirm-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  .confirm-group {
+    padding: 20px;
+    border-radius: calc(var(--radius) - 2px);
+  }
+  .confirm-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .confirm-source-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .confirm-grid {
+    display: grid;
+    gap: 12px;
+  }
+  .confirm-item {
+    padding: 16px;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .confirm-name {
+    font-size: 15px;
+    line-height: 1.45;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+  }
+  .confirm-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+  .confirm-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(124, 92, 252, 0.24);
+    background: rgba(124, 92, 252, 0.1);
+    color: #c7bcff;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .confirm-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+  .confirm-link {
+    color: var(--accent-blue);
+    font-size: 13px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .confirm-link:hover { color: #8bc2ff; }
+  @media (max-width: 639px) {
+    .confirm-card { padding: 24px 16px; }
+    .confirm-title { font-size: 24px; }
+    .confirm-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .confirm-actions .btn-primary,
+    .confirm-actions .confirm-link {
+      width: 100%;
+      text-align: center;
+      justify-content: center;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="confirm-shell">
+  <section class="card confirm-card fade-in">
+    <a href="{{ url_for('product_detail', product_id=product.id) }}" class="confirm-back">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="19" y1="12" x2="5" y2="12"></line>
+        <polyline points="12 19 5 12 12 5"></polyline>
+      </svg>
+      Back to Product
+    </a>
+
+    <h1 class="confirm-title">Confirm Ambiguous Matches</h1>
+    <p class="confirm-copy">
+      {{ product.name }} needs a quick confirmation before these sources can count toward pricing or alerts.
+      Pick the real product page for each store below.
+    </p>
+
+    <div class="confirm-groups">
+      {% for group in groups %}
+      <section class="card confirm-group fade-in">
+        <div class="confirm-source">
+          <span class="confirm-source-dot" style="background: {{ group.logo_color }}"></span>
+          {{ group.source_name }}
+        </div>
+        <div class="confirm-grid">
+          {% for candidate in group.candidates %}
+          <article class="confirm-item">
+            <div class="confirm-name">{{ candidate.candidate_name }}</div>
+            <div class="confirm-meta">
+              {% if candidate.candidate_price is not none %}
+              <span>{{ candidate.candidate_price | format_price }}</span>
+              {% endif %}
+              <span>{{ candidate.verification_reason | replace("_", " ") | title }}</span>
+              <span class="confirm-badge">{{ candidate.match_label | replace("_", " ") | title }}</span>
+            </div>
+            <div class="confirm-actions">
+              <form method="POST" action="{{ url_for('confirm_product_candidate', product_id=product.id, candidate_id=candidate.id) }}">
+                <button class="btn-primary btn-sm" type="submit">Use This Match</button>
+              </form>
+              <a
+                class="confirm-link"
+                href="{{ candidate.candidate_url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open Listing ↗
+              </a>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

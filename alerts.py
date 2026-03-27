@@ -14,6 +14,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import requests
+from observability import log_event
 
 
 # ---------------------------------------------------------------------------
@@ -138,14 +139,45 @@ def send_discord_alert(
         resp = requests.post(webhook_url, json={"embeds": [embed]}, timeout=10)
         if resp.status_code == 204:
             logging.info(f"[{datetime.now()}] Discord alert sent for '{product_name}'")
+            log_event(
+                "alert.delivery",
+                channel="discord",
+                product_name=product_name,
+                alert_mode=alert_mode,
+                current_price=current_price,
+                delivered=True,
+                is_test=is_test,
+            )
             return True
         else:
             logging.warning(
                 f"[{datetime.now()}] Discord webhook returned {resp.status_code} "
                 f"for '{product_name}'"
             )
+            log_event(
+                "alert.delivery",
+                level="warning",
+                channel="discord",
+                product_name=product_name,
+                alert_mode=alert_mode,
+                current_price=current_price,
+                delivered=False,
+                status_code=resp.status_code,
+                is_test=is_test,
+            )
     except Exception as exc:
         logging.error(f"[{datetime.now()}] Discord alert error for '{product_name}': {exc}")
+        log_event(
+            "alert.delivery",
+            level="error",
+            channel="discord",
+            product_name=product_name,
+            alert_mode=alert_mode,
+            current_price=current_price,
+            delivered=False,
+            error=str(exc),
+            is_test=is_test,
+        )
     return False
 
 
@@ -195,9 +227,31 @@ def send_gmail_alert(
             server.sendmail(gmail_user, alert_email, msg.as_string())
 
         logging.info(f"[{datetime.now()}] Gmail alert sent to {alert_email} for '{product_name}'")
+        log_event(
+            "alert.delivery",
+            channel="gmail",
+            product_name=product_name,
+            alert_mode=alert_mode,
+            current_price=current_price,
+            delivered=True,
+            target=alert_email,
+            is_test=is_test,
+        )
         return True
     except Exception as exc:
         logging.error(f"[{datetime.now()}] Gmail alert error for '{product_name}': {exc}")
+        log_event(
+            "alert.delivery",
+            level="error",
+            channel="gmail",
+            product_name=product_name,
+            alert_mode=alert_mode,
+            current_price=current_price,
+            delivered=False,
+            target=alert_email,
+            error=str(exc),
+            is_test=is_test,
+        )
     return False
 
 

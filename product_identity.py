@@ -278,6 +278,7 @@ _UNIVERSAL_MODEL_PATTERNS: tuple[Pattern[str], ...] = (
     re.compile(r"\brtx\s*\d{3,4}\s*(?:ti|super)?\b", re.I),
     re.compile(r"\bgtx\s*\d{4}\b", re.I),
     re.compile(r"\bwh[- ]?1000xm[45]\b", re.I),
+    re.compile(r"\bmx\s*master\s*3s?\b", re.I),
     re.compile(
         r"\biphone\s*(?:\d{2})\s*(?:pro\s*max|pro|plus|mini)?\b", re.I
     ),
@@ -287,10 +288,14 @@ _UNIVERSAL_MODEL_PATTERNS: tuple[Pattern[str], ...] = (
     re.compile(r"\bhl[- ]?l\d{4}[a-z]{1,3}\b", re.I),
     re.compile(r"\bmfc[- ]?l\d{4}[a-z]{1,3}\b", re.I),
     re.compile(r"\bdcp[- ]?l\d{4}[a-z]{1,3}\b", re.I),
+    re.compile(r"\bk[- ]?(?:express|mini|elite|compact|supreme)\b", re.I),
     re.compile(r"\b(?:archer\s*)?(?:axe|ax|be|ac)\s*\d{1,4}\b", re.I),
     re.compile(r"\bv(?:8|10|11|12|15)\b", re.I),
     re.compile(r"\b(?:9[78]0|9[89]0)\s*(?:pro|evo)\b", re.I),
     re.compile(r"\bsn\s*\d{3,4}x?\b", re.I),
+    re.compile(r"\b737\b", re.I),
+    re.compile(r"\bsteam\s*deck\s*oled\b|\bsteam\s*deck\b", re.I),
+    re.compile(r"\bmeta\s*quest\s*3s?\b|\bquest\s*3s?\b", re.I),
 )
 
 
@@ -641,6 +646,8 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         ),
         "search_alias_templates": (
             "{brand} {model_token} printer",
+            "{brand} {model_token} monochrome laser printer",
+            "{brand} {model_token} wireless compact monochrome laser printer",
             "{model_token} printer",
             "{raw}",
         ),
@@ -757,9 +764,55 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "brand_tokens": (
             "logitech", "razer", "corsair", "steelseries", "glorious", "zalman",
         ),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("mouse", "wireless", "bluetooth", "dpi", "scroll"),
+        "accessory_signals": ("pad", "feet", "skates"),
+        "negative_signals": ("pad", "feet", "skates"),
+        "search_alias_templates": (
+            "{brand} {model_token} mouse",
+            "{raw}",
+        ),
+        "model_patterns": [
+            re.compile(r"\bmx\s*master\s*3s?\b", re.I),
+            re.compile(r"\bmx\s*vertical\b", re.I),
+        ],
         "hard_block": None,
         "other_brand_earbuds": None,
         "category_accessory_words": ("pad", "feet", "skates"),
+    },
+    {
+        "id": "coffee_maker",
+        "match_query": re.compile(
+            r"\bkeurig\b|\bk[- ]?(?:express|mini|elite|compact|supreme)\b|"
+            r"\bk-cup\b|\bcoffee\s*maker\b|\bsingle\s*serve\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\bcoffee\s*maker\b|\bk-cup\b|\bsingle\s*serve\b|\bkeurig\b",
+            re.I,
+        ),
+        "brand_tokens": ("keurig", "nespresso", "breville", "mr coffee", "hamilton beach"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("coffee maker", "single serve", "k-cup", "brew sizes"),
+        "accessory_signals": ("filter", "descaling", "pod holder", "carafe", "water filter"),
+        "negative_signals": ("filter", "descaling", "pod holder", "water filter"),
+        "search_alias_templates": (
+            "{brand} {model_token} coffee maker",
+            "{brand} {required_tokens} coffee maker",
+            "{raw}",
+        ),
+        "model_patterns": [
+            re.compile(r"\bk[- ]?(?:express|mini|elite|compact|supreme)\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\bfilter\b|\bdescaling\b|\bcleaner\b|\bwater\s*filter\b|\bpod\s*holder\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("filter", "descaling", "pod holder", "water filter"),
+        "require_brand_presence": True,
     },
     {
         "id": "keyboard",
@@ -897,6 +950,71 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "hard_block": None,
         "other_brand_earbuds": None,
         "category_accessory_words": ("cable", "adapter", "mount", "antenna", "extender"),
+    },
+    {
+        "id": "power_bank",
+        "match_query": re.compile(
+            r"\bpower\s*bank\b|\bportable\s*charger\b|\bbattery\s*pack\b|"
+            r"\bpowercore\b|\b737\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\bpower\s*bank\b|\bportable\s*charger\b|\bbattery\s*pack\b|\bpowercore\b",
+            re.I,
+        ),
+        "brand_tokens": ("anker", "ugreen", "baseus", "iniu", "ravpower"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("power bank", "portable charger", "battery pack", "mah", "usb-c"),
+        "accessory_signals": ("cable", "wall charger", "charging brick", "adapter"),
+        "negative_signals": ("cable", "wall charger", "charging brick", "adapter"),
+        "search_alias_templates": (
+            "{brand} {model_token} power bank",
+            "{brand} {model_token} portable charger",
+            "{brand} {model_token} powercore 24k",
+            "{brand} {required_tokens} power bank",
+            "{raw}",
+        ),
+        "model_patterns": [
+            re.compile(r"\b737\b", re.I),
+            re.compile(r"\bpowercore\s*\d+[a-z]?\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\bcable\b|\bwall\s*charger\b|\bcharging\s*brick\b|\badapter\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("cable", "wall charger", "charging brick", "adapter"),
+        "require_brand_presence": True,
+    },
+    {
+        "id": "building_set",
+        "match_query": re.compile(
+            r"\blego\b|\bbuilding\s*set\b|\bbotanicals\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\blego\b|\bbuilding\s*set\b|\bbotanicals\b|\bbrick\b",
+            re.I,
+        ),
+        "brand_tokens": ("lego",),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("building set", "botanicals", "lego", "brick"),
+        "accessory_signals": ("light kit", "display case", "instruction book", "compatible with lego"),
+        "negative_signals": ("light kit", "display case", "instruction book", "compatible with lego"),
+        "search_alias_templates": (
+            "{brand} {required_tokens} botanicals building set",
+            "{brand} {required_tokens} building set",
+            "{raw}",
+        ),
+        "hard_block": re.compile(
+            r"\blight\s*kit\b|\bdisplay\s*case\b|\bcompatible\s+with\s+lego\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("light kit", "display case", "instruction book"),
+        "require_brand_presence": True,
     },
     {
         "id": "ps5",
@@ -1073,6 +1191,88 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "category_accessory_words": ("remote", "cable", "adapter", "mount"),
         "require_primary_signal": True,
     },
+    {
+        "id": "steam_deck",
+        "match_query": re.compile(r"\bsteam\s*deck\b", re.I),
+        "title_core": re.compile(r"\bsteam\s*deck\b", re.I),
+        "brand_tokens": ("valve", "steam"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("steam deck", "handheld", "gaming handheld", "oled", "lcd", "512gb", "1tb"),
+        "accessory_signals": ("case", "dock", "screen protector", "grip", "charger", "skin"),
+        "negative_signals": ("case", "dock", "screen protector", "grip", "charger", "skin"),
+        "search_alias_templates": (
+            "{raw}",
+            "steam deck handheld",
+            "steam deck oled handheld",
+        ),
+        "model_patterns": [
+            re.compile(r"\bsteam\s*deck\s*oled\b", re.I),
+            re.compile(r"\bsteam\s*deck\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\bfor\s+steam\s*deck\b|\b(?:screen\s*protector|dock|carrying\s*case|case|grip|skin)\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("screen protector", "dock", "case", "grip", "skin"),
+        "require_primary_signal": True,
+    },
+    {
+        "id": "meta_quest",
+        "match_query": re.compile(r"\bmeta\s*quest\b|\bquest\s*3s?\b", re.I),
+        "title_core": re.compile(r"\bmeta\s*quest\b|\bquest\s*3s?\b", re.I),
+        "brand_tokens": ("meta", "oculus"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("vr headset", "mixed reality", "headset", "128gb", "512gb", "quest 3", "quest 3s"),
+        "accessory_signals": ("case", "strap", "controller", "charging dock", "lens insert", "facial interface"),
+        "negative_signals": ("case", "strap", "controller", "charging dock", "lens insert", "facial interface"),
+        "search_alias_templates": (
+            "{raw}",
+            "meta quest 3 vr headset",
+            "meta quest 3s vr headset",
+        ),
+        "model_patterns": [
+            re.compile(r"\bmeta\s*quest\s*3s?\b", re.I),
+            re.compile(r"\bquest\s*3s?\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\bfor\s+(?:meta\s*)?quest\s*3s?\b|\b(?:strap|case|controller|charging\s*dock|lens\s*insert|facial\s*interface)\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("strap", "case", "controller", "charging dock", "lens insert"),
+        "require_primary_signal": True,
+    },
+    {
+        "id": "office_chair",
+        "match_query": re.compile(r"\boffice\s*chair\b|\bergonomic\s*chair\b|\bdesk\s*chair\b", re.I),
+        "title_core": re.compile(r"\boffice\s*chair\b|\bergonomic\s*chair\b|\bdesk\s*chair\b|\bmesh\s*chair\b", re.I),
+        "brand_tokens": ("steelcase", "herman miller", "branch", "autonomous", "sihoo", "hbada"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("office chair", "ergonomic chair", "desk chair", "lumbar", "adjustable arms", "mesh"),
+        "accessory_signals": ("chair mat", "caster", "wheel", "cover", "armrest pad", "replacement cylinder"),
+        "negative_signals": ("chair mat", "caster", "wheel", "cover", "armrest pad", "replacement cylinder"),
+        "search_alias_templates": (
+            "{raw}",
+            "{brand} office chair",
+            "{brand} ergonomic office chair",
+        ),
+        "model_patterns": [
+            re.compile(r"\baeron\b", re.I),
+            re.compile(r"\bleap\s*v?2\b", re.I),
+            re.compile(r"\bgesture\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\b(?:chair\s*mat|caster|casters|wheel|wheels|cover|armrest\s*pad|replacement\s*cylinder)\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("chair mat", "caster", "wheel", "cover", "armrest pad", "replacement cylinder"),
+        "require_primary_signal": True,
+    },
 ]
 
 
@@ -1088,6 +1288,7 @@ def family_defs_list() -> list[dict[str, Any]]:
         merged.setdefault("search_alias_templates", ())
         merged.setdefault("brand_plus_family_named", False)
         merged.setdefault("require_primary_signal", False)
+        merged.setdefault("require_brand_presence", False)
         out.append(merged)
     return out
 
@@ -1187,7 +1388,52 @@ def _extract_named_required_tokens(
         for phrase in ("roku ultra",):
             if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
                 required.append(phrase)
+    if family.get("id") == "building_set":
+        match = re.search(r"\blego\s+(.+)$", query_norm, re.I)
+        if match:
+            tail = normalize_user_query(match.group(1))
+            tail = re.sub(r"\b(?:building\s*set|botanicals|flowers?)\b", " ", tail, flags=re.I)
+            tail = re.sub(r"\s+", " ", tail).strip()
+            if tail:
+                required.append(tail)
+    if family.get("id") == "power_bank":
+        if re.search(r"\b737\b", query_norm):
+            required.append("737")
+    if family.get("id") == "coffee_maker":
+        for phrase in ("k express", "k mini", "k elite", "k compact", "k supreme"):
+            if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
+                required.append(phrase)
     required.extend(tok for tok in _extract_structured_tokens(query_norm) if tok not in required)
+    if brand and family:
+        brand_rx = re.compile(rf"^\s*{re.escape(normalize_user_query(brand))}\b", re.I)
+        tail = brand_rx.sub("", query_norm, count=1).strip()
+        family_terms = [
+            family.get("id", "").replace("_", " "),
+            "mouse",
+            "keyboard",
+            "power bank",
+            "portable charger",
+            "coffee maker",
+            "building set",
+            "printer",
+            "router",
+            "vacuum",
+        ]
+        for family_term in family_terms:
+            if family_term:
+                tail = re.sub(rf"\b{re.escape(family_term)}\b", " ", tail, flags=re.I)
+        tail = re.sub(
+            r"\b(?:wireless|mechanical|gaming|bluetooth|portable|smart|electric|"
+            r"cordless|laser|inkjet|single\s*serve)\b",
+            " ",
+            tail,
+            flags=re.I,
+        )
+        tail = re.sub(r"\s+", " ", tail).strip()
+        if tail:
+            pieces = [piece for piece in tail.split() if piece]
+            if 1 <= len(pieces) <= 4 and any(re.search(r"\d", piece) or len(piece) >= 4 for piece in pieces):
+                required.append(" ".join(pieces))
     if brand and family.get("brand_plus_family_named") and not required:
         family_label = family.get("id", "").replace("_", " ")
         if family_label and family_label not in required:
@@ -1207,7 +1453,7 @@ def _supports_named_product(
         return True
     if brand and family.get("brand_plus_family_named"):
         return True
-    if brand and family.get("id") in {"pressure_cooker", "air_fryer"}:
+    if brand and family.get("id") in {"pressure_cooker", "air_fryer", "coffee_maker", "building_set", "power_bank"}:
         return True
     return False
 
@@ -1402,6 +1648,8 @@ def classify_with_intent(
     primary_signals = tuple(normalize_user_query(s) for s in family.get("primary_signals", ()))
     negative_signals = tuple(normalize_user_query(s) for s in family.get("negative_signals", ()))
     require_primary_signal = bool(family.get("require_primary_signal"))
+    require_brand_presence = bool(family.get("require_brand_presence"))
+    brand_in = any(b in tl for b in brand_expect)
 
     has_core = bool(core_rx.search(tl))
     has_primary_signal = _has_family_phrase(tl, primary_signals) if primary_signals else False
@@ -1461,6 +1709,37 @@ def classify_with_intent(
             "query_type": intent.query_type.value,
         }
 
+    if has_core and require_brand_presence and not brand_in:
+        product_kind = "other_brand"
+        listing_role = "different_brand"
+        penalty_total += 0.82
+        structural_relevance = 0.1
+        identity = compute_identity_match(
+            intent,
+            has_core=has_core,
+            product_kind=product_kind,
+            model_mismatch_exact=False,
+            brand_in_title=False,
+        )
+        conf = compute_confidence(
+            intent,
+            has_core=has_core,
+            product_kind=product_kind,
+            trust=trust * 0.6,
+            identity_match=identity,
+        )
+        return {
+            "product_kind": product_kind,
+            "listing_role": listing_role,
+            "condition_class": cond,
+            "structural_relevance": structural_relevance,
+            "penalty_total": min(1.0, penalty_total),
+            "identity_match": round(identity, 3),
+            "trust_score": round(trust, 3),
+            "confidence": conf,
+            "query_type": intent.query_type.value,
+        }
+
     if has_core and not accessory_intent:
         if has_negative_signal and not has_primary_signal:
             product_kind = "other_brand"
@@ -1472,7 +1751,7 @@ def classify_with_intent(
                 has_core=False,
                 product_kind=product_kind,
                 model_mismatch_exact=False,
-                brand_in_title=any(b in tl for b in brand_expect),
+                brand_in_title=brand_in,
             )
             conf = compute_confidence(
                 intent,
@@ -1502,7 +1781,7 @@ def classify_with_intent(
                 has_core=False,
                 product_kind=product_kind,
                 model_mismatch_exact=False,
-                brand_in_title=any(b in tl for b in brand_expect),
+                brand_in_title=brand_in,
             )
             conf = compute_confidence(
                 intent,
@@ -1534,7 +1813,7 @@ def classify_with_intent(
             structural_relevance = 0.1
             identity = compute_identity_match(
                 intent, has_core=has_core, product_kind=product_kind,
-                model_mismatch_exact=True, brand_in_title=any(b in tl for b in brand_expect),
+                model_mismatch_exact=True, brand_in_title=brand_in,
             )
             conf = compute_confidence(
                 intent, has_core=has_core, product_kind=product_kind,
@@ -1587,7 +1866,6 @@ def classify_with_intent(
         }
 
     struct = 0.55
-    brand_in = any(b in tl for b in brand_expect)
     if brand_in:
         struct += 0.28
     elif fam_id == "airpods":

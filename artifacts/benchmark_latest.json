@@ -1,0 +1,109 @@
+{
+  "generated_at": "2026-03-27T13:57:14",
+  "cwd": "C:\\Projects\\Cursor\\Deal Finder",
+  "cases": [
+    {
+      "kind": "strict",
+      "query": "sony wh-1000xm4",
+      "results": [
+        {
+          "domain": "amazon.com",
+          "seconds": 12.474,
+          "verified": 6,
+          "ambiguous": 0,
+          "top_name": "Sony WH-1000XM4 Wireless Noise Canceling Overhead Headphones - Black (Renewed)"
+        },
+        {
+          "domain": "walmart.com",
+          "seconds": 22.306,
+          "verified": 0,
+          "ambiguous": 0,
+          "top_name": null
+        }
+      ]
+    },
+    {
+      "kind": "discovery",
+      "query": "airpods pro 3",
+      "results": [
+        {
+          "domain": "amazon.com",
+          "seconds": 1.881,
+          "results": 11,
+          "top_name": "Apple AirPods Pro 3 Wireless Earbuds, Active Noise Cancellation, Live Translation, Heart Rate Sensing, Hearing Aid Feature, Bluetooth Headphones, Spatial Audio, High-Fidelity Sound, USB-C Charging"
+        },
+        {
+          "domain": "bestbuy.com",
+          "seconds": 42.247,
+          "results": 4,
+          "top_name": "Apple - AirPods Pro 3, Wireless Active Noise Cancelling Earbuds with Heart Rate Sensing Feature - White"
+        },
+        {
+          "domain": "walmart.com",
+          "seconds": 19.035,
+          "results": 0,
+          "top_name": null
+        }
+      ]
+    },
+    {
+      "kind": "strict",
+      "query": "instant pot duo 7-in-1",
+      "results": [
+        {
+          "domain": "amazon.com",
+          "seconds": 12.589,
+          "verified": 3,
+          "ambiguous": 2,
+          "top_name": "Instant Pot Duo 7-in-1 Mini Electric Pressure Cooker, Slow Rice Cooker, Steamer, Saut\u00e9, Yogurt Maker, Warmer & Sterilizer, Includes Free App with over 1900 Recipes, Stainless Steel, 3 Quart"
+        },
+        {
+          "domain": "bestbuy.com",
+          "seconds": 158.774,
+          "verified": 0,
+          "ambiguous": 0,
+          "top_name": null
+        }
+      ]
+    },
+    {
+      "kind": "discovery",
+      "query": "standing desk",
+      "results": [
+        {
+          "domain": "amazon.com",
+          "seconds": 1.978,
+          "results": 36,
+          "top_name": "ErGear Height Adjustable Electric Standing Desk, 48 x 24 Inches Sit Stand up Desk, Memory Computer Home Office Desk, Black"
+        },
+        {
+          "domain": "walmart.com",
+          "seconds": 18.227,
+          "results": 0,
+          "top_name": null
+        }
+      ]
+    },
+    {
+      "kind": "strict",
+      "query": "rtx 4070",
+      "results": [
+        {
+          "domain": "amazon.com",
+          "seconds": 18.099,
+          "verified": 1,
+          "ambiguous": 0,
+          "top_name": "NVIDIA GeForce RTX 4070 Founder's Edition (FE) Graphics Card - Titanium and Black (900-1G141-2544-000)"
+        },
+        {
+          "domain": "bestbuy.com",
+          "seconds": 84.533,
+          "verified": 0,
+          "ambiguous": 4,
+          "top_name": "www.bestbuy.com"
+        }
+      ]
+    }
+  ],
+  "total_seconds": 392.155
+}

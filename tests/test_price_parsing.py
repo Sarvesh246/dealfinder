@@ -47,6 +47,45 @@ def test_extract_target_all_uses_fixed_current_price():
     assert rows[0]["original_price"] == 79.99
 
 
+def test_target_original_price_reads_comparison_price_block():
+    soup = BeautifulSoup(
+        """
+        <div data-test="product-details">
+            <a data-test="@web/ProductCard/title" href="/p/ap2022-true-wireless-bluetooth-headphones/-/A-85978609">
+                Apple AirPods Pro 3 Wireless Earbuds with Active Noise Cancellation
+            </a>
+            <span data-test="current-price"><span>$199.99</span></span>
+            <div data-test="comparison-price">reg <span>$249.99</span></div>
+            <div data-test="urgency-message">Sale</div>
+        </div>
+        """,
+        "html.parser",
+    )
+    item = soup.select_one('[data-test="product-details"]')
+
+    assert scraper._target_current_price(item) == 199.99
+    assert scraper._target_listing_original_price(item) == 249.99
+
+
+def test_target_original_price_picks_nearest_higher_value_from_range():
+    soup = BeautifulSoup(
+        """
+        <div data-test="product-details">
+            <a data-test="@web/ProductCard/title" href="/p/apple-airpods-4/-/A-93606140">
+                Apple AirPods 4 Wireless Earbuds
+            </a>
+            <span data-test="current-price">$99.99 - $149.99</span>
+            <div data-test="comparison-price">reg $129.99 - $179.99</div>
+        </div>
+        """,
+        "html.parser",
+    )
+    item = soup.select_one('[data-test="product-details"]')
+
+    assert scraper._target_current_price(item) == 99.99
+    assert scraper._target_listing_original_price(item) == 129.99
+
+
 def test_amazon_listing_price_ignores_monthly_price_copy():
     soup = BeautifulSoup(
         """
@@ -103,6 +142,44 @@ def test_extract_amazon_multi_prefers_primary_offer_price_over_plan_price():
 
     assert len(rows) == 1
     assert rows[0]["current_price"] == 199.99
+
+
+def test_extract_bestbuy_multi_supports_product_list_item_tiles():
+    soup = BeautifulSoup(
+        """
+        <ul class="product-grid-view-container p-0">
+            <li class="product-list-item grid-view" data-product-id="6376563" data-testid="6376563">
+                <div class="sku-block">
+                    <a class="product-list-item-link" href="https://www.bestbuy.com/product/apple-airpods-pro-3-white/JJGCQLYK5F">
+                        <div class="product-title">
+                            Apple - AirPods Pro 3, Wireless Active Noise Cancelling Earbuds - White
+                        </div>
+                    </a>
+                    <div class="pricing-copy">
+                        <span>$199.99</span>
+                        <span>Save $50</span>
+                        <span>Comp. Value: $249.99</span>
+                    </div>
+                </div>
+            </li>
+        </ul>
+        """,
+        "html.parser",
+    )
+
+    rows = scraper._extract_bestbuy_multi(soup, max_results=5)
+
+    assert len(rows) == 1
+    assert rows[0]["product_name"].startswith("Apple - AirPods Pro 3")
+    assert rows[0]["current_price"] == 199.99
+    assert rows[0]["original_price"] == 249.99
+
+
+def test_bestbuy_product_listing_url_accepts_modern_product_paths():
+    assert scraper._bestbuy_is_product_listing_url(
+        "https://www.bestbuy.com/product/apple-airpods-pro-3-white/JJGCQLYK5F"
+    )
+    assert scraper._bestbuy_is_product_listing_url("/product/apple-airpods-pro-3-white/JJGCQLYK5F")
 
 
 def test_extract_price_from_soup_ignores_lower_renewed_offer_for_new_tracker():

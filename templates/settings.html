@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Settings — PricePulse{% endblock %}
 
+{% block meta_description %}Manage enabled stores and confirm that your global Gmail and Discord notifications are ready before you start tracking products.{% endblock %}
+
 {% block head %}
 <style>
   .settings-outer { display: flex; justify-content: center; }
@@ -75,7 +77,17 @@
     cursor: pointer;
     flex-shrink: 0;
   }
-  .toggle-switch input { display: none; }
+  .toggle-switch input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
   .toggle-track {
     display: block;
     width: 40px;
@@ -190,9 +202,72 @@
     font-size: 12px;
     color: var(--text-muted);
   }
+  .runtime-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .runtime-box {
+    padding: 18px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid var(--glass-border);
+  }
+  .runtime-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 8px;
+  }
+  .runtime-copy {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+  .runtime-list {
+    display: grid;
+    gap: 8px;
+  }
+  .runtime-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 13px;
+  }
+  .runtime-row strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .runtime-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 999px;
+  }
+  .runtime-pill.good {
+    color: var(--price-good);
+    background: rgba(0,229,160,0.12);
+    border: 1px solid rgba(0,229,160,0.25);
+  }
+  .runtime-pill.warn {
+    color: var(--price-warn);
+    background: rgba(255,181,71,0.12);
+    border: 1px solid rgba(255,181,71,0.25);
+  }
+  .runtime-pill.bad {
+    color: var(--price-bad);
+    background: rgba(255,79,106,0.12);
+    border: 1px solid rgba(255,79,106,0.25);
+  }
   @media (max-width: 639px) {
     .settings-card { padding: 24px 16px; }
     .notify-grid { grid-template-columns: 1fr; }
+    .runtime-grid { grid-template-columns: 1fr; }
     .source-item { flex-wrap: wrap; }
     .btn-save { width: 100%; justify-content: center; }
   }
@@ -258,6 +333,45 @@
     </div>
 
     <div class="card settings-card fade-in" style="animation-delay:120ms">
+      <div class="section-title">Worker & Diagnostics</div>
+      <div class="runtime-grid">
+        <div class="runtime-box">
+          <div class="runtime-name">Background Worker</div>
+          <div class="notify-head">
+            <div class="runtime-copy">The worker owns scheduled checks, startup backfill, and manual Check Now requests.</div>
+            <div class="runtime-pill {{ 'good' if runtime_diagnostics.worker_online else 'warn' }}">
+              {{ 'Online' if runtime_diagnostics.worker_online else 'Offline' }}
+            </div>
+          </div>
+          <div class="runtime-list">
+            <div class="runtime-row"><span>Worker ID</span><strong>{{ runtime_diagnostics.worker_id or 'Not claimed' }}</strong></div>
+            <div class="runtime-row"><span>Heartbeat</span><strong>{{ runtime_diagnostics.heartbeat_at or 'Never' }}</strong></div>
+            <div class="runtime-row"><span>Queue depth</span><strong>{{ runtime_diagnostics.queue_depth or 0 }}</strong></div>
+            <div class="runtime-row"><span>Current job</span><strong>{{ runtime_diagnostics.current_job_name or 'Idle' }}</strong></div>
+          </div>
+        </div>
+
+        <div class="runtime-box">
+          <div class="runtime-name">Recent Check Health</div>
+          <div class="runtime-list">
+            <div class="runtime-row"><span>Last periodic check</span><strong>{{ runtime_diagnostics.last_periodic_check.finished_at if runtime_diagnostics.last_periodic_check else 'Not run yet' }}</strong></div>
+            <div class="runtime-row"><span>Last manual check</span><strong>{{ runtime_diagnostics.last_manual_check.finished_at if runtime_diagnostics.last_manual_check else 'Not run yet' }}</strong></div>
+            <div class="runtime-row"><span>Last startup backfill</span><strong>{{ runtime_diagnostics.last_backfill.finished_at if runtime_diagnostics.last_backfill else 'Not run yet' }}</strong></div>
+            <div class="runtime-row"><span>Latest price history</span><strong>{{ last_checked_time or 'No checks yet' }}</strong></div>
+          </div>
+          {% if runtime_diagnostics.last_job_error %}
+          <div class="notify-foot" style="margin-top:12px;color:var(--price-bad)">
+            Last worker error: {{ runtime_diagnostics.last_job_error }}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="notify-foot">
+        JSON diagnostics are also available at <code>/healthz</code>, <code>/readyz</code>, and <code>/diagnostics</code>.
+      </div>
+    </div>
+
+    <div class="card settings-card fade-in" style="animation-delay:180ms">
       <div class="section-title">Default Sources</div>
       <form method="POST" action="{{ url_for('settings_sources_save') }}">
         <div class="source-list">
