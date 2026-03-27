@@ -103,3 +103,82 @@ def test_extract_amazon_multi_prefers_primary_offer_price_over_plan_price():
 
     assert len(rows) == 1
     assert rows[0]["current_price"] == 199.99
+
+
+def test_extract_price_from_soup_ignores_lower_renewed_offer_for_new_tracker():
+    soup = BeautifulSoup(
+        """
+        <div id="corePrice_feature_div">
+            <span class="a-price priceToPay">
+                <span class="a-offscreen">$199.99</span>
+            </span>
+        </div>
+        <div class="renewed-offer">
+            <span>Amazon Renewed</span>
+            <span class="a-price">
+                <span class="a-offscreen">$189.99</span>
+            </span>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    price = scraper.extract_price_from_soup(
+        soup,
+        price_hint=199.99,
+        condition_hint_text="Apple AirPods Pro 3",
+    )
+
+    assert price == 199.99
+
+
+def test_extract_price_from_soup_allows_renewed_price_when_explicitly_requested():
+    soup = BeautifulSoup(
+        """
+        <div class="renewed-offer">
+            <span>Amazon Renewed</span>
+            <span class="a-price priceToPay">
+                <span class="a-offscreen">$189.99</span>
+            </span>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    price = scraper.extract_price_from_soup(
+        soup,
+        price_hint=189.99,
+        condition_hint_text="Apple AirPods Pro 3 renewed",
+    )
+
+    assert price == 189.99
+
+
+def test_extract_price_from_soup_ignores_used_accordion_price_on_amazon_pdp():
+    soup = BeautifulSoup(
+        """
+        <div id="corePrice_feature_div">
+            <div class="a-spacing-top-mini apex-core-price-identifier">
+                <span class="a-price a-text-normal aok-align-center reinventPriceAccordionT2 apex-pricetopay-value" data-a-color="base" data-a-size="l">
+                    <span class="a-offscreen">$199.00</span>
+                </span>
+            </div>
+        </div>
+        <div data-csa-c-slot-id="usedAccordionRow" data-csa-c-buying-option-type="USED">
+            <div class="a-spacing-top-mini apex-core-price-identifier">
+                <span class="a-price a-text-normal aok-align-center reinventPriceAccordionT2 apex-pricetopay-value" data-a-color="base" data-a-size="l">
+                    <span class="a-offscreen">$187.06</span>
+                </span>
+            </div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    price = scraper.extract_price_from_soup(
+        soup,
+        price_hint=189.05,
+        condition_hint_text="Apple AirPods Pro 3",
+    )
+
+    assert price == 199.00

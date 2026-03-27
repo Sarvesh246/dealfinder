@@ -882,14 +882,45 @@ def _first_dollar_price_in_text(text: str) -> float | None:
 # Extraction helpers (JSON-LD, meta, HTML)
 # ---------------------------------------------------------------------------
 
-def _schema_prices(obj) -> list[float]:
+_NON_NEW_CONDITION_PATTERN = re.compile(
+    r"\b("
+    r"renewed|amazonrenewed|refurb(?:ished)?|used|warehouse|"
+    r"pre[- ]?owned|preowned|open[- ]?box|open box|restored|recertified|"
+    r"usedaccordionrow|renewedaccordionrow|openboxaccordionrow"
+    r")\b",
+    re.I,
+)
+
+
+def _allows_non_new_condition(condition_hint_text: str | None) -> bool:
+    return bool(_NON_NEW_CONDITION_PATTERN.search(condition_hint_text or ""))
+
+
+def _schema_condition_allowed(obj: dict, *, allow_non_new: bool) -> bool:
+    if allow_non_new:
+        return True
+    condition_bits = " ".join(
+        str(obj.get(key, ""))
+        for key in ("itemCondition", "condition", "@type", "name", "description")
+    ).lower()
+    if not condition_bits:
+        return True
+    if "newcondition" in condition_bits or re.search(r"\bnew\b", condition_bits):
+        return True
+    return not bool(_NON_NEW_CONDITION_PATTERN.search(condition_bits))
+
+
+def _schema_prices(obj, *, allow_non_new: bool = True) -> list[float]:
     """Collect candidate prices from JSON-LD schema objects."""
     out: list[float] = []
     if isinstance(obj, list):
         for item in obj:
-            out.extend(_schema_prices(item))
+            out.extend(_schema_prices(item, allow_non_new=allow_non_new))
         return out
     if not isinstance(obj, dict):
+        return out
+
+    if not _schema_condition_allowed(obj, allow_non_new=allow_non_new):
         return out
 
     # Prefer explicit price, but keep ranges too (we'll score later).
@@ -901,18 +932,23 @@ def _schema_prices(obj) -> list[float]:
 
     offers = obj.get("offers")
     if offers:
-        out.extend(_schema_prices(offers))
+        out.extend(_schema_prices(offers, allow_non_new=allow_non_new))
     return out
 
 
-def extract_price_from_json_ld(soup: BeautifulSoup) -> float | None:
+def extract_price_from_json_ld(
+    soup: BeautifulSoup,
+    *,
+    condition_hint_text: str | None = None,
+) -> float | None:
     prices: list[float] = []
+    allow_non_new = _allows_non_new_condition(condition_hint_text)
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             data = json.loads(script.string or "")
         except (json.JSONDecodeError, AttributeError):
             continue
-        prices.extend(_schema_prices(data))
+        prices.extend(_schema_prices(data, allow_non_new=allow_non_new))
     prices = [p for p in prices if p and 0 < p <= 100_000]
     if not prices:
         return None
@@ -936,20 +972,52 @@ def extract_price_from_meta(soup: BeautifulSoup) -> float | None:
     return None
 
 
-def _is_noisy_price_element(el: Tag) -> bool:
-    el_id = (el.get("id") or "").lower()
-    classes = " ".join(el.get("class", [])).lower()
-    text = el.get_text(" ", strip=True).lower()
+def _price_element_context(el: Tag) -> str:
+    parts: list[str] = []
+    current: Tag | None = el
+    for depth in range(7):
+        if current is None:
+            break
+        attrs = [
+            (current.get("id") or "").lower(),
+            " ".join(current.get("class", [])).lower(),
+            (current.get("data-cy") or "").lower(),
+            (current.get("data-testid") or "").lower(),
+            (current.get("aria-label") or "").lower(),
+            (current.get("data-feature-name") or "").lower(),
+            (current.get("data-csa-c-slot-id") or "").lower(),
+            (current.get("data-csa-c-buying-option-type") or "").lower(),
+        ]
+        parts.extend(part for part in attrs if part)
+        if depth < 2:
+            text = current.get_text(" ", strip=True).lower()
+            if text:
+                parts.append(text)
+        current = current.parent if isinstance(current.parent, Tag) else None
+    return " ".join(parts)
+
+
+def _is_noisy_price_element(el: Tag, *, allow_non_new: bool = True) -> bool:
+    context = _price_element_context(el)
     noisy_bits = (
         "warranty", "protection", "insurance", "trade-in", "trade in",
         "monthly", "/month", "month", "store card", "subscription", "plan",
     )
-    return any(bit in el_id or bit in classes or bit in text for bit in noisy_bits)
+    if any(bit in context for bit in noisy_bits):
+        return True
+    if not allow_non_new and _NON_NEW_CONDITION_PATTERN.search(context):
+        return True
+    return False
 
 
-def _collect_html_price_candidates(soup: BeautifulSoup) -> list[float]:
+def _collect_html_price_candidates(
+    soup: BeautifulSoup,
+    *,
+    condition_hint_text: str | None = None,
+) -> list[float]:
     candidates: list[float] = []
     seen: set[float] = set()
+    allow_non_new = _allows_non_new_condition(condition_hint_text)
 
     def add_price(raw_text: str) -> None:
         p = clean_price(raw_text)
@@ -972,7 +1040,7 @@ def _collect_html_price_candidates(soup: BeautifulSoup) -> list[float]:
     )
     for sel in preferred_selectors:
         for el in soup.select(sel):
-            if _is_noisy_price_element(el):
+            if _is_noisy_price_element(el, allow_non_new=allow_non_new):
                 continue
             add_price(el.get("content") or el.get_text(" ", strip=True))
 
@@ -982,7 +1050,7 @@ def _collect_html_price_candidates(soup: BeautifulSoup) -> list[float]:
         el_id = el.get("id", "")
         if not (pattern.search(classes) or pattern.search(el_id)):
             continue
-        if _is_noisy_price_element(el):
+        if _is_noisy_price_element(el, allow_non_new=allow_non_new):
             continue
         text = el.get_text(" ", strip=True)
         if not text:
@@ -992,9 +1060,14 @@ def _collect_html_price_candidates(soup: BeautifulSoup) -> list[float]:
     return candidates
 
 
-def _collect_preferred_price_candidates(soup: BeautifulSoup) -> list[float]:
+def _collect_preferred_price_candidates(
+    soup: BeautifulSoup,
+    *,
+    condition_hint_text: str | None = None,
+) -> list[float]:
     candidates: list[float] = []
     seen: set[float] = set()
+    allow_non_new = _allows_non_new_condition(condition_hint_text)
 
     def add_price(raw_text: str) -> None:
         p = clean_price(raw_text)
@@ -1016,14 +1089,21 @@ def _collect_preferred_price_candidates(soup: BeautifulSoup) -> list[float]:
     )
     for sel in preferred_selectors:
         for el in soup.select(sel):
-            if _is_noisy_price_element(el):
+            if _is_noisy_price_element(el, allow_non_new=allow_non_new):
                 continue
             add_price(el.get("content") or el.get_text(" ", strip=True))
     return candidates
 
 
-def extract_primary_price_from_soup(soup: BeautifulSoup) -> float | None:
-    candidates = _collect_preferred_price_candidates(soup)
+def extract_primary_price_from_soup(
+    soup: BeautifulSoup,
+    *,
+    condition_hint_text: str | None = None,
+) -> float | None:
+    candidates = _collect_preferred_price_candidates(
+        soup,
+        condition_hint_text=condition_hint_text,
+    )
     if not candidates:
         return None
     # The preferred selector order is curated toward the real PDP price block, so
@@ -1031,8 +1111,15 @@ def extract_primary_price_from_soup(soup: BeautifulSoup) -> float | None:
     return candidates[0]
 
 
-def extract_price_from_html(soup: BeautifulSoup) -> float | None:
-    candidates = _collect_html_price_candidates(soup)
+def extract_price_from_html(
+    soup: BeautifulSoup,
+    *,
+    condition_hint_text: str | None = None,
+) -> float | None:
+    candidates = _collect_html_price_candidates(
+        soup,
+        condition_hint_text=condition_hint_text,
+    )
     return min(candidates) if candidates else None
 
 
@@ -1065,14 +1152,27 @@ def _pick_price_with_hint(candidates: list[float], price_hint: float | None) -> 
     return best
 
 
-def extract_price_from_soup(soup: BeautifulSoup, *, price_hint: float | None = None) -> float | None:
+def extract_price_from_soup(
+    soup: BeautifulSoup,
+    *,
+    price_hint: float | None = None,
+    condition_hint_text: str | None = None,
+) -> float | None:
     """
     Extract a plausible item price from a PDP soup.
 
     When price_hint is provided (e.g. from search/discovery), choose the candidate price
     closest to that hint. This avoids accidentally selecting installment/monthly prices.
     """
+    preferred_candidates = _collect_preferred_price_candidates(
+        soup,
+        condition_hint_text=condition_hint_text,
+    )
+    if preferred_candidates:
+        return _pick_price_with_hint(preferred_candidates, price_hint)
+
     candidates: list[float] = []
+    allow_non_new = _allows_non_new_condition(condition_hint_text)
 
     # Meta tags are often the cleanest "current price".
     meta_p = extract_price_from_meta(soup)
@@ -1086,11 +1186,31 @@ def extract_price_from_soup(soup: BeautifulSoup, *, price_hint: float | None = N
             data = json.loads(script.string or "")
         except (json.JSONDecodeError, AttributeError):
             continue
-        candidates.extend(_schema_prices(data))
+        candidates.extend(_schema_prices(data, allow_non_new=allow_non_new))
 
-    candidates.extend(_collect_html_price_candidates(soup))
+    candidates.extend(
+        _collect_html_price_candidates(soup, condition_hint_text=condition_hint_text)
+    )
 
     return _pick_price_with_hint(candidates, price_hint)
+
+
+def _extract_price_from_soup_compat(
+    soup: BeautifulSoup,
+    *,
+    price_hint: float | None = None,
+    condition_hint_text: str | None = None,
+) -> float | None:
+    try:
+        return extract_price_from_soup(
+            soup,
+            price_hint=price_hint,
+            condition_hint_text=condition_hint_text,
+        )
+    except TypeError as exc:
+        if "condition_hint_text" not in str(exc):
+            raise
+        return extract_price_from_soup(soup, price_hint=price_hint)
 
 
 # ---------------------------------------------------------------------------
@@ -1608,8 +1728,12 @@ def inspect_direct_link(
         }
 
     spec = parse_product_spec(title)
-    primary_price_hint = extract_primary_price_from_soup(soup)
-    price = extract_price_from_soup(soup, price_hint=primary_price_hint)
+    primary_price_hint = extract_primary_price_from_soup(soup, condition_hint_text=title)
+    price = _extract_price_from_soup_compat(
+        soup,
+        price_hint=primary_price_hint,
+        condition_hint_text=title,
+    )
     if price is None:
         return {
             "ok": False,
@@ -3450,7 +3574,10 @@ def get_price_from_url(url: str, source_name: str = "") -> float | None:
 
     soup = _fetch_soup(url)
     if soup:
-        price = extract_price_from_soup(soup)
+        price = _extract_price_from_soup_compat(
+            soup,
+            condition_hint_text=source_name or "",
+        )
         if price is not None:
             logging.info(f"[{datetime.now()}] Price ${price} from {source_name or url}")
             return price
@@ -3458,7 +3585,10 @@ def get_price_from_url(url: str, source_name: str = "") -> float | None:
     logging.info(f"[{datetime.now()}] Falling back to Selenium for {url}")
     soup = _fetch_soup_selenium_pooled(url)
     if soup:
-        price = extract_price_from_soup(soup)
+        price = _extract_price_from_soup_compat(
+            soup,
+            condition_hint_text=source_name or "",
+        )
         if price is not None:
             logging.info(f"[{datetime.now()}] Price ${price} via Selenium "
                          f"from {source_name or url}")
@@ -4455,7 +4585,14 @@ def verify_candidate_listing(
             context.set_verification(spec, canonical_url, verification)
         return verification
     price_hint = candidate.get("current_price")
-    price = extract_price_from_soup(soup, price_hint=price_hint)
+    condition_hint_text = " ".join(
+        bit for bit in (spec.raw_query, title_hint, candidate.get("product_name")) if bit
+    )
+    price = _extract_price_from_soup_compat(
+        soup,
+        price_hint=price_hint,
+        condition_hint_text=condition_hint_text,
+    )
     fingerprint = fingerprint_listing_document(
         url,
         soup,
@@ -4515,7 +4652,20 @@ def _revalidate_direct_product_source(
     if not soup:
         return {"status": "quarantined", "verified": [], "ambiguous": []}
 
-    price = extract_price_from_soup(soup, price_hint=ps_row.get("current_price"))
+    condition_hint_text = " ".join(
+        bit
+        for bit in (
+            ps_row.get("product_name"),
+            ps_row.get("matched_product_name"),
+            ps_row.get("raw_query"),
+        )
+        if bit
+    )
+    price = _extract_price_from_soup_compat(
+        soup,
+        price_hint=ps_row.get("current_price"),
+        condition_hint_text=condition_hint_text,
+    )
     fingerprint = fingerprint_listing_document(
         url,
         soup,

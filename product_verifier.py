@@ -85,6 +85,9 @@ _MODEL_BRAND_HINTS: tuple[tuple[re.Pattern[str], str, str], ...] = (
     (re.compile(r"\bmac\s*book\b|\bmacbook\b", re.I), "macbook", "apple"),
     (re.compile(r"\bps5\b|\bplaystation\s*5\b", re.I), "ps5", "sony"),
     (re.compile(r"\bxbox\b", re.I), "xbox", "microsoft"),
+    (re.compile(r"\bnintendo\s*switch\s*(?:2|lite|oled)\b|\bswitch\s*(?:2|lite|oled)\b", re.I), "nintendo_switch", "nintendo"),
+    (re.compile(r"\bkindle\s+paperwhite\b", re.I), "kindle_paperwhite", "amazon"),
+    (re.compile(r"\broku\s+ultra\b", re.I), "roku_ultra", "roku"),
     (re.compile(r"\brtx\s*\d{3,4}\s*(?:ti|super)?\b", re.I), "gpu", "nvidia"),
     (re.compile(r"\brx\s*\d{3,4}\s*(?:xt)?\b", re.I), "gpu", "amd"),
     (re.compile(r"\bgalaxy\s*[sz]\s*\d{2,3}\b", re.I), "phone", "samsung"),
@@ -174,8 +177,11 @@ _FAMILY_QUERY_TERM = {
     "router": "router",
     "vacuum": "vacuum",
     "storage": "ssd",
-    "ps5": "ps5",
-    "xbox": "xbox",
+    "ps5": "console",
+    "xbox": "console",
+    "nintendo_switch": "console",
+    "kindle_paperwhite": "ereader",
+    "roku_ultra": "streaming player",
 }
 
 
@@ -234,6 +240,25 @@ def _dedupe(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     return tuple(seen)
 
 
+def _append_canonical_part(parts: list[str], value: str | None) -> None:
+    token = normalize_user_query(value or "").strip()
+    if not token:
+        return
+    remove_parts: list[str] = []
+    for part in parts:
+        item = normalize_user_query(part).strip()
+        if not item:
+            continue
+        if token == item or token in item:
+            return
+        if item in token:
+            remove_parts.append(part)
+    for part in remove_parts:
+        if part in parts:
+            parts.remove(part)
+    parts.append(value.strip())
+
+
 def _extract_structured_tokens(text: str) -> tuple[str, ...]:
     normalized = normalize_user_query(text)
     found: list[str] = []
@@ -253,6 +278,15 @@ def _contains_token_phrase(text: str | None, token: str) -> bool:
         return False
     pattern = r"(?<![a-z0-9])" + r"[\s\-_/()[\]]*".join(parts) + r"(?![a-z0-9])"
     return bool(re.search(pattern, text, re.I))
+
+
+def _has_family_signal(text: str | None, phrases: tuple[str, ...]) -> bool:
+    if not text or not phrases:
+        return False
+    for phrase in phrases:
+        if _contains_token_phrase(text, normalize_user_query(phrase)):
+            return True
+    return False
 
 
 def _format_alias_template(template: str, spec: "ProductSpec", family_term: str | None) -> str:
@@ -351,27 +385,33 @@ def parse_product_spec(raw_query: str) -> ProductSpec:
     soft_variant_tokens = tuple(intent.soft_variant_tokens or ())
     canonical_parts: list[str] = []
     if brand:
-        canonical_parts.append(brand)
+        _append_canonical_part(canonical_parts, brand)
     if model_token:
-        canonical_parts.append(model_token)
+        _append_canonical_part(canonical_parts, model_token)
     elif required_tokens:
-        canonical_parts.extend(required_tokens)
+        for required in required_tokens:
+            _append_canonical_part(canonical_parts, required)
     elif raw_clean:
         raw_norm = normalize_user_query(raw_clean)
         existing = normalize_user_query(" ".join(canonical_parts))
         if raw_norm and (not existing or existing not in raw_norm):
-            canonical_parts.append(raw_clean)
+            _append_canonical_part(canonical_parts, raw_clean)
     family_term = _FAMILY_QUERY_TERM.get(family_id or "")
     if family_term and family_term.lower() not in " ".join(canonical_parts).lower():
-        canonical_parts.append(family_term)
+        _append_canonical_part(canonical_parts, family_term)
     canonical_query = re.sub(r"\s+", " ", " ".join(canonical_parts)).strip() or raw_query.strip()
     alias_values: list[str] = [canonical_query]
     if raw_clean and raw_clean.lower() != canonical_query.lower():
         alias_values.append(raw_clean)
     if brand and model_token:
-        alias_values.append(f"{brand} {model_token}")
+        model_norm = normalize_user_query(model_token)
+        brand_norm = normalize_user_query(brand)
+        if not model_norm.startswith(brand_norm):
+            alias_values.append(f"{brand} {model_token}")
     if family:
         for template in family.get("search_alias_templates", ()):
+            if intent.query_type == QueryType.EXACT_MODEL and "{model_token}" not in template and "{raw}" not in template:
+                continue
             alias = _format_alias_template(template, ProductSpec(
                 raw_query=raw_clean,
                 canonical_query=canonical_query,
@@ -793,6 +833,11 @@ def verify_listing(spec: ProductSpec, fingerprint: ListingFingerprint) -> Verifi
     family_core_match = bool(
         family and family["title_core"].search(fingerprint.raw_text)
     ) if family else same_family
+    primary_signals = tuple(family.get("primary_signals", ())) if family else ()
+    negative_signals = tuple(family.get("negative_signals", ())) if family else ()
+    require_primary_signal = bool(family.get("require_primary_signal")) if family else False
+    primary_signal_match = _has_family_signal(primary_identity, primary_signals)
+    negative_signal_match = _has_family_signal(primary_identity, negative_signals)
     if fingerprint.hard_block_signal or fingerprint.compatibility_signal:
         return VerificationResult(
             status="rejected",
@@ -810,6 +855,32 @@ def verify_listing(spec: ProductSpec, fingerprint: ListingFingerprint) -> Verifi
         return VerificationResult(
             status="rejected",
             reason="accessory_or_bundle",
+            health_state="healthy",
+            product_name=product_name,
+            current_price=fingerprint.current_price,
+            brand=fingerprint.brand,
+            family=fingerprint.family,
+            model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else None,
+            match_label="related",
+            fingerprint=fingerprint,
+        )
+    if same_family and family_core_match and negative_signal_match and not primary_signal_match:
+        return VerificationResult(
+            status="rejected",
+            reason="family_negative_signal",
+            health_state="healthy",
+            product_name=product_name,
+            current_price=fingerprint.current_price,
+            brand=fingerprint.brand,
+            family=fingerprint.family,
+            model_token=fingerprint.model_tokens[0] if fingerprint.model_tokens else None,
+            match_label="related",
+            fingerprint=fingerprint,
+        )
+    if same_family and family_core_match and require_primary_signal and not primary_signal_match:
+        return VerificationResult(
+            status="rejected",
+            reason="primary_signals_missing",
             health_state="healthy",
             product_name=product_name,
             current_price=fingerprint.current_price,

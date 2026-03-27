@@ -903,20 +903,175 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "match_query": re.compile(r"\bps5\b|\bplaystation\s*5\b", re.I),
         "title_core": re.compile(r"\bps5\b|\bplaystation\s*5\b", re.I),
         "brand_tokens": ("sony", "playstation"),
-        "hard_block": None,
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": (
+            "console", "slim", "digital", "disc", "disc edition", "1tb", "2tb",
+            "playstation 5 console", "ps5 console",
+        ),
+        "accessory_signals": (
+            "controller", "charger", "charging station", "stand", "skin",
+            "cover", "headset", "faceplate",
+        ),
+        "negative_signals": (
+            "digital code", "download code", "membership", "gift card", "voucher",
+            "controller", "charger", "cover", "skin", "headset",
+        ),
+        "search_alias_templates": (
+            "{raw}",
+            "playstation 5 console",
+            "ps5 console",
+            "ps5 slim console",
+            "ps5 digital edition console",
+        ),
+        "hard_block": re.compile(
+            r"\b(?:digital\s+code|download\s+code|membership|gift\s*card|voucher)\b|"
+            r"\bfor\s+(?:playstation\s*5|ps5)\b|"
+            r"^(?!\s*(?:playstation\s*5|ps5)\b).+\-\s*(?:playstation\s*5|ps5)\b",
+            re.I,
+        ),
         "other_brand_earbuds": None,
         "category_accessory_words": (
             "controller", "charging", "stand", "skin", "case",
         ),
+        "require_primary_signal": True,
     },
     {
         "id": "xbox",
-        "match_query": re.compile(r"\bxbox\b", re.I),
-        "title_core": re.compile(r"\bxbox\b", re.I),
+        "match_query": re.compile(r"\bxbox\b|\bxbox\s+series\s+[xs]\b", re.I),
+        "title_core": re.compile(r"\bxbox\b|\bxbox\s+series\s+[xs]\b", re.I),
         "brand_tokens": ("microsoft", "xbox"),
-        "hard_block": None,
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": (
+            "console", "series x", "series s", "1tb", "2tb", "digital",
+            "all-digital", "xbox console",
+        ),
+        "accessory_signals": (
+            "controller", "charger", "stand", "headset", "skin", "cover",
+        ),
+        "negative_signals": (
+            "digital code", "download code", "membership", "gift card", "voucher",
+            "controller", "charger", "headset", "cover", "skin",
+        ),
+        "search_alias_templates": (
+            "{raw}",
+            "xbox console",
+            "xbox series x console",
+            "xbox series s console",
+        ),
+        "hard_block": re.compile(
+            r"\b(?:digital\s+code|download\s+code|membership|gift\s*card|voucher)\b|"
+            r"\bfor\s+xbox\b|"
+            r"^(?!\s*xbox\b).+\-\s*xbox(?:\s+series\s+[xs])?\b",
+            re.I,
+        ),
         "other_brand_earbuds": None,
         "category_accessory_words": ("controller", "charger", "stand"),
+        "require_primary_signal": True,
+    },
+    {
+        "id": "nintendo_switch",
+        "match_query": re.compile(
+            r"\bnintendo\s*switch\b|\bswitch\s*(?:lite|oled|2)\b",
+            re.I,
+        ),
+        "title_core": re.compile(
+            r"\bnintendo\s*switch\b|\bswitch\s*(?:lite|oled|2)\b",
+            re.I,
+        ),
+        "brand_tokens": ("nintendo",),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": (
+            "console", "system", "handheld", "joy-con", "joy con",
+            "dock", "oled", "lite", "32gb", "64gb",
+        ),
+        "accessory_signals": (
+            "controller", "carrying case", "travel case", "screen protector",
+            "grip", "charger", "dock set", "shell",
+        ),
+        "negative_signals": (
+            "digital code", "download code", "game card", "nintendo switch online",
+            "membership", "amiibo", "carrying case", "travel case",
+            "screen protector", "controller", "charger", "grip",
+        ),
+        "search_alias_templates": (
+            "{raw}",
+            "nintendo switch console",
+            "nintendo switch oled console",
+            "nintendo switch lite console",
+            "nintendo switch 2 console",
+        ),
+        "model_patterns": [
+            re.compile(r"\bnintendo\s*switch\s*(?:2|lite|oled)\b", re.I),
+            re.compile(r"\bswitch\s*(?:2|lite|oled)\b", re.I),
+        ],
+        "hard_block": re.compile(
+            r"\b(?:digital\s+code|download\s+code|game\s+card|amiibo|"
+            r"membership|nintendo\s+switch\s+online|screen\s+protector|"
+            r"travel\s+case|carrying\s+case)\b|"
+            r"\bfor\s+nintendo\s+switch\b|"
+            r"^(?!\s*nintendo\s+switch\b).+\-\s*nintendo\s+switch\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": (
+            "controller", "joy-con charger", "carrying case", "travel case",
+            "screen protector", "grip", "charger", "shell",
+        ),
+        "require_primary_signal": True,
+    },
+    {
+        "id": "kindle_paperwhite",
+        "match_query": re.compile(r"\bkindle\s+paperwhite\b", re.I),
+        "title_core": re.compile(r"\bkindle\s+paperwhite\b", re.I),
+        "brand_tokens": ("amazon", "kindle"),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": (
+            "e-reader", "ereader", "kindle paperwhite", "wifi", "ad-supported",
+        ),
+        "accessory_signals": (
+            "case", "cover", "sleeve", "screen protector", "charger",
+        ),
+        "negative_signals": (
+            "case", "cover", "sleeve", "screen protector", "charger",
+        ),
+        "search_alias_templates": (
+            "{raw}",
+            "amazon kindle paperwhite ereader",
+            "kindle paperwhite ereader",
+        ),
+        "hard_block": re.compile(
+            r"\bfor\s+kindle\s+paperwhite\b|\b(?:screen\s+protector|case|cover|sleeve)\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("case", "cover", "sleeve", "screen protector", "charger"),
+        "require_primary_signal": True,
+    },
+    {
+        "id": "roku_ultra",
+        "match_query": re.compile(r"\broku\s+ultra\b", re.I),
+        "title_core": re.compile(r"\broku\s+ultra\b", re.I),
+        "brand_tokens": ("roku",),
+        "brand_policy": "exact",
+        "partner_brands": (),
+        "primary_signals": ("streaming player", "streaming", "4k", "hdr", "ultra"),
+        "accessory_signals": ("remote", "cable", "adapter", "mount"),
+        "negative_signals": ("remote", "cable", "adapter", "mount"),
+        "search_alias_templates": (
+            "{raw}",
+            "roku ultra streaming player",
+        ),
+        "hard_block": re.compile(
+            r"\bfor\s+roku\s+ultra\b|\b(?:replacement\s+remote|remote|adapter|mount)\b",
+            re.I,
+        ),
+        "other_brand_earbuds": None,
+        "category_accessory_words": ("remote", "cable", "adapter", "mount"),
+        "require_primary_signal": True,
     },
 ]
 
@@ -932,6 +1087,7 @@ def family_defs_list() -> list[dict[str, Any]]:
         merged.setdefault("negative_signals", ())
         merged.setdefault("search_alias_templates", ())
         merged.setdefault("brand_plus_family_named", False)
+        merged.setdefault("require_primary_signal", False)
         out.append(merged)
     return out
 
@@ -943,6 +1099,10 @@ def _family_phrase_present(query_norm: str, phrases: tuple[str, ...]) -> list[st
         if phrase_norm and re.search(rf"\b{re.escape(phrase_norm)}\b", query_norm, re.I):
             found.append(phrase_norm)
     return found
+
+
+def _has_family_phrase(text_norm: str, phrases: tuple[str, ...]) -> bool:
+    return bool(_family_phrase_present(text_norm, phrases))
 
 
 def _extract_brand_from_query(
@@ -1005,6 +1165,26 @@ def _extract_named_required_tokens(
     required: list[str] = []
     if family.get("id") == "pressure_cooker":
         for phrase in ("duo plus", "duo", "rio", "pro crisp", "vortex"):
+            if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
+                required.append(phrase)
+    if family.get("id") == "nintendo_switch":
+        for phrase in ("nintendo switch",):
+            if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
+                required.append(phrase)
+    if family.get("id") == "ps5":
+        for phrase in ("playstation 5", "ps5"):
+            if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
+                required.append(phrase)
+    if family.get("id") == "xbox":
+        for phrase in ("xbox series x", "xbox series s"):
+            if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
+                required.append(phrase)
+    if family.get("id") == "kindle_paperwhite":
+        for phrase in ("kindle paperwhite", "paperwhite"):
+            if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
+                required.append(phrase)
+    if family.get("id") == "roku_ultra":
+        for phrase in ("roku ultra",):
             if re.search(rf"\b{re.escape(phrase)}\b", query_norm, re.I) and phrase not in required:
                 required.append(phrase)
     required.extend(tok for tok in _extract_structured_tokens(query_norm) if tok not in required)
@@ -1219,8 +1399,13 @@ def classify_with_intent(
     fam_id = family["id"]
     core_rx = family["title_core"]
     brand_expect = family["brand_tokens"]
+    primary_signals = tuple(normalize_user_query(s) for s in family.get("primary_signals", ()))
+    negative_signals = tuple(normalize_user_query(s) for s in family.get("negative_signals", ()))
+    require_primary_signal = bool(family.get("require_primary_signal"))
 
     has_core = bool(core_rx.search(tl))
+    has_primary_signal = _has_family_phrase(tl, primary_signals) if primary_signals else False
+    has_negative_signal = _has_family_phrase(tl, negative_signals) if negative_signals else False
     hard = family.get("hard_block")
     if hard and hard.search(tl):
         product_kind = "other_brand"
@@ -1275,6 +1460,68 @@ def classify_with_intent(
             "confidence": conf,
             "query_type": intent.query_type.value,
         }
+
+    if has_core and not accessory_intent:
+        if has_negative_signal and not has_primary_signal:
+            product_kind = "other_brand"
+            listing_role = "different_type"
+            penalty_total += 0.9
+            structural_relevance = 0.08
+            identity = compute_identity_match(
+                intent,
+                has_core=False,
+                product_kind=product_kind,
+                model_mismatch_exact=False,
+                brand_in_title=any(b in tl for b in brand_expect),
+            )
+            conf = compute_confidence(
+                intent,
+                has_core=False,
+                product_kind=product_kind,
+                trust=trust * 0.55,
+                identity_match=identity,
+            )
+            return {
+                "product_kind": product_kind,
+                "listing_role": listing_role,
+                "condition_class": cond,
+                "structural_relevance": structural_relevance,
+                "penalty_total": min(1.0, penalty_total),
+                "identity_match": round(identity, 3),
+                "trust_score": round(trust, 3),
+                "confidence": conf,
+                "query_type": intent.query_type.value,
+            }
+        if require_primary_signal and not has_primary_signal:
+            product_kind = "compatible_generic"
+            listing_role = "different_type"
+            penalty_total += 0.8
+            structural_relevance = 0.12
+            identity = compute_identity_match(
+                intent,
+                has_core=False,
+                product_kind=product_kind,
+                model_mismatch_exact=False,
+                brand_in_title=any(b in tl for b in brand_expect),
+            )
+            conf = compute_confidence(
+                intent,
+                has_core=False,
+                product_kind=product_kind,
+                trust=trust * 0.65,
+                identity_match=identity,
+            )
+            return {
+                "product_kind": product_kind,
+                "listing_role": listing_role,
+                "condition_class": cond,
+                "structural_relevance": structural_relevance,
+                "penalty_total": min(1.0, penalty_total),
+                "identity_match": round(identity, 3),
+                "trust_score": round(trust, 3),
+                "confidence": conf,
+                "query_type": intent.query_type.value,
+            }
 
     if intent.query_type == QueryType.EXACT_MODEL and intent.model_token:
         model_mismatch = _model_mismatch_exact(

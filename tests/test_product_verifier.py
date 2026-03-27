@@ -2,7 +2,7 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from product_identity import parse_query_intent
+from product_identity import classify_with_intent, parse_query_intent
 from product_verifier import (
     fingerprint_listing_document,
     parse_product_spec,
@@ -60,6 +60,29 @@ def test_named_product_queries_parse_as_named_products():
     assert gpu.query_type == "exact_model"
     assert gpu.family == "gpu"
     assert gpu.brand == "nvidia"
+
+
+def test_broad_device_line_queries_parse_as_named_products():
+    switch = parse_product_spec("nintendo switch")
+    ps5 = parse_product_spec("playstation 5")
+    kindle = parse_product_spec("kindle paperwhite")
+    roku = parse_product_spec("roku ultra")
+
+    assert switch.query_type == "named_product"
+    assert switch.family == "nintendo_switch"
+    assert switch.brand == "nintendo"
+    assert "nintendo switch" in switch.required_tokens
+    assert "nintendo switch oled console" in switch.search_aliases
+
+    assert ps5.query_type == "named_product"
+    assert ps5.family == "ps5"
+    assert "playstation 5" in ps5.required_tokens
+
+    assert kindle.query_type == "named_product"
+    assert kindle.family == "kindle_paperwhite"
+
+    assert roku.query_type == "named_product"
+    assert roku.family == "roku_ultra"
 
 
 def test_exact_headphone_page_is_verified():
@@ -241,6 +264,103 @@ def test_named_product_pressure_cooker_verifies_and_rejects_wrong_variant():
     accessory_result = verify_listing(spec, accessory_fp)
     assert accessory_result.status == "rejected"
     assert accessory_result.reason in {"compatible_or_wrong_type", "accessory_or_bundle"}
+
+
+def test_console_and_device_line_queries_reject_games_and_accessories():
+    switch_intent = parse_query_intent("nintendo switch")
+    switch_console = classify_with_intent(
+        "Nintendo Switch Lite Console - Turquoise",
+        None,
+        switch_intent,
+    )
+    switch_game = classify_with_intent(
+        "Super Mario Bros. Wonder - Nintendo Switch",
+        None,
+        switch_intent,
+    )
+    switch_sports = classify_with_intent(
+        "Nintendo Switch Sports",
+        None,
+        switch_intent,
+    )
+
+    assert switch_console["product_kind"] == "primary_product"
+    assert switch_game["listing_role"] == "different_type"
+    assert switch_sports["listing_role"] == "different_type"
+
+    kindle_intent = parse_query_intent("kindle paperwhite")
+    kindle_reader = classify_with_intent(
+        "Amazon Kindle Paperwhite Signature Edition E-reader",
+        None,
+        kindle_intent,
+    )
+    kindle_case = classify_with_intent(
+        "Fintie Case for Kindle Paperwhite",
+        None,
+        kindle_intent,
+    )
+
+    assert kindle_reader["product_kind"] == "primary_product"
+    assert kindle_case["listing_role"] in {"different_type", "accessory"}
+
+
+def test_nintendo_switch_named_product_verifies_consoles_and_rejects_games():
+    spec = parse_product_spec("nintendo switch")
+
+    console_html = """
+    <html>
+      <head><meta property="og:title" content="Nintendo Switch OLED Console with White Joy-Con" /></head>
+      <body><h1>Nintendo Switch OLED Console with White Joy-Con</h1></body>
+    </html>
+    """
+    game_html = """
+    <html>
+      <head><meta property="og:title" content="Super Mario Bros. Wonder - Nintendo Switch" /></head>
+      <body><h1>Super Mario Bros. Wonder - Nintendo Switch</h1></body>
+    </html>
+    """
+    sports_html = """
+    <html>
+      <head><meta property="og:title" content="Nintendo Switch Sports" /></head>
+      <body><h1>Nintendo Switch Sports</h1></body>
+    </html>
+    """
+
+    console_result = verify_listing(
+        spec,
+        fingerprint_listing_document(
+            "https://example.com/nintendo-switch-oled-console",
+            BeautifulSoup(console_html, "html.parser"),
+            current_price=349.99,
+            family_hint=spec.family,
+        ),
+    )
+    assert console_result.status == "verified"
+    assert console_result.match_label == "verified_named"
+
+    game_result = verify_listing(
+        spec,
+        fingerprint_listing_document(
+            "https://example.com/mario-wonder-switch",
+            BeautifulSoup(game_html, "html.parser"),
+            current_price=59.99,
+            family_hint=spec.family,
+        ),
+    )
+    assert game_result.status == "rejected"
+    assert game_result.reason in {"compatible_or_wrong_type", "family_negative_signal"}
+
+    sports_result = verify_listing(
+        spec,
+        fingerprint_listing_document(
+            "https://example.com/nintendo-switch-sports",
+            BeautifulSoup(sports_html, "html.parser"),
+            current_price=49.99,
+            family_hint=spec.family,
+        ),
+    )
+    assert sports_result.status == "rejected"
+    assert sports_result.reason == "primary_signals_missing"
 
 
 def test_gpu_partner_brand_verifies_but_wrong_models_and_accessories_do_not():
