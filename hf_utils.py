@@ -14,7 +14,6 @@ HF_TOKEN configured.  The app works identically without HF — just less smartly
 import json
 import hashlib
 import logging
-import os
 import re
 import threading
 from collections import OrderedDict
@@ -24,18 +23,18 @@ from difflib import SequenceMatcher
 import requests
 
 try:
-    from dotenv import load_dotenv
-
-    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
-except ImportError:
-    pass
-
-try:
     from huggingface_hub import InferenceClient
     HF_AVAILABLE = True
 except ImportError:
     HF_AVAILABLE = False
 
+from config import (
+    HF_QUERY_CACHE_MAX_ENTRIES,
+    HF_QUERY_CACHE_TTL_SECONDS,
+    HF_RELEVANCE_CACHE_TTL_SECONDS,
+    HF_TOKEN,
+    QUERY_ENHANCE_MODEL,
+)
 from discovery_filters import (
     enrich_result_metadata,
     passes_eligibility,
@@ -43,14 +42,6 @@ from discovery_filters import (
 )
 
 SIMILARITY_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-# Works on HF Inference (router); text_generation without model often picks an incompatible default.
-QUERY_ENHANCE_MODEL = os.getenv(
-    "HF_QUERY_MODEL",
-    "meta-llama/Llama-3.2-1B-Instruct",
-)
-HF_RELEVANCE_CACHE_TTL_SECONDS = int(os.getenv("HF_RELEVANCE_CACHE_TTL_SECONDS", "600"))
-HF_QUERY_CACHE_TTL_SECONDS = int(os.getenv("HF_QUERY_CACHE_TTL_SECONDS", "600"))
-HF_QUERY_CACHE_MAX_ENTRIES = int(os.getenv("HF_QUERY_CACHE_MAX_ENTRIES", "256"))
 
 
 def _normalize_name(name: str) -> str:
@@ -76,10 +67,9 @@ class SmartEngine:
         self._warm_started = False
         if self._enabled:
             try:
-                token = os.getenv("HF_TOKEN", "") or None
-                self._client = InferenceClient(token=token)
+                self._client = InferenceClient(token=HF_TOKEN)
                 logging.info(f"[{datetime.now()}] HF SmartEngine initialized"
-                             f"{' (authenticated)' if token else ' (anonymous)'}")
+                             f"{' (authenticated)' if HF_TOKEN else ' (anonymous)'}")
                 self._start_warmup()
             except Exception as exc:
                 logging.warning(f"[{datetime.now()}] HF SmartEngine init failed: {exc}")

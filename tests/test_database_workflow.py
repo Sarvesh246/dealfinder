@@ -235,3 +235,50 @@ def test_init_db_creates_read_path_indexes(tmp_path, monkeypatch):
     assert "idx_discovery_results_search_id" in discovery_indexes
     assert "idx_products_alert_sent" in product_indexes
     assert "idx_products_current_price" in product_indexes
+
+
+def test_source_catalog_marks_certified_sources_and_blocks_uncertified_enable(tmp_path, monkeypatch):
+    import database
+
+    db_file = tmp_path / "price_tracker_test.db"
+    monkeypatch.setattr(database, "DB_PATH", str(db_file))
+    importlib.reload(database)
+    monkeypatch.setattr(database, "DB_PATH", str(db_file))
+    database.init_db()
+
+    sources = {row["domain"]: row for row in database.get_all_sources()}
+
+    assert int(sources["target.com"]["certified"]) == 1
+    assert int(sources["officedepot.com"]["certified"]) == 1
+    assert int(sources["microcenter.com"]["certified"]) == 0
+    assert sources["officedepot.com"]["rollout_wave"] == "wave1"
+
+    microcenter_id = sources["microcenter.com"]["id"]
+    database.update_source_enabled(microcenter_id, 1)
+    microcenter = database.get_source_by_id(microcenter_id)
+
+    assert int(microcenter["enabled"]) == 0
+
+    enabled_domains = {row["domain"] for row in database.get_enabled_sources()}
+    assert "officedepot.com" in enabled_domains
+    assert "target.com" in enabled_domains
+    assert "microcenter.com" not in enabled_domains
+
+
+def test_available_sources_respect_feature_flags_and_certification(tmp_path, monkeypatch):
+    import database
+
+    monkeypatch.setenv("ENABLE_SOURCE_OFFICEDEPOT", "0")
+    db_file = tmp_path / "price_tracker_test.db"
+    monkeypatch.setattr(database, "DB_PATH", str(db_file))
+    importlib.reload(database)
+    monkeypatch.setattr(database, "DB_PATH", str(db_file))
+    database.init_db()
+
+    available_domains = {row["domain"] for row in database.get_available_sources()}
+    enabled_domains = {row["domain"] for row in database.get_enabled_sources()}
+
+    assert "officedepot.com" not in available_domains
+    assert "officedepot.com" not in enabled_domains
+    assert "microcenter.com" not in available_domains
+    assert "target.com" in available_domains

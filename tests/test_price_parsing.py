@@ -211,6 +211,42 @@ def test_bestbuy_canonicalize_listing_url_enriches_modern_product_path_with_sku_
     assert url == "https://www.bestbuy.com/product/apple-airpods-pro-3-white/JJGCQLYK5F/sku/6376563"
 
 
+def test_officedepot_canonicalize_listing_url_strips_session_and_query():
+    assert (
+        scraper.canonicalize_listing_url(
+            "https://www.officedepot.com/a/products/4371810/Move-40-Series-by-Bush-Business/;jsessionid=ABC123?pr=#Reviews"
+        )
+        == "https://www.officedepot.com/a/products/4371810/Move-40-Series-by-Bush-Business"
+    )
+
+
+def test_extract_officedepot_multi_reads_title_sale_and_original_price():
+    soup = BeautifulSoup(
+        """
+        <div class="od-product-card" data-product-id="4371810" pagetype="search">
+            <span name="skuTitleGAData" data-value="Move 40 Series by Bush Business Furniture Electric Height-Adjustable Standing Desk, 72&quot; x 30&quot;"></span>
+            <div class="od-product-card-region od-product-card-region-body">
+                <a class="od-product-card-image" href="/a/products/4371810/Move-40-Series-by-Bush-Business/" title='Move 40 Series by Bush Business Furniture Electric Height-Adjustable Standing Desk, 72" x 30"'></a>
+                <a href="/a/products/4371810/Move-40-Series-by-Bush-Business/" title='Move 40 Series by Bush Business Furniture Electric Height-Adjustable Standing Desk, 72" x 30"'>
+                    Move 40 Series by Bush Business Furniture Electric Height-Adjustable Standing...
+                </a>
+                <span class="od-graphql-price-big-price">$584.99</span>
+                <span class="od-graphql-price-little-price">$699.99</span>
+            </div>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    rows = scraper._extract_officedepot_multi(soup, max_results=5)
+
+    assert len(rows) == 1
+    assert rows[0]["product_url"] == "https://www.officedepot.com/a/products/4371810/Move-40-Series-by-Bush-Business"
+    assert rows[0]["current_price"] == 584.99
+    assert rows[0]["original_price"] == 699.99
+    assert "Standing Desk" in rows[0]["product_name"]
+
+
 def test_extract_price_from_soup_ignores_lower_renewed_offer_for_new_tracker():
     soup = BeautifulSoup(
         """

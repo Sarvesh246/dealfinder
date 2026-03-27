@@ -1,8 +1,15 @@
 """
-product_verifier.py - strict product spec parsing and PDP identity verification.
+Strict product-spec parsing and PDP identity verification.
 
-Tracked products use this module to decide whether a page is the same core product,
-an ambiguous related candidate, or a hard rejection.
+Pipeline role:
+1. Convert a query or saved tracker into a ProductSpec with exact/named/category semantics.
+2. Build listing fingerprints from PDP titles, URLs, and page text.
+3. Decide whether a candidate page is verified, ambiguous, related, or rejected.
+
+This module is the hard quality gate after product_identity.py and
+discovery_filters.py have already classified broad catalog intent. It should be
+conservative: uncertain matches are downgraded or rejected here rather than
+silently accepted into tracking or ranking.
 """
 
 from __future__ import annotations

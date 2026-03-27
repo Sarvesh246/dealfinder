@@ -1,7 +1,14 @@
 """
-discovery_filters.py — compatibility wrapper over product_identity.
+Compatibility wrapper over product_identity for discovery-time filtering.
 
-Public API unchanged for scraper.py, hf_utils.py, and tests.
+Pipeline role:
+1. Accept raw scraper rows and a user query.
+2. Reuse product_identity.py to classify product kind, condition, and confidence.
+3. Expose stable helper functions used by scraper.py, hf_utils.py, and tests.
+
+This module exists to keep the discovery pipeline readable and backwards
+compatible while the lower-level rules live in product_identity.py and the
+strict final gate lives in product_verifier.py.
 """
 
 from __future__ import annotations

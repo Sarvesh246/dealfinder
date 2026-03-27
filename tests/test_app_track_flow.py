@@ -1,4 +1,5 @@
 import importlib
+import sys
 
 from product_verifier import ListingFingerprint, VerificationResult
 
@@ -11,6 +12,20 @@ def _load_test_app(tmp_path, monkeypatch):
     importlib.reload(database)
     monkeypatch.setattr(database, "DB_PATH", str(db_file))
     database.init_db()
+
+    for module_name in (
+        "app",
+        "routes",
+        "routes.core",
+        "routes.discovery",
+        "routes.tracking",
+        "routes.settings",
+        "routes.admin",
+        "route_support",
+        "route_runtime",
+        "template_utils",
+    ):
+        sys.modules.pop(module_name, None)
 
     import app as app_module
 
@@ -102,6 +117,7 @@ def app_spec(title):
 
 def test_discover_track_uses_clicked_result_without_rerunning_search(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
+    import route_support
 
     search_id = database.create_discovery_search("airpods pro 3", None, 200.0)
     database.add_discovery_result(
@@ -120,7 +136,7 @@ def test_discover_track_uses_clicked_result_without_rerunning_search(tmp_path, m
     result_id = database.get_discovery_results(search_id)[0]["id"]
 
     monkeypatch.setattr(
-        app_module,
+        route_support,
         "verify_candidate_listing",
         lambda spec, source, candidate: _verified_result(
             candidate["product_url"],
@@ -129,7 +145,7 @@ def test_discover_track_uses_clicked_result_without_rerunning_search(tmp_path, m
         ),
     )
     monkeypatch.setattr(
-        app_module,
+        route_support,
         "discover_product_matches",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("discover_product_matches should not be called by Track This")
@@ -160,6 +176,7 @@ def test_discover_track_uses_clicked_result_without_rerunning_search(tmp_path, m
 
 def test_discover_track_reuses_verified_discovery_result_if_live_verify_fails(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
+    import route_support
 
     search_id = database.create_discovery_search("airpods pro 3", None, 200.0)
     database.add_discovery_result(
@@ -204,7 +221,7 @@ def test_discover_track_reuses_verified_discovery_result_if_live_verify_fails(tm
             raw_text="Apple AirPods Pro 3",
         ),
     )
-    monkeypatch.setattr(app_module, "verify_candidate_listing", lambda *args, **kwargs: rejected)
+    monkeypatch.setattr(route_support, "verify_candidate_listing", lambda *args, **kwargs: rejected)
 
     client = app_module.app.test_client()
     response = client.post(f"/discover/track/{result_id}")
@@ -249,6 +266,7 @@ def test_add_route_redirects_broad_category_queries_to_discovery(tmp_path, monke
 
 def test_discover_track_promotes_category_result_to_specific_tracker(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
+    import route_support
 
     search_id = database.create_discovery_search("standing desk", None, 300.0)
     database.add_discovery_result(
@@ -278,7 +296,7 @@ def test_discover_track_promotes_category_result_to_specific_tracker(tmp_path, m
             brand="flexispot",
         )
 
-    monkeypatch.setattr(app_module, "verify_candidate_listing", _verify)
+    monkeypatch.setattr(route_support, "verify_candidate_listing", _verify)
 
     client = app_module.app.test_client()
     response = client.post(f"/discover/track/{result_id}")
@@ -299,6 +317,7 @@ def test_discover_track_promotes_category_result_to_specific_tracker(tmp_path, m
 
 def test_discover_track_promotes_keyboard_category_primary_to_exact_tracker(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
+    import route_support
 
     search_id = database.create_discovery_search("AULA F99 Wireless Mechanical Keyboard", None, 120.0)
     database.add_discovery_result(
@@ -349,7 +368,7 @@ def test_discover_track_promotes_keyboard_category_primary_to_exact_tracker(tmp_
             fingerprint=fingerprint,
         )
 
-    monkeypatch.setattr(app_module, "verify_candidate_listing", _verify)
+    monkeypatch.setattr(route_support, "verify_candidate_listing", _verify)
 
     client = app_module.app.test_client()
     response = client.post(f"/discover/track/{result_id}")
@@ -383,15 +402,17 @@ def test_add_page_renders_search_and_link_tabs(tmp_path, monkeypatch):
 
 def test_track_link_success_with_target_price(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
+    from routes import tracking as tracking_routes
+
     source = database.get_source_by_id(1)
     verification = _verified_result(
         "https://example.com/airpods-pro-3",
         "Apple AirPods Pro 3 Wireless Earbuds",
         189.0,
     )
-    monkeypatch.setattr(app_module, "find_source_for_url", lambda url: source)
+    monkeypatch.setattr(tracking_routes, "find_source_for_url", lambda url: source)
     monkeypatch.setattr(
-        app_module,
+        tracking_routes,
         "inspect_direct_link",
         lambda url, source=None, context=None: _inspection(
             "https://example.com/airpods-pro-3",
@@ -428,16 +449,18 @@ def test_track_link_success_with_target_price(tmp_path, monkeypatch):
 
 def test_track_link_blank_target_uses_any_drop_and_generic_source(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
+    from routes import tracking as tracking_routes
+
     generic = database.ensure_generic_direct_source()
     verification = _verified_named_result(
         "https://shop.example.net/product/instant-pot",
         "Instant Pot Duo 7-in-1 Electric Pressure Cooker",
         89.99,
     )
-    monkeypatch.setattr(app_module, "find_source_for_url", lambda url: None)
-    monkeypatch.setattr(app_module, "ensure_generic_direct_source", lambda: generic)
+    monkeypatch.setattr(tracking_routes, "find_source_for_url", lambda url: None)
+    monkeypatch.setattr(tracking_routes, "ensure_generic_direct_source", lambda: generic)
     monkeypatch.setattr(
-        app_module,
+        tracking_routes,
         "inspect_direct_link",
         lambda url, source=None, context=None: _inspection(
             "https://shop.example.net/product/instant-pot",
@@ -471,10 +494,12 @@ def test_track_link_blank_target_uses_any_drop_and_generic_source(tmp_path, monk
 
 def test_track_link_rejects_weak_pages(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
-    monkeypatch.setattr(app_module, "find_source_for_url", lambda url: None)
-    monkeypatch.setattr(app_module, "ensure_generic_direct_source", database.ensure_generic_direct_source)
+    from routes import tracking as tracking_routes
+
+    monkeypatch.setattr(tracking_routes, "find_source_for_url", lambda url: None)
+    monkeypatch.setattr(tracking_routes, "ensure_generic_direct_source", database.ensure_generic_direct_source)
     monkeypatch.setattr(
-        app_module,
+        tracking_routes,
         "inspect_direct_link",
         lambda url, source=None, context=None: {
             "ok": False,

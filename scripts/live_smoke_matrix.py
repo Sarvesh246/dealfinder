@@ -18,10 +18,13 @@ SMOKE_CASES = [
     {"kind": "strict", "query": "steam deck", "domain": "amazon.com"},
     {"kind": "strict", "query": "meta quest 3", "domain": "amazon.com"},
     {"kind": "strict", "query": "tp-link archer ax55 router", "domain": "amazon.com"},
+    {"kind": "strict", "query": "tp-link archer ax55 router", "domain": "officedepot.com"},
     {"kind": "strict", "query": "brother hl-l2460dw printer", "domain": "amazon.com"},
+    {"kind": "strict", "query": "brother hl-l2460dw printer", "domain": "officedepot.com"},
     {"kind": "strict", "query": "dyson v8 cordless vacuum", "domain": "amazon.com"},
     {"kind": "discovery", "query": "lego orchid", "domain": "amazon.com"},
     {"kind": "discovery", "query": "standing desk", "domain": "walmart.com"},
+    {"kind": "discovery", "query": "standing desk", "domain": "officedepot.com"},
 ]
 
 DIRECT_LINK = "https://www.amazon.com/Apple-Smartwatch-Starlight-Aluminum-Always/dp/B0FQF58VGQ"

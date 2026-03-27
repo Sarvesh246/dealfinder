@@ -880,7 +880,7 @@
         </label>
         {% endfor %}
       </div>
-      <span class="discover-sources-hint">Matches your defaults from Settings; change here for this search only. <strong>All registered stores</strong> queries every store in the list (including ones off by default).</span>
+      <span class="discover-sources-hint">Matches your defaults from Settings; change here for this search only. <strong>All registered stores</strong> queries every certified live store in the list, including ones off by default.</span>
       {% if not sources %}
       <p class="discover-sources-empty" role="alert">
         No per-store chips loaded — the store list from the database is empty or the DB failed to open. Check the server log for SQLite errors; if the database file is corrupted, restore from backup or remove it so the app can recreate schema and defaults on startup.

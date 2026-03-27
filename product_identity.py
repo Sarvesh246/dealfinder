@@ -1,7 +1,16 @@
 """
-product_identity.py — query intent, listing role, identity match, and eligibility inputs.
+Query parsing and catalog-intent rules for discovery.
 
-Rules-based catalog intelligence used by discovery_filters (wrapper) and ranking.
+Pipeline role:
+1. Parse and normalize the user's raw query into a stable intent.
+2. Classify listing text/URLs into product-vs-accessory/refill/bundle roles.
+3. Emit structured identity signals consumed by downstream filters and verifiers.
+
+This module does not decide final PDP truth on its own. It focuses on broad
+catalog understanding so discovery can reject obvious noise before stricter
+verification in product_verifier.py decides whether a specific listing is the
+same product. discovery_filters.py wraps this module to preserve the older
+public API used by scraping, ranking, and tests.
 """
 
 from __future__ import annotations
@@ -639,10 +648,11 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
         "primary_signals": ("printer", "laser", "inkjet", "duplex", "monochrome"),
         "accessory_signals": (
             "toner", "toner cartridge", "cartridge", "drum", "ink", "label tape",
-            "replacement toner", "refill",
+            "replacement toner", "refill", "copy paper", "photo paper", "labels",
         ),
         "negative_signals": (
             "toner", "cartridge", "drum", "ink", "label tape", "refill",
+            "copy paper", "photo paper", "labels",
         ),
         "search_alias_templates": (
             "{brand} {model_token} printer",
@@ -657,11 +667,12 @@ _FAMILY_DEFS: list[dict[str, Any]] = [
             re.compile(r"\bdcp[- ]?l\d{4}[a-z]{1,3}\b", re.I),
         ],
         "hard_block": re.compile(
-            r"\btoner\b|\bcartridge\b|\bdrum\b|\bink\b|\blabel\s*tape\b|\brefill\b",
+            r"\btoner\b|\bcartridge\b|\bdrum\b|\bink\b|\blabel\s*tape\b|\brefill\b|"
+            r"\bcopy\s*paper\b|\bphoto\s*paper\b|\blabels?\b",
             re.I,
         ),
         "other_brand_earbuds": None,
-        "category_accessory_words": ("toner", "cartridge", "drum", "ink", "label tape", "refill"),
+        "category_accessory_words": ("toner", "cartridge", "drum", "ink", "label tape", "refill", "copy paper", "photo paper", "labels"),
     },
     {
         "id": "vacuum",

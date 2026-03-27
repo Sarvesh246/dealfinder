@@ -5,7 +5,6 @@ scheduler.py - worker-owned APScheduler configuration and price revalidation loo
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from datetime import datetime, timedelta
 from typing import Any
@@ -13,6 +12,13 @@ from typing import Any
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from alerts import send_alerts
+from config import (
+    CHECK_INTERVAL_HOURS,
+    ENABLE_STARTUP_BACKFILL,
+    MANUAL_CHECK_POLL_SECONDS,
+    WORKER_HEARTBEAT_SECONDS,
+    WORKER_LEASE_SECONDS,
+)
 from database import (
     acquire_worker_lease,
     add_price_history,
@@ -35,21 +41,11 @@ from database import (
     update_product_source,
 )
 from observability import log_event
+from pricing_status import status_for_price
 from scraper import SearchExecutionContext, revalidate_product_source
 
 
-WORKER_LEASE_SECONDS = int(os.getenv("WORKER_LEASE_SECONDS", "90"))
-WORKER_HEARTBEAT_SECONDS = int(os.getenv("WORKER_HEARTBEAT_SECONDS", "20"))
-MANUAL_CHECK_POLL_SECONDS = int(os.getenv("MANUAL_CHECK_POLL_SECONDS", "10"))
 _RUN_LOCK = threading.Lock()
-
-
-def _status_from_price(price, target_price):
-    if price is None:
-        return "watching"
-    if target_price is None:
-        return "watching"
-    return "deal_found" if float(price) <= float(target_price) else "watching"
 
 
 def _persist_revalidation_result(ps, result, now: str) -> bool:
@@ -62,7 +58,11 @@ def _persist_revalidation_result(ps, result, now: str) -> bool:
             ps["id"],
             discovered_url=best["url"],
             current_price=best.get("price"),
-            status=_status_from_price(best.get("price"), ps.get("target_price")),
+            status=status_for_price(
+                best.get("price"),
+                ps.get("target_price"),
+                ps.get("alert_mode") or "target_threshold",
+            ),
             verification_state="verified",
             verification_reason=best.get("verification_reason"),
             health_state=best.get("health_state", "healthy"),
@@ -403,7 +403,7 @@ def check_all_products() -> None:
 
 
 def create_scheduler() -> BackgroundScheduler:
-    interval_hours = int(os.getenv("CHECK_INTERVAL_HOURS", "6"))
+    interval_hours = CHECK_INTERVAL_HOURS
 
     scheduler = BackgroundScheduler(daemon=True)
     scheduler.add_job(
@@ -423,7 +423,7 @@ def create_scheduler() -> BackgroundScheduler:
 
 
 def create_worker_scheduler(worker_id: str) -> BackgroundScheduler:
-    interval_hours = int(os.getenv("CHECK_INTERVAL_HOURS", "6"))
+    interval_hours = CHECK_INTERVAL_HOURS
     scheduler = BackgroundScheduler(daemon=True, job_defaults={"coalesce": True, "max_instances": 1})
     scheduler.add_job(
         func=lambda: worker_heartbeat(worker_id),
@@ -452,7 +452,7 @@ def create_worker_scheduler(worker_id: str) -> BackgroundScheduler:
         replace_existing=True,
         misfire_grace_time=300,
     )
-    if os.getenv("ENABLE_STARTUP_BACKFILL", "1").lower() in ("1", "true", "yes"):
+    if ENABLE_STARTUP_BACKFILL:
         scheduler.add_job(
             func=lambda: run_initial_backfill_managed(worker_id),
             trigger="date",

@@ -28,8 +28,30 @@ from urllib.parse import parse_qsl, quote_plus, urlencode, urljoin, urlparse, ur
 import requests
 from bs4 import BeautifulSoup
 from bs4.element import Tag
-from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
+from config import (
+    BHPHOTO_DEBUG_ROWS,
+    BROWSER_WARMUP_DOMAINS,
+    BROWSER_WARMUP_INTERVAL_SECONDS,
+    CHROMEDRIVER_PATH,
+    DISCOVERY_FAST_USABLE_THRESHOLD,
+    DISCOVERY_MAX_MERGED_RESULTS,
+    DISCOVERY_MIN_CONFIRMED_BEFORE_SKIP_UNCONFIRMED,
+    DISCOVERY_VERIFY_WORKERS,
+    ENABLE_BROWSER_WARMUP,
+    ENABLE_FAST_PATH_BESTBUY,
+    ENABLE_FAST_PATH_WALMART,
+    MAX_RESULTS_PER_SOURCE,
+    REQUEST_POOL_SIZE,
+    REQUIRE_DISCOUNT,
+    SCRAPER_DEBUG_DIR,
+    SCRAPER_DEBUG_MAX_BYTES,
+    SELENIUM_DRIVER_MAX_AGE_SECONDS,
+    SELENIUM_DRIVER_MAX_PAGES,
+    STRICT_FAST_CANDIDATE_THRESHOLD,
+    STRICT_MAX_CANDIDATES,
+    STRICT_VERIFY_WORKERS,
+)
 from observability import log_event
 
 from product_verifier import (
@@ -43,42 +65,9 @@ from product_verifier import (
     verify_listing,
 )
 
-load_dotenv()
-
-MAX_RESULTS_PER_SOURCE = int(os.getenv("MAX_RESULTS_PER_SOURCE", "50"))
-DISCOVERY_VERIFY_WORKERS = int(os.getenv("DISCOVERY_VERIFY_WORKERS", "4"))
-STRICT_VERIFY_WORKERS = int(os.getenv("STRICT_VERIFY_WORKERS", "3"))
-SELENIUM_DRIVER_MAX_PAGES = int(os.getenv("SELENIUM_DRIVER_MAX_PAGES", "25"))
-SELENIUM_DRIVER_MAX_AGE_SECONDS = int(os.getenv("SELENIUM_DRIVER_MAX_AGE_SECONDS", "900"))
-_REQUEST_POOL_SIZE = int(os.getenv("REQUEST_POOL_SIZE", "16"))
-ENABLE_FAST_PATH_BESTBUY = os.getenv("ENABLE_FAST_PATH_BESTBUY", "1").lower() not in (
-    "0", "false", "no", "off",
-)
-ENABLE_FAST_PATH_WALMART = os.getenv("ENABLE_FAST_PATH_WALMART", "1").lower() not in (
-    "0", "false", "no", "off",
-)
-ENABLE_BROWSER_WARMUP = os.getenv("ENABLE_BROWSER_WARMUP", "1").lower() not in (
-    "0", "false", "no", "off",
-)
-BROWSER_WARMUP_INTERVAL_SECONDS = int(os.getenv("BROWSER_WARMUP_INTERVAL_SECONDS", "600"))
-BROWSER_WARMUP_DOMAINS = tuple(
-    domain.strip().lower()
-    for domain in os.getenv("BROWSER_WARMUP_DOMAINS", "bestbuy.com,walmart.com").split(",")
-    if domain.strip()
-)
 
 # When true, prefer listings with a provable ≥5% markdown; unconfirmed (no was-price
 # in SRP HTML) can still appear if we have fewer than 5 confirmed hits.
-REQUIRE_DISCOUNT = os.getenv("REQUIRE_DISCOUNT", "true").lower() not in (
-    "0", "false", "no", "off",
-)
-# If relevance-filtered "confirmed sale" rows are below this, pad from unconfirmed.
-DISCOVERY_MIN_CONFIRMED_BEFORE_SKIP_UNCONFIRMED = 5
-# When padding, total results never exceed this (confirmed + unconfirmed).
-DISCOVERY_MAX_MERGED_RESULTS = 8
-DISCOVERY_FAST_USABLE_THRESHOLD = int(
-    os.getenv("DISCOVERY_FAST_USABLE_THRESHOLD", str(DISCOVERY_MAX_MERGED_RESULTS))
-)
 
 
 @dataclass(frozen=True)
@@ -188,8 +177,8 @@ class SearchExecutionContext:
             return session
         session = requests.Session()
         adapter = HTTPAdapter(
-            pool_connections=_REQUEST_POOL_SIZE,
-            pool_maxsize=_REQUEST_POOL_SIZE,
+            pool_connections=REQUEST_POOL_SIZE,
+            pool_maxsize=REQUEST_POOL_SIZE,
             max_retries=0,
         )
         session.mount("http://", adapter)
@@ -227,7 +216,7 @@ class BrowserPool:
             return handle
 
     def _resolve_driver_path(self) -> str:
-        configured = os.getenv("CHROMEDRIVER_PATH", "").strip()
+        configured = CHROMEDRIVER_PATH
         if configured:
             return configured
         with self._driver_lock:
@@ -580,7 +569,7 @@ def _apply_discovery_quality_pipeline(
 
 
 # First N B&H listing rows: log name/url/card preview (0 = off).
-_BHPHOTO_DEBUG_FIRST_N = int(os.getenv("BHPHOTO_DEBUG_ROWS", "10"))
+_BHPHOTO_DEBUG_FIRST_N = BHPHOTO_DEBUG_ROWS
 
 # Last run metrics (read by tests / monitoring); overwritten each discover_* call.
 LAST_DISCOVERY_STATS: dict[str, dict] = {}
@@ -623,14 +612,11 @@ _SELENIUM_PREFERRED = {
     "lowes.com",
 }
 
-_DEBUG_HTML_MAX_BYTES = int(os.getenv("SCRAPER_DEBUG_MAX_BYTES", str(5 * 1024 * 1024)))
+_DEBUG_HTML_MAX_BYTES = SCRAPER_DEBUG_MAX_BYTES
 
 
 def _scraper_debug_dir() -> str:
-    d = os.getenv(
-        "SCRAPER_DEBUG_DIR",
-        os.path.join(tempfile.gettempdir(), "pricepulse_scraper_debug"),
-    )
+    d = SCRAPER_DEBUG_DIR or os.path.join(tempfile.gettempdir(), "pricepulse_scraper_debug")
     os.makedirs(d, exist_ok=True)
     return d
 
@@ -1682,6 +1668,8 @@ def _canonical_listing_url(url: str) -> str:
     host = (parsed.netloc or "").lower()
     if "bestbuy.com" in host or raw.startswith("/product/") or raw.startswith("/site/"):
         return _canonical_bestbuy_listing_url(raw)
+    if "officedepot.com" in host or "/a/products/" in raw:
+        return _canonical_officedepot_listing_url(raw)
 
     return raw.split("?")[0].split("#")[0].rstrip("/")
 
@@ -1773,6 +1761,22 @@ def _bestbuy_canonicalize_extracted_url(url: str, *nodes) -> str:
     if not sku_hint:
         return canonical
     return urlunparse(("https", "www.bestbuy.com", f"{path}/sku/{sku_hint}", "", "", ""))
+
+
+def _canonical_officedepot_listing_url(url: str) -> str:
+    parsed = urlparse(url)
+    host = (parsed.netloc or "").lower()
+    if not host:
+        host = "www.officedepot.com"
+    elif host == "officedepot.com":
+        host = "www.officedepot.com"
+
+    path = re.sub(r"/+", "/", (parsed.path or "").strip())
+    path = re.sub(r"/;jsessionid=[^/?#]+", "", path, flags=re.I)
+    path = path.rstrip("/")
+    if not path:
+        path = "/"
+    return urlunparse(("https", host, path, "", "", ""))
 
 
 _DIRECT_NON_PRODUCT_PATHS = (
@@ -3248,6 +3252,115 @@ def _extract_lowes_all(
     )
 
 
+def _officedepot_is_product_url(href: str) -> bool:
+    return bool(re.search(r"/a/products/\d+/", href or "", re.I))
+
+
+def _officedepot_card_title(card: Tag) -> str:
+    title_node = card.select_one('span[name="skuTitleGAData"]')
+    if title_node and title_node.get("data-value"):
+        return BeautifulSoup(title_node.get("data-value"), "html.parser").get_text(" ", strip=True)
+    for link in card.select('a[title][href]'):
+        title = (link.get("title") or "").strip()
+        if title and _officedepot_is_product_url(link.get("href", "")):
+            return title
+    for link in card.select('a[href]'):
+        if not _officedepot_is_product_url(link.get("href", "")):
+            continue
+        title = link.get_text(" ", strip=True)
+        if len(title) >= 3:
+            return title
+    return ""
+
+
+def _officedepot_price_from_card(card: Tag) -> float | None:
+    selectors = (
+        ".od-graphql-price-big-price",
+        '[aria-describedby="price"]',
+        '[class*="price-big-price"]',
+        '[class*="sale-price"]',
+    )
+    for sel in selectors:
+        el = card.select_one(sel)
+        if el:
+            price = clean_price(el.get_text(" ", strip=True))
+            if price:
+                return price
+    return _first_dollar_price_in_text(card.get_text(" ", strip=True))
+
+
+def _officedepot_original_price_from_card(card: Tag) -> float | None:
+    selectors = (
+        ".od-graphql-price-little-price",
+        '[class*="price-little-price"]',
+        '[class*="regular-price"]',
+    )
+    for sel in selectors:
+        el = card.select_one(sel)
+        if el:
+            price = clean_price(el.get_text(" ", strip=True))
+            if price:
+                return price
+    return _extract_original_price(card)
+
+
+def _extract_officedepot_listings(soup, max_n: int) -> list[dict]:
+    base = "https://www.officedepot.com"
+    out: list[dict] = []
+    seen: set[str] = set()
+    cards = soup.select('[data-product-id].od-product-card, [data-product-id][pagetype="search"]')
+    for card in cards:
+        if len(out) >= max_n:
+            break
+        link = None
+        for candidate in card.select('a[href]'):
+            href = candidate.get("href", "")
+            if _officedepot_is_product_url(href):
+                link = candidate
+                break
+        if not link:
+            continue
+        href = _canonical_listing_url(_abs(link.get("href", ""), base))
+        if not href or href in seen:
+            continue
+        name = clean_listing_title(_officedepot_card_title(card))
+        price = _officedepot_price_from_card(card)
+        if not price or len(name.strip()) < 2:
+            continue
+        seen.add(href)
+        out.append({
+            "url": href,
+            "price": price,
+            "name_found": name[:500],
+            "original_price": _officedepot_original_price_from_card(card),
+        })
+
+    if not out:
+        logging.warning(
+            f"[{datetime.now()}] Office Depot: 0 results; "
+            f"cards={len(cards)}, product_links={len(soup.select('a[href*=\"/a/products/\"]'))}"
+        )
+    return out
+
+
+def _extract_officedepot_all(
+    soup,
+    max_items=MAX_RESULTS_PER_SOURCE,
+    *,
+    query: str = "",
+    target_price: float | None = None,
+):
+    raw_rows = _extract_officedepot_listings(soup, max_items)
+    return _apply_discovery_quality_pipeline(
+        raw_rows,
+        query=query,
+        max_price=target_price,
+        label="Office Depot",
+        price_key="price",
+        name_key="name_found",
+    )
+
+
 _SITE_EXTRACTORS = {
     "amazon.com":        _extract_amazon_all,
     "bestbuy.com":       _extract_bestbuy_all,
@@ -3258,6 +3371,7 @@ _SITE_EXTRACTORS = {
     "costco.com":        _extract_costco_all,
     "homedepot.com":     _extract_homedepot_all,
     "lowes.com":         _extract_lowes_all,
+    "officedepot.com":   _extract_officedepot_all,
 }
 
 
@@ -4297,6 +4411,19 @@ def _extract_lowes_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
     ]
 
 
+def _extract_officedepot_multi(soup, max_results=MAX_RESULTS_PER_SOURCE):
+    rows = _extract_officedepot_listings(soup, max_results)
+    return [
+        {
+            "product_name": r["name_found"],
+            "current_price": r["price"],
+            "original_price": r.get("original_price"),
+            "product_url": r["url"],
+        }
+        for r in rows
+    ]
+
+
 _MULTI_EXTRACTORS = {
     "amazon.com":       _extract_amazon_multi,
     "bestbuy.com":      _extract_bestbuy_multi,
@@ -4308,6 +4435,7 @@ _MULTI_EXTRACTORS = {
     "costco.com":       _extract_costco_multi,
     "homedepot.com":    _extract_homedepot_multi,
     "lowes.com":        _extract_lowes_multi,
+    "officedepot.com":  _extract_officedepot_multi,
 }
 
 STRICT_TRACKING_DOMAINS = {
@@ -4315,15 +4443,10 @@ STRICT_TRACKING_DOMAINS = {
     "bestbuy.com",
     "costco.com",
     "newegg.com",
+    "officedepot.com",
     "target.com",
     "walmart.com",
 }
-STRICT_MAX_CANDIDATES = int(os.getenv("STRICT_MAX_CANDIDATES", "8"))
-STRICT_FAST_CANDIDATE_THRESHOLD = int(
-    os.getenv("STRICT_FAST_CANDIDATE_THRESHOLD", str(STRICT_MAX_CANDIDATES))
-)
-
-
 @dataclass(frozen=True)
 class SourceAdapter:
     domain: str

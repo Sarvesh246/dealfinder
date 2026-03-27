@@ -17,7 +17,9 @@ BENCHMARK_CASES = [
     {"kind": "strict", "query": "sony wh-1000xm4", "domains": ["amazon.com", "walmart.com"]},
     {"kind": "discovery", "query": "airpods pro 3", "domains": ["amazon.com", "bestbuy.com", "walmart.com"]},
     {"kind": "strict", "query": "instant pot duo 7-in-1", "domains": ["amazon.com", "bestbuy.com"]},
-    {"kind": "discovery", "query": "standing desk", "domains": ["amazon.com", "walmart.com"]},
+    {"kind": "strict", "query": "brother hl-l2460dw printer", "domains": ["amazon.com", "officedepot.com"]},
+    {"kind": "strict", "query": "tp-link archer ax55 router", "domains": ["amazon.com", "officedepot.com"]},
+    {"kind": "discovery", "query": "standing desk", "domains": ["amazon.com", "walmart.com", "officedepot.com"]},
     {"kind": "strict", "query": "rtx 4070", "domains": ["amazon.com", "bestbuy.com"]},
 ]
 

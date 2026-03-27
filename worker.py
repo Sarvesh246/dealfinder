@@ -9,8 +9,8 @@ import os
 import socket
 from datetime import datetime
 
-from app import _ensure_database_at_startup, _start_runtime_warmups
 from observability import log_event
+from runtime_bootstrap import configure_logging, ensure_database_ready, start_runtime_warmups
 from scheduler import create_worker_scheduler, shutdown_worker, worker_heartbeat
 
 
@@ -20,8 +20,9 @@ def _worker_id() -> str:
 
 def main() -> None:
     worker_id = _worker_id()
-    _ensure_database_at_startup()
-    _start_runtime_warmups()
+    configure_logging()
+    ensure_database_ready()
+    start_runtime_warmups()
     worker_heartbeat(worker_id)
     scheduler = create_worker_scheduler(worker_id)
     scheduler.start()

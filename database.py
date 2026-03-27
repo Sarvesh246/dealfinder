@@ -83,6 +83,10 @@ DEFAULT_SOURCES = [
         "search_url_template": "https://www.amazon.com/s?k={query}",
         "enabled": 1,
         "logo_color": "#FF9900",
+        "certified": 1,
+        "rollout_wave": "core",
+        "feature_flag": "",
+        "certification_notes": "Core certified",
     },
     {
         "name": "Best Buy",
@@ -90,6 +94,10 @@ DEFAULT_SOURCES = [
         "search_url_template": "https://www.bestbuy.com/site/searchpage.jsp?st={query}",
         "enabled": 1,
         "logo_color": "#0046BE",
+        "certified": 1,
+        "rollout_wave": "core",
+        "feature_flag": "",
+        "certification_notes": "Core certified",
     },
     {
         "name": "Newegg",
@@ -97,6 +105,10 @@ DEFAULT_SOURCES = [
         "search_url_template": "https://www.newegg.com/p/pl?d={query}",
         "enabled": 1,
         "logo_color": "#E56708",
+        "certified": 1,
+        "rollout_wave": "core",
+        "feature_flag": "",
+        "certification_notes": "Core certified",
     },
     {
         "name": "Walmart",
@@ -104,6 +116,10 @@ DEFAULT_SOURCES = [
         "search_url_template": "https://www.walmart.com/search?q={query}",
         "enabled": 1,
         "logo_color": "#0071DC",
+        "certified": 1,
+        "rollout_wave": "core",
+        "feature_flag": "",
+        "certification_notes": "Core certified",
     },
     {
         "name": "eBay",
@@ -111,6 +127,10 @@ DEFAULT_SOURCES = [
         "search_url_template": "https://www.ebay.com/sch/i.html?_nkw={query}&LH_BIN=1",
         "enabled": 0,
         "logo_color": "#E53238",
+        "certified": 0,
+        "rollout_wave": "later",
+        "feature_flag": "ENABLE_SOURCE_EBAY",
+        "certification_notes": "Marketplace source intentionally excluded from strict rollout",
     },
     {
         "name": "B&H Photo",
@@ -118,13 +138,21 @@ DEFAULT_SOURCES = [
         "search_url_template": "https://www.bhphotovideo.com/c/search?Ntt={query}",
         "enabled": 0,
         "logo_color": "#000000",
+        "certified": 0,
+        "rollout_wave": "wave0",
+        "feature_flag": "ENABLE_SOURCE_BHPHOTOVIDEO",
+        "certification_notes": "Pending certification in this environment",
     },
     {
         "name": "Target",
         "domain": "target.com",
         "search_url_template": "https://www.target.com/s?searchTerm={query}",
-        "enabled": 0,
+        "enabled": 1,
         "logo_color": "#CC0000",
+        "certified": 1,
+        "rollout_wave": "wave0",
+        "feature_flag": "ENABLE_SOURCE_TARGET",
+        "certification_notes": "Certified first-wave broad retail source",
     },
     {
         "name": "Costco",
@@ -133,6 +161,10 @@ DEFAULT_SOURCES = [
             "https://www.costco.com/CatalogSearch?dept=All&keyword={query}",
         "enabled": 0,
         "logo_color": "#E31837",
+        "certified": 0,
+        "rollout_wave": "wave0",
+        "feature_flag": "ENABLE_SOURCE_COSTCO",
+        "certification_notes": "Pending certification in this environment",
     },
     {
         "name": "The Home Depot",
@@ -140,6 +172,10 @@ DEFAULT_SOURCES = [
         "search_url_template": "https://www.homedepot.com/s/{query}",
         "enabled": 0,
         "logo_color": "#F96302",
+        "certified": 0,
+        "rollout_wave": "wave0",
+        "feature_flag": "ENABLE_SOURCE_HOMEDEPOT",
+        "certification_notes": "Pending certification in this environment",
     },
     {
         "name": "Lowe's",
@@ -148,6 +184,65 @@ DEFAULT_SOURCES = [
             "https://www.lowes.com/search?searchTerm={query}",
         "enabled": 0,
         "logo_color": "#004990",
+        "certified": 0,
+        "rollout_wave": "wave0",
+        "feature_flag": "ENABLE_SOURCE_LOWES",
+        "certification_notes": "Pending certification in this environment",
+    },
+    {
+        "name": "Office Depot",
+        "domain": "officedepot.com",
+        "search_url_template": "https://www.officedepot.com/a/search/?q={query}",
+        "enabled": 1,
+        "logo_color": "#CC0000",
+        "certified": 1,
+        "rollout_wave": "wave1",
+        "feature_flag": "ENABLE_SOURCE_OFFICEDEPOT",
+        "certification_notes": "Certified for office, furniture, printer, monitor, and networking queries",
+    },
+    {
+        "name": "Micro Center",
+        "domain": "microcenter.com",
+        "search_url_template": "https://www.microcenter.com/search/search_results.aspx?Ntt={query}",
+        "enabled": 0,
+        "logo_color": "#E01A22",
+        "certified": 0,
+        "rollout_wave": "wave2",
+        "feature_flag": "ENABLE_SOURCE_MICROCENTER",
+        "certification_notes": "Protected-store phase; blocked in current environment",
+    },
+    {
+        "name": "Macy's",
+        "domain": "macys.com",
+        "search_url_template": "https://www.macys.com/shop/featured/{query}",
+        "enabled": 0,
+        "logo_color": "#111111",
+        "certified": 0,
+        "rollout_wave": "wave2",
+        "feature_flag": "ENABLE_SOURCE_MACYS",
+        "certification_notes": "Protected-store phase; access denied in current environment",
+    },
+    {
+        "name": "Sam's Club",
+        "domain": "samsclub.com",
+        "search_url_template": "https://www.samsclub.com/s/{query}",
+        "enabled": 0,
+        "logo_color": "#005DAA",
+        "certified": 0,
+        "rollout_wave": "wave2",
+        "feature_flag": "ENABLE_SOURCE_SAMSCLUB",
+        "certification_notes": "Protected-store phase; anti-bot gating observed",
+    },
+    {
+        "name": "GameStop",
+        "domain": "gamestop.com",
+        "search_url_template": "https://www.gamestop.com/search/?q={query}",
+        "enabled": 0,
+        "logo_color": "#E2231A",
+        "certified": 0,
+        "rollout_wave": "wave2",
+        "feature_flag": "ENABLE_SOURCE_GAMESTOP",
+        "certification_notes": "Protected-store phase; anti-bot gating observed",
     },
     {
         "name": "Direct Link",
@@ -155,27 +250,89 @@ DEFAULT_SOURCES = [
         "search_url_template": "",
         "enabled": 0,
         "logo_color": "#7C5CFC",
+        "certified": 1,
+        "rollout_wave": "core",
+        "feature_flag": "",
+        "certification_notes": "Internal direct-link source",
     },
 ]
+
+
+def _flag_is_enabled(value: str | None, default: bool) -> bool:
+    if not value:
+        return default
+    raw = os.getenv(value)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _source_default_enabled(source: dict) -> int:
+    certified = int(source.get("certified", 1))
+    default_enabled = int(source.get("enabled", 0))
+    if not certified:
+        default_enabled = 0
+    return int(_flag_is_enabled(source.get("feature_flag"), bool(default_enabled)))
+
+
+def _source_runtime_allowed(row) -> bool:
+    feature_flag = None
+    try:
+        feature_flag = row["feature_flag"]
+    except Exception:
+        feature_flag = None
+    return _flag_is_enabled(feature_flag, True)
 
 
 def _sync_default_sources(cursor):
     """Add any DEFAULT_SOURCES catalog entries not yet present (matched by domain)."""
     for s in DEFAULT_SOURCES:
-        exists = cursor.execute(
-            "SELECT 1 FROM sources WHERE domain = ?", (s["domain"],)
+        row = cursor.execute(
+            "SELECT id, certified, rollout_wave, feature_flag, certification_notes FROM sources WHERE domain = ?",
+            (s["domain"],),
         ).fetchone()
-        if exists:
+        enabled_default = _source_default_enabled(s)
+        if row:
+            cursor.execute(
+                """
+                UPDATE sources
+                SET name = ?,
+                    search_url_template = ?,
+                    logo_color = ?,
+                    certified = ?,
+                    rollout_wave = ?,
+                    feature_flag = ?,
+                    certification_notes = ?
+                WHERE domain = ?
+                """,
+                (
+                    s["name"],
+                    s["search_url_template"],
+                    s["logo_color"],
+                    int(s.get("certified", 1)),
+                    s.get("rollout_wave"),
+                    s.get("feature_flag"),
+                    s.get("certification_notes"),
+                    s["domain"],
+                ),
+            )
             continue
         cursor.execute(
-            "INSERT INTO sources (name, domain, search_url_template, enabled, logo_color) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (s["name"], s["domain"], s["search_url_template"],
-             s["enabled"], s["logo_color"]),
+            "INSERT INTO sources (name, domain, search_url_template, enabled, logo_color, certified, rollout_wave, feature_flag, certification_notes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                s["name"],
+                s["domain"],
+                s["search_url_template"],
+                enabled_default,
+                s["logo_color"],
+                int(s.get("certified", 1)),
+                s.get("rollout_wave"),
+                s.get("feature_flag"),
+                s.get("certification_notes"),
+            ),
         )
-        logging.info(
-            f"[{datetime.now()}] Registered new catalog source: {s['name']} ({s['domain']})"
-        )
+        logging.info(f"[{datetime.now()}] Registered new catalog source: {s['name']} ({s['domain']})")
 
 
 def get_connection():
@@ -441,9 +598,20 @@ def init_db():
                 domain              TEXT    NOT NULL,
                 search_url_template TEXT    NOT NULL,
                 enabled             INTEGER DEFAULT 1,
-                logo_color          TEXT    DEFAULT '#888888'
+                logo_color          TEXT    DEFAULT '#888888',
+                certified           INTEGER DEFAULT 1,
+                rollout_wave        TEXT,
+                feature_flag        TEXT,
+                certification_notes TEXT
             )
         """)
+
+        _ensure_columns(c, "sources", [
+            ("certified", "INTEGER DEFAULT 1"),
+            ("rollout_wave", "TEXT"),
+            ("feature_flag", "TEXT"),
+            ("certification_notes", "TEXT"),
+        ])
 
         needs_migration = False
         try:
@@ -1016,13 +1184,27 @@ def get_all_sources():
     try:
         conn = get_connection()
         rows = conn.execute(
-            "SELECT * FROM sources WHERE domain <> ? ORDER BY id",
+            "SELECT * FROM sources WHERE domain <> ? ORDER BY certified DESC, id",
             (GENERIC_DIRECT_SOURCE_DOMAIN,),
         ).fetchall()
         conn.close()
         return rows
     except Exception as exc:
         logging.error(f"[{datetime.now()}] get_all_sources error: {exc}")
+        return []
+
+
+def get_available_sources():
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            "SELECT * FROM sources WHERE certified = 1 AND domain <> ? ORDER BY id",
+            (GENERIC_DIRECT_SOURCE_DOMAIN,),
+        ).fetchall()
+        conn.close()
+        return [row for row in rows if _source_runtime_allowed(row)]
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] get_available_sources error: {exc}")
         return []
 
 
@@ -1041,11 +1223,11 @@ def get_enabled_sources():
     try:
         conn = get_connection()
         rows = conn.execute(
-            "SELECT * FROM sources WHERE enabled = 1 AND domain <> ? ORDER BY id",
+            "SELECT * FROM sources WHERE enabled = 1 AND certified = 1 AND domain <> ? ORDER BY id",
             (GENERIC_DIRECT_SOURCE_DOMAIN,),
         ).fetchall()
         conn.close()
-        return rows
+        return [row for row in rows if _source_runtime_allowed(row)]
     except Exception as exc:
         logging.error(f"[{datetime.now()}] get_enabled_sources error: {exc}")
         return []
@@ -1054,6 +1236,14 @@ def get_enabled_sources():
 def update_source_enabled(source_id, enabled):
     try:
         conn = get_connection()
+        row = conn.execute(
+            "SELECT certified, feature_flag FROM sources WHERE id = ?",
+            (source_id,),
+        ).fetchone()
+        if row and int(enabled) and (
+            not int(row["certified"]) or not _source_runtime_allowed(row)
+        ):
+            enabled = 0
         conn.execute("UPDATE sources SET enabled = ? WHERE id = ?",
                      (int(enabled), source_id))
         conn.commit()

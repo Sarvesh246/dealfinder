@@ -1,4 +1,7 @@
 import importlib
+import re
+import sys
+from pathlib import Path
 
 from flask import render_template
 
@@ -13,6 +16,20 @@ def _load_test_app(tmp_path, monkeypatch):
     importlib.reload(database)
     monkeypatch.setattr(database, "DB_PATH", str(db_file))
     database.init_db()
+
+    for module_name in (
+        "app",
+        "routes",
+        "routes.core",
+        "routes.discovery",
+        "routes.tracking",
+        "routes.settings",
+        "routes.admin",
+        "route_support",
+        "route_runtime",
+        "template_utils",
+    ):
+        sys.modules.pop(module_name, None)
 
     import app as app_module
 
@@ -226,17 +243,52 @@ def test_non_bestbuy_source_redirect_stays_direct(tmp_path, monkeypatch):
     assert response.headers["Location"] == "https://www.amazon.com/dp/B0001"
 
 
+def test_settings_template_marks_pending_sources_disabled(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    microcenter = next(row for row in database.get_all_sources() if row["domain"] == "microcenter.com")
+
+    client = app_module.app.test_client()
+    response = client.get("/settings")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Office Depot" in html
+    assert "Certified" in html
+    assert "Micro Center" in html
+    assert "Pending" in html
+    assert f'value="{microcenter["id"]}"' in html
+    assert re.search(
+        rf'<input[^>]*value="{microcenter["id"]}"[^>]*disabled',
+        html,
+    )
+
+
+def test_add_and_discover_only_show_live_available_sources(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    client = app_module.app.test_client()
+    add_html = client.get("/add").get_data(as_text=True)
+    discover_html = client.get("/discover").get_data(as_text=True)
+
+    assert "Office Depot" in add_html
+    assert "Office Depot" in discover_html
+    assert "Micro Center" not in add_html
+    assert "Micro Center" not in discover_html
+
+
 def test_manual_check_route_has_ip_cooldown(tmp_path, monkeypatch):
     _, app_module = _load_test_app(tmp_path, monkeypatch)
+    from routes import tracking as tracking_routes
+
     calls = {"count": 0}
 
     def fake_enqueue(requested_by=None):
         calls["count"] += 1
         return 123, True
 
-    monkeypatch.setattr(app_module, "enqueue_manual_check_request", fake_enqueue)
+    monkeypatch.setattr(tracking_routes, "enqueue_manual_check_request", fake_enqueue)
     monkeypatch.setattr(
-        app_module,
+        tracking_routes,
         "get_runtime_diagnostics",
         lambda: {
             "worker_online": True,
@@ -306,6 +358,7 @@ def test_missing_page_renders_friendly_error_screen(tmp_path, monkeypatch):
 
 def test_discover_track_route_has_result_cooldown(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
+    import route_support
 
     search_id = database.create_discovery_search("airpods pro 3", None, 200.0)
     database.add_discovery_result(
@@ -324,7 +377,7 @@ def test_discover_track_route_has_result_cooldown(tmp_path, monkeypatch):
     result_id = database.get_discovery_results(search_id)[0]["id"]
 
     monkeypatch.setattr(
-        app_module,
+        route_support,
         "verify_candidate_listing",
         lambda spec, source, candidate: _verified_result(
             candidate["product_url"],
@@ -344,8 +397,12 @@ def test_discover_track_route_has_result_cooldown(tmp_path, monkeypatch):
 
 
 def test_inline_source_chip_css_keeps_checkbox_accessible(tmp_path, monkeypatch):
-    _, app_module = _load_test_app(tmp_path, monkeypatch)
+    _load_test_app(tmp_path, monkeypatch)
+    add_template = Path("C:/Projects/Cursor/Deal Finder/templates/add.html").read_text(encoding="utf-8")
+    discover_template = Path("C:/Projects/Cursor/Deal Finder/templates/discover.html").read_text(encoding="utf-8")
+    shared_css = Path("C:/Projects/Cursor/Deal Finder/static/css/app.css").read_text(encoding="utf-8")
 
-    assert "display: none" not in app_module._CHIP_CSS
-    assert "clip: rect(0, 0, 0, 0);" in app_module._CHIP_CSS
-    assert ":focus-within" in app_module._CHIP_CSS
+    assert ".sr-only" in add_template
+    assert ".sr-only" in discover_template
+    assert "clip: rect(0, 0, 0, 0);" in shared_css
+    assert ":focus-within" in add_template or ":focus-within" in discover_template
