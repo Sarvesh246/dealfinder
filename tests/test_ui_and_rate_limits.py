@@ -666,6 +666,38 @@ def test_discovery_job_times_out_stuck_source_and_completes_search(tmp_path, mon
     assert runs[0]["failure_reason"] == "timeout"
 
 
+def test_discovery_job_downgrades_source_runtime_error_to_unavailable(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    from routes import discovery as discovery_routes
+
+    bestbuy = next(row for row in database.get_all_sources() if row["domain"] == "bestbuy.com")
+    search_id = database.create_discovery_search("airpods pro", None, 300.0)
+
+    def broken_discover(_queries, _source, max_price=None, context=None):
+        raise RuntimeError("probe stage crashed")
+
+    monkeypatch.setattr(discovery_routes, "discover_deals_for_queries", broken_discover)
+
+    discovery_routes._run_discovery_search_job(
+        search_id=search_id,
+        query="airpods pro",
+        search_queries=("airpods pro",),
+        sources=[bestbuy],
+        max_price=300.0,
+        filter_condition="new_only",
+        filter_product_type="primary_only",
+        filter_brand="exact",
+    )
+
+    search = dict(database.get_discovery_search(search_id))
+    runs = [dict(row) for row in database.get_discovery_source_runs(search_id)]
+
+    assert search["status"] == "completed"
+    assert search["sources_finished"] == 1
+    assert runs[0]["outcome"] == "unavailable"
+    assert runs[0]["failure_reason"] == "temporary_source_failure"
+
+
 def test_discovery_job_keeps_timeout_handling_responsive_while_rendering(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
     from routes import discovery as discovery_routes

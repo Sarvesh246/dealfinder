@@ -4702,14 +4702,21 @@ def _search_results_probe_ladder(
     )
 
     for stage in adapter.probe_stages:
-        soup, fetch_method, failure_reason = _fetch_search_probe_stage(
-            search_url,
-            domain,
-            stage,
-            mode=mode,
-            search_query=search_query,
-            context=context,
-        )
+        try:
+            soup, fetch_method, failure_reason = _fetch_search_probe_stage(
+                search_url,
+                domain,
+                stage,
+                mode=mode,
+                search_query=search_query,
+                context=context,
+            )
+        except Exception as exc:
+            logging.exception(
+                f"[{datetime.now()}] Search probe stage {stage!r} failed on {domain} "
+                f"for query {search_query!r}: {exc}"
+            )
+            soup, fetch_method, failure_reason = None, "fetch_failed", "stage_error"
         last_failure_reason = failure_reason
         if not soup:
             if context:
@@ -4728,14 +4735,32 @@ def _search_results_probe_ladder(
                 break
             continue
 
-        rows = adapter.search_extractor(soup, max_results=max_results)
-        deduped_rows, usable_count = _preview_probe_rows(
-            rows,
-            mode=mode,
-            query=search_query,
-            max_price=max_price,
-            domain=domain,
-        )
+        try:
+            rows = adapter.search_extractor(soup, max_results=max_results)
+            deduped_rows, usable_count = _preview_probe_rows(
+                rows,
+                mode=mode,
+                query=search_query,
+                max_price=max_price,
+                domain=domain,
+            )
+        except Exception as exc:
+            logging.exception(
+                f"[{datetime.now()}] Search extractor failed on {domain} during "
+                f"{stage!r} for query {search_query!r}: {exc}"
+            )
+            last_failure_reason = "extractor_error"
+            if context:
+                context.record_probe_outcome(
+                    domain,
+                    search_url,
+                    stage,
+                    fetch_method=fetch_method,
+                    row_count=0,
+                    usable_count=0,
+                    failure_reason="extractor_error",
+                )
+            continue
         if context:
             context.record_probe_outcome(
                 domain,

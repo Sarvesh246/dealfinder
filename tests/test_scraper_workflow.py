@@ -98,3 +98,43 @@ def test_search_probe_stage_uses_provider_when_protected_domain_is_in_cooldown(m
     assert soup is not None
     assert fetch_method == "provider_html"
     assert failure_reason is None
+
+
+def test_search_results_probe_ladder_downgrades_extractor_failure(monkeypatch):
+    import scraper._legacy_impl as legacy
+
+    soup = BeautifulSoup("<html><body><li class='sku-item'>row</li></body></html>", "html.parser")
+    source = {
+        "domain": "bestbuy.com",
+        "search_url_template": "https://www.bestbuy.com/site/searchpage.jsp?st={query}",
+    }
+    context = legacy.SearchExecutionContext()
+
+    monkeypatch.setattr(
+        legacy,
+        "_fetch_search_probe_stage",
+        lambda *args, **kwargs: (soup, "requests", None),
+    )
+
+    def broken_preview(*args, **kwargs):
+        raise RuntimeError("preview failed")
+
+    monkeypatch.setattr(legacy, "_preview_probe_rows", broken_preview)
+
+    ladder_soup, fetch_method, rows = legacy._search_results_probe_ladder(
+        "https://www.bestbuy.com/site/searchpage.jsp?st=airpods+pro",
+        source,
+        mode="discover_deals",
+        search_query="airpods pro",
+        max_results=10,
+        context=context,
+    )
+
+    assert ladder_soup is None
+    assert fetch_method == "fetch_failed"
+    assert rows == []
+    assert context.get_probe_outcome(
+        "bestbuy.com",
+        "https://www.bestbuy.com/site/searchpage.jsp?st=airpods+pro",
+        "probe_html",
+    )["failure_reason"] == "extractor_error"

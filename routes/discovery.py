@@ -68,7 +68,19 @@ def _coverage_outcome(stats: dict | None, rows: list[dict], domain_failure: str 
         return "blocked", failure_reason
     if failure_reason == "timeout":
         return "timeout", failure_reason
-    if failure_reason in {"provider_unavailable", "provider_invalid", "provider_error", "http_error", "request_error", "selenium_error", "fetch_failed"}:
+    if failure_reason in {
+        "provider_unavailable",
+        "provider_invalid",
+        "provider_error",
+        "http_error",
+        "request_error",
+        "selenium_error",
+        "fetch_failed",
+        "stage_error",
+        "extractor_error",
+        "source_runtime_error",
+        "temporary_source_failure",
+    }:
         return "unavailable", failure_reason
     if failure_reason in {"unexpected_error"}:
         return "error", failure_reason
@@ -477,16 +489,20 @@ def _run_discovery_search_job(
                     try:
                         payload = future.result()
                     except Exception as exc:
-                        logging.error(
+                        elapsed_ms = int((time.perf_counter() - meta["started"]) * 1000)
+                        logging.exception(
                             f"[{datetime.now()}] Discovery error on {source['name']} for query {query!r}: {exc}"
                         )
                         payload = {
                             "source": source,
                             "deals": [],
-                            "stats": {},
-                            "duration_ms": 0,
-                            "outcome": "error",
-                            "failure_reason": "worker_error",
+                            "stats": {
+                                "fetch_method": "direct",
+                                "failure_reason": "temporary_source_failure",
+                            },
+                            "duration_ms": elapsed_ms,
+                            "outcome": "unavailable",
+                            "failure_reason": "temporary_source_failure",
                         }
                     persist_source_run(payload)
                     finished += 1

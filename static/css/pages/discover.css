@@ -461,9 +461,11 @@
 
   .btn-search {
     flex: 1;
+    min-height: 46px;
     height: 46px;
     font-size: 14px;
     padding: 0 24px;
+    line-height: 1.1;
     white-space: nowrap;
   }
 
@@ -723,7 +725,12 @@
     .discover-heading { font-size: 24px; }
     .search-card { padding: 20px 16px 18px; }
     .price-wrap { flex: 0 0 110px; }
-    .btn-search { padding: 0 16px; font-size: 13px; }
+    .btn-search {
+      min-height: 50px;
+      height: 50px;
+      padding: 0 18px;
+      font-size: 14px;
+    }
     .cat-grid { grid-template-columns: repeat(2, 1fr); }
     .discover-source-chips { grid-template-columns: repeat(2, 1fr); }
     .discover-filters,
@@ -743,5 +750,11 @@
   @media (max-width: 420px) {
     .search-row { flex-direction: column; }
     .price-wrap { flex: unset; }
+    .btn-search {
+      flex: none;
+      width: 100%;
+      min-height: 52px;
+      height: 52px;
+    }
     .cat-grid { grid-template-columns: 1fr; }
   }
