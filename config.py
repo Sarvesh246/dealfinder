@@ -118,11 +118,7 @@ CHECK_INTERVAL_HOURS = _env_int("CHECK_INTERVAL_HOURS", 6)
 ENABLE_STARTUP_BACKFILL = _env_flag("ENABLE_STARTUP_BACKFILL", True)
 AUTO_START_LOCAL_WORKER = _env_flag(
     "AUTO_START_LOCAL_WORKER",
-    not bool(
-        os.getenv("RAILWAY_ENVIRONMENT")
-        or os.getenv("RAILWAY_PROJECT_ID")
-        or os.getenv("RAILWAY_SERVICE_ID")
-    ),
+    True,
 )
 
 QUERY_ENHANCE_MODEL = os.getenv(

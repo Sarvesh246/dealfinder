@@ -11,7 +11,14 @@ import subprocess
 import sys
 from flask import Flask
 
-from config import APP_DIR, AUTO_START_LOCAL_WORKER, FLASK_DEBUG, PORT, SECRET_KEY, STATIC_DIR
+from config import (
+    APP_DIR,
+    AUTO_START_LOCAL_WORKER,
+    FLASK_DEBUG,
+    PORT,
+    SECRET_KEY,
+    STATIC_DIR,
+)
 from database import get_runtime_diagnostics
 from routes import main_bp
 from runtime_bootstrap import configure_logging, ensure_database_ready, start_runtime_warmups
@@ -53,8 +60,6 @@ app = create_app()
 def _should_autostart_local_worker(*, env: dict[str, str] | None = None, flask_debug: bool = FLASK_DEBUG) -> bool:
     env = env or os.environ
     if not AUTO_START_LOCAL_WORKER:
-        return False
-    if env.get("RAILWAY_ENVIRONMENT") or env.get("RAILWAY_PROJECT_ID") or env.get("RAILWAY_SERVICE_ID"):
         return False
     if flask_debug and env.get("WERKZEUG_RUN_MAIN") != "true":
         return False

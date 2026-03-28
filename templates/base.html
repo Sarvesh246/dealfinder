@@ -2,14 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>{% block title %}PricePulse{% endblock %}</title>
   {% set meta_description %}{% block meta_description %}Track verified product prices across stores, monitor exact product pages, and get alerted through Gmail or Discord when a real deal appears.{% endblock %}{% endset %}
   {% set og_type %}{% block og_type %}website{% endblock %}{% endset %}
   {% set page_title = self.title() | striptags | trim %}
   <meta name="description" content="{{ meta_description | striptags | trim }}" />
   <meta name="theme-color" content="#07080F" />
+  <meta name="application-name" content="PricePulse" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="PricePulse" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="format-detection" content="telephone=no" />
   <link rel="canonical" href="{{ request.base_url }}" />
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}" />
   <meta property="og:title" content="{{ page_title }}" />
   <meta property="og:description" content="{{ meta_description | striptags | trim }}" />
   <meta property="og:type" content="{{ og_type | trim }}" />
@@ -18,6 +26,19 @@
   <meta name="twitter:title" content="{{ page_title }}" />
   <meta name="twitter:description" content="{{ meta_description | striptags | trim }}" />
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+  <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
+  <link rel="icon" type="image/png" sizes="512x512" href="{{ url_for('static', filename='icons/icon-512.png') }}" />
+
+  <script>
+    (function () {
+      try {
+        var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+        var isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent || '');
+        if (standalone) document.documentElement.classList.add('is-standalone');
+        if (isIos) document.documentElement.classList.add('is-ios');
+      } catch (error) {}
+    })();
+  </script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -137,6 +158,7 @@
     </main>
   </div>
 
+  {% block mobile_check_now %}
   <a href="{{ manual_check_url }}" class="mobile-check-now">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <polyline points="23 4 23 10 17 10"></polyline>
@@ -144,6 +166,7 @@
     </svg>
     Check Now
   </a>
+  {% endblock %}
   <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
   {% block scripts %}{% endblock %}
 </body>

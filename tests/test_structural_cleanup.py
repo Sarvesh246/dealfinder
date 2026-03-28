@@ -100,7 +100,7 @@ def test_status_for_price_handles_threshold_and_any_drop_modes():
     assert status_for_price(199.0, None, "any_drop") == "watching"
 
 
-def test_local_worker_autostart_only_applies_to_local_runtime(tmp_path, monkeypatch):
+def test_local_worker_autostart_runs_by_default_for_local_and_railway(tmp_path, monkeypatch):
     app_module = _load_test_app(tmp_path, monkeypatch)
 
     assert app_module._should_autostart_local_worker(
@@ -118,7 +118,24 @@ def test_local_worker_autostart_only_applies_to_local_runtime(tmp_path, monkeypa
     assert app_module._should_autostart_local_worker(
         env={"RAILWAY_ENVIRONMENT": "production"},
         flask_debug=False,
-    ) is False
+    ) is True
+
+
+def test_local_worker_autostart_can_be_disabled_explicitly(tmp_path, monkeypatch):
+    import config as config_module
+
+    with monkeypatch.context() as m:
+        m.setenv("AUTO_START_LOCAL_WORKER", "0")
+        importlib.reload(config_module)
+
+        app_module = _load_test_app(tmp_path, m)
+
+        assert app_module._should_autostart_local_worker(
+            env={"RAILWAY_ENVIRONMENT": "production"},
+            flask_debug=False,
+        ) is False
+
+    importlib.reload(config_module)
 
 
 def test_protected_fetch_auto_enables_brightdata_and_scopes_to_bestbuy(monkeypatch):

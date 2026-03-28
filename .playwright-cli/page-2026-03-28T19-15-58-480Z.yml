@@ -1,0 +1,1326 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - button "Open navigation menu" [ref=e12] [cursor=pointer]:
+        - img [ref=e13]
+  - complementary [ref=e14]:
+    - generic [ref=e15]: Navigate
+    - link [ref=e16] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e17]: Dashboard
+      - generic [ref=e18]: Overview
+    - link [ref=e19] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e20]: Find a Deal
+      - generic [ref=e21]: Discover
+    - link [ref=e22] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e23]: Track Product
+      - generic [ref=e24]: Add watch
+    - link [ref=e25] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e26]: Settings
+      - generic [ref=e27]: Sources
+    - link [ref=e28] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e30]:
+    - generic [ref=e31]:
+      - link "Back to Discovery" [ref=e32] [cursor=pointer]:
+        - /url: /discover
+        - img [ref=e33]
+        - text: Back to Discovery
+      - generic [ref=e35]:
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - 'heading "Best Deals: standing desk AI Ranked" [level=1] [ref=e39]':
+                - text: "Best Deals: standing desk"
+                - generic [ref=e40]:
+                  - img [ref=e41]
+                  - text: AI Ranked
+              - paragraph [ref=e45]: 32 results found · 25 minutes ago
+              - paragraph [ref=e46]:
+                - generic [ref=e47]: New only
+                - generic [ref=e48]: Main products
+                - generic [ref=e49]: Exact brand line
+            - generic [ref=e50]:
+              - generic [ref=e51]:
+                - generic [ref=e52]:
+                  - generic [ref=e53]: Search Progress
+                  - generic [ref=e54]: 4 / 4 stores checked
+                  - generic [ref=e55]: Search complete.
+                - generic [ref=e56]: Ready
+              - generic [ref=e59]:
+                - generic [ref=e60]:
+                  - generic [ref=e62]: Amazon
+                  - generic [ref=e63]: done
+                - generic [ref=e64]:
+                  - generic [ref=e66]: Best Buy
+                  - generic [ref=e67]: blocked
+                - generic [ref=e68]:
+                  - generic [ref=e70]: Target
+                  - generic [ref=e71]: done
+                - generic [ref=e72]:
+                  - generic [ref=e74]: Walmart
+                  - generic [ref=e75]: blocked
+            - generic [ref=e76]:
+              - strong [ref=e77]: "Partial coverage: 2 of 4 stores were temporarily unavailable."
+              - generic [ref=e78]: Store coverage is limited right now. Results may be incomplete until the affected stores recover.
+              - group [ref=e79]:
+                - generic "View details" [ref=e80] [cursor=pointer]
+          - link "Search Again" [ref=e81] [cursor=pointer]:
+            - /url: /discover
+            - img [ref=e82]
+            - text: Search Again
+        - generic [ref=e85]:
+          - generic [ref=e86]:
+            - generic [ref=e87]:
+              - generic [ref=e88]: Sort by
+              - generic [ref=e89]:
+                - combobox:
+                  - option "Best Deal" [selected]
+                  - option "Biggest Discount"
+                  - option "Lowest Price"
+                  - option "Most Relevant"
+                - button "Sort by Best Deal" [ref=e91] [cursor=pointer]:
+                  - generic [ref=e92]: Best Deal
+                  - img [ref=e94]
+            - generic [ref=e96]:
+              - generic [ref=e97]: Source
+              - generic [ref=e98]:
+                - combobox:
+                  - option "All selected sources" [selected]
+                  - option "Amazon"
+                  - option "Best Buy"
+                  - option "Target"
+                  - option "Walmart"
+                - button "Source All selected sources" [ref=e100] [cursor=pointer]:
+                  - generic [ref=e101]: All selected sources
+                  - img [ref=e103]
+          - generic [ref=e105]:
+            - generic [ref=e106]:
+              - generic [ref=e107]:
+                - img [ref=e108]:
+                  - generic [ref=e111]: "34"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "34"
+                  - generic:
+                    - generic: Discount
+                    - generic: 18pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e112]: "-31.8% OFF"
+              - generic [ref=e113]: Casaottima 63 Inch Electric L-Shaped Standing Desk, Reversible Corner Desk with Height Adjustment, Large Ergonomic Workstation for Home Office, Reception Room, White
+              - generic [ref=e114]:
+                - generic [ref=e116]: Amazon
+                - generic [ref=e117]: Category Primary
+              - generic [ref=e118]:
+                - generic [ref=e119]: $149.98
+                - generic [ref=e120]: $219.99
+              - generic [ref=e121]: You save $70.01
+              - generic [ref=e122]:
+                - generic [ref=e123]: Match
+                - generic [ref=e126]: 63%
+              - generic [ref=e127]:
+                - link "View on Amazon ↗" [ref=e129] [cursor=pointer]:
+                  - /url: /open/discovery-result/1247
+                - button "Track This" [ref=e131] [cursor=pointer]:
+                  - img [ref=e132]
+                  - text: Track This
+            - generic [ref=e133]:
+              - generic [ref=e134]:
+                - img [ref=e135]:
+                  - generic [ref=e138]: "34"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "34"
+                  - generic:
+                    - generic: Discount
+                    - generic: 17pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 23pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e139]: "-30.9% OFF"
+              - generic [ref=e140]: "Hitow Dark Wood-Grain L-Shaped Standing Desk: Electric Height Adjustment + Storage Cabinet – Ergonomic Workstation for Home"
+              - generic [ref=e141]:
+                - generic [ref=e143]: Target
+                - generic [ref=e144]: Category Primary
+              - generic [ref=e145]:
+                - generic [ref=e146]: $379.90
+                - generic [ref=e147]: $550.00
+              - generic [ref=e148]: You save $170.10
+              - generic [ref=e149]:
+                - generic [ref=e150]: Match
+                - generic [ref=e153]: 67%
+              - generic [ref=e154]:
+                - link "View on Target ↗" [ref=e156] [cursor=pointer]:
+                  - /url: /open/discovery-result/1248
+                - button "Track This" [ref=e158] [cursor=pointer]:
+                  - img [ref=e159]
+                  - text: Track This
+            - generic [ref=e160]:
+              - generic [ref=e161]:
+                - img [ref=e162]:
+                  - generic [ref=e165]: "31"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "31"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e166]: "-26.0% OFF"
+              - generic [ref=e167]: DUMOS Small Standing Desk Mobile Portable Rolling Laptop PC Table on Wheels Adjustable Height Computer Workstation for Home Office, 19 Inch, Modern White
+              - generic [ref=e168]:
+                - generic [ref=e170]: Amazon
+                - generic [ref=e171]: Category Primary
+              - generic [ref=e172]:
+                - generic [ref=e173]: $45.88
+                - generic [ref=e174]: $61.99
+              - generic [ref=e175]: You save $16.11
+              - generic [ref=e176]:
+                - generic [ref=e177]: Match
+                - generic [ref=e180]: 55%
+              - generic [ref=e181]:
+                - link "View on Amazon ↗" [ref=e183] [cursor=pointer]:
+                  - /url: /open/discovery-result/1250
+                - button "Track This" [ref=e185] [cursor=pointer]:
+                  - img [ref=e186]
+                  - text: Track This
+            - generic [ref=e187]:
+              - generic [ref=e188]:
+                - img [ref=e189]:
+                  - generic [ref=e192]: "43"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "43"
+                  - generic:
+                    - generic: Discount
+                    - generic: 34pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 7pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e193]: "-59.5% OFF"
+              - generic [ref=e194]: Costway Stand Up Desk Height Adjustable Sit Stand Computer Workstation Standing Desk
+              - generic [ref=e195]:
+                - generic [ref=e197]: Target
+                - generic [ref=e198]: Related
+              - generic [ref=e199]:
+                - generic [ref=e200]: $69.99
+                - generic [ref=e201]: $172.99
+              - generic [ref=e202]: You save $103.00
+              - generic [ref=e203]:
+                - generic [ref=e204]: Match
+                - generic [ref=e207]: 62%
+              - generic [ref=e208]:
+                - link "View on Target ↗" [ref=e210] [cursor=pointer]:
+                  - /url: /open/discovery-result/1232
+                - button "Track This" [ref=e212] [cursor=pointer]:
+                  - img [ref=e213]
+                  - text: Track This
+            - generic [ref=e214]:
+              - generic [ref=e215]:
+                - img [ref=e216]:
+                  - generic [ref=e219]: "40"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "40"
+                  - generic:
+                    - generic: Discount
+                    - generic: 31pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 24pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e220]: "-55.0% OFF"
+              - generic [ref=e221]: Electric Height Adjustable Standing Desk Sit to Stand Computer Desk with Storage Bag Memory Presets Ergonomic Home Office Workstation 48 Inch Black
+              - generic [ref=e222]:
+                - generic [ref=e224]: Target
+                - generic [ref=e225]: Related
+              - generic [ref=e226]:
+                - generic [ref=e227]: $134.99
+                - generic [ref=e228]: $299.99
+              - generic [ref=e229]: You save $165.00
+              - generic [ref=e230]:
+                - generic [ref=e231]: Match
+                - generic [ref=e234]: 69%
+              - generic [ref=e235]:
+                - link "View on Target ↗" [ref=e237] [cursor=pointer]:
+                  - /url: /open/discovery-result/1233
+                - button "Track This" [ref=e239] [cursor=pointer]:
+                  - img [ref=e240]
+                  - text: Track This
+            - generic [ref=e241]:
+              - generic [ref=e242]:
+                - img [ref=e243]:
+                  - generic [ref=e246]: "40"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "40"
+                  - generic:
+                    - generic: Discount
+                    - generic: 28pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e247]: "-50.0% OFF"
+              - generic [ref=e248]: Adjustable Height Standing Desk on Wheels, Foldable Mobile Rolling Laptop Stand Portable Computer Workstations for Small Spaces Home Offices
+              - generic [ref=e249]:
+                - generic [ref=e251]: Target
+                - generic [ref=e252]: Related
+              - generic [ref=e253]:
+                - generic [ref=e254]: $51.59
+                - generic [ref=e255]: $103.18
+              - generic [ref=e256]: You save $51.59
+              - generic [ref=e257]:
+                - generic [ref=e258]: Match
+                - generic [ref=e261]: 64%
+              - generic [ref=e262]:
+                - link "View on Target ↗" [ref=e264] [cursor=pointer]:
+                  - /url: /open/discovery-result/1234
+                - button "Track This" [ref=e266] [cursor=pointer]:
+                  - img [ref=e267]
+                  - text: Track This
+            - generic [ref=e268]:
+              - generic [ref=e269]:
+                - img [ref=e270]:
+                  - generic [ref=e273]: "40"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "40"
+                  - generic:
+                    - generic: Discount
+                    - generic: 27pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 23pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e274]: "-48.2% OFF"
+              - generic [ref=e275]: Joy Standing Desk 48" Stand-up Workstation with Cubbies White Finish Stand Steady
+              - generic [ref=e276]:
+                - generic [ref=e278]: Target
+                - generic [ref=e279]: Related
+              - generic [ref=e280]:
+                - generic [ref=e281]: $69.99
+                - generic [ref=e282]: $134.99
+              - generic [ref=e283]: You save $65.00
+              - generic [ref=e284]:
+                - generic [ref=e285]: Match
+                - generic [ref=e288]: 65%
+              - generic [ref=e289]:
+                - link "View on Target ↗" [ref=e291] [cursor=pointer]:
+                  - /url: /open/discovery-result/1235
+                - button "Track This" [ref=e293] [cursor=pointer]:
+                  - img [ref=e294]
+                  - text: Track This
+            - generic [ref=e295]:
+              - generic [ref=e296]:
+                - img [ref=e297]:
+                  - generic [ref=e300]: "39"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "39"
+                  - generic:
+                    - generic: Discount
+                    - generic: 40pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e301]: "-82.2% OFF"
+              - generic [ref=e302]: Costway Electric Adjustable Standing Desk Stand up Workstation w/Control White\Black\ Maple\Teak
+              - generic [ref=e303]:
+                - generic [ref=e305]: Target
+                - generic [ref=e306]: Related
+              - generic [ref=e307]:
+                - generic [ref=e308]: $104.99
+                - generic [ref=e309]: $589.99
+              - generic [ref=e310]: You save $485.00
+              - generic [ref=e311]:
+                - generic [ref=e312]: Match
+                - generic [ref=e315]: 58%
+              - generic [ref=e316]:
+                - link "View on Target ↗" [ref=e318] [cursor=pointer]:
+                  - /url: /open/discovery-result/1238
+                - button "Track This" [ref=e320] [cursor=pointer]:
+                  - img [ref=e321]
+                  - text: Track This
+            - generic [ref=e322]:
+              - generic [ref=e323]:
+                - img [ref=e324]:
+                  - generic [ref=e327]: "39"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "39"
+                  - generic:
+                    - generic: Discount
+                    - generic: 32pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e328]: "-56.0% OFF"
+              - generic [ref=e329]: Stand Steady Tranzendesk | 55 Inch Standing Desk | Crank Height Adjustable Sit to Stand Workstation | Ergonomic Desk Supports 3 Monitors (Maple)
+              - generic [ref=e330]:
+                - generic [ref=e332]: Target
+                - generic [ref=e333]: Related
+              - generic [ref=e334]:
+                - generic [ref=e335]: $99.00
+                - generic [ref=e336]: $224.99
+              - generic [ref=e337]: You save $125.99
+              - generic [ref=e338]:
+                - generic [ref=e339]: Match
+                - generic [ref=e342]: 58%
+              - generic [ref=e343]:
+                - link "View on Target ↗" [ref=e345] [cursor=pointer]:
+                  - /url: /open/discovery-result/1237
+                - button "Track This" [ref=e347] [cursor=pointer]:
+                  - img [ref=e348]
+                  - text: Track This
+            - generic [ref=e349]:
+              - generic [ref=e350]:
+                - img [ref=e351]:
+                  - generic [ref=e354]: "39"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "39"
+                  - generic:
+                    - generic: Discount
+                    - generic: 31pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e355]: "-55.3% OFF"
+              - generic [ref=e356]: Costway 63 x 24 Inch Sit Stand Desk Height Adjustable Electric Standing Desk Natural/Brown/White
+              - generic [ref=e357]:
+                - generic [ref=e359]: Target
+                - generic [ref=e360]: Related
+              - generic [ref=e361]:
+                - generic [ref=e362]: $158.99
+                - generic [ref=e363]: $355.99
+              - generic [ref=e364]: You save $197.00
+              - generic [ref=e365]:
+                - generic [ref=e366]: Match
+                - generic [ref=e369]: 57%
+              - generic [ref=e370]:
+                - link "View on Target ↗" [ref=e372] [cursor=pointer]:
+                  - /url: /open/discovery-result/1239
+                - button "Track This" [ref=e374] [cursor=pointer]:
+                  - img [ref=e375]
+                  - text: Track This
+            - generic [ref=e376]:
+              - generic [ref=e377]:
+                - img [ref=e378]:
+                  - generic [ref=e381]: "39"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "39"
+                  - generic:
+                    - generic: Discount
+                    - generic: 28pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e382]: "-50.0% OFF"
+              - generic [ref=e383]: Costway Mobile Standing Desk Height Adjustable Sit to Stand Laptop Desk White/Black
+              - generic [ref=e384]:
+                - generic [ref=e386]: Target
+                - generic [ref=e387]: Related
+              - generic [ref=e388]:
+                - generic [ref=e389]: $44.99
+                - generic [ref=e390]: $89.99
+              - generic [ref=e391]: You save $45.00
+              - generic [ref=e392]:
+                - generic [ref=e393]: Match
+                - generic [ref=e396]: 58%
+              - generic [ref=e397]:
+                - link "View on Target ↗" [ref=e399] [cursor=pointer]:
+                  - /url: /open/discovery-result/1236
+                - button "Track This" [ref=e401] [cursor=pointer]:
+                  - img [ref=e402]
+                  - text: Track This
+            - generic [ref=e403]:
+              - generic [ref=e404]:
+                - img [ref=e405]:
+                  - generic [ref=e408]: "39"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "39"
+                  - generic:
+                    - generic: Discount
+                    - generic: 35pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e409]: "-61.6% OFF"
+              - generic [ref=e410]: Costway 48"x 24" Electric Standing Desk with 2 Drawers Monitor Stand Storage Shelf Brown/Black/White
+              - generic [ref=e411]:
+                - generic [ref=e413]: Target
+                - generic [ref=e414]: Related
+              - generic [ref=e415]:
+                - generic [ref=e416]: $189.99
+                - generic [ref=e417]: $494.99
+              - generic [ref=e418]: You save $305.00
+              - generic [ref=e419]:
+                - generic [ref=e420]: Match
+                - generic [ref=e423]: 55%
+              - generic [ref=e424]:
+                - link "View on Target ↗" [ref=e426] [cursor=pointer]:
+                  - /url: /open/discovery-result/1240
+                - button "Track This" [ref=e428] [cursor=pointer]:
+                  - img [ref=e429]
+                  - text: Track This
+            - generic [ref=e430]:
+              - generic [ref=e431]:
+                - img [ref=e432]:
+                  - generic [ref=e435]: "39"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "39"
+                  - generic:
+                    - generic: Discount
+                    - generic: 25pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e436]: "-44.4% OFF"
+              - generic [ref=e437]: Standing Desk Adjustable Height, Mobile Stand Up Desks with Wheels Small Computer Desk Rolling Desk, Portable Laptop Desk Black Standing Table Sit Stand Home Office Desks 16"x31.5" Height 27"-43.5"
+              - generic [ref=e438]:
+                - generic [ref=e440]: Amazon
+                - generic [ref=e441]: Related
+              - generic [ref=e442]:
+                - generic [ref=e443]: $49.99
+                - generic [ref=e444]: $89.99
+              - generic [ref=e445]: You save $40.00
+              - generic [ref=e446]:
+                - generic [ref=e447]: Match
+                - generic [ref=e450]: 57%
+              - generic [ref=e451]:
+                - link "View on Amazon ↗" [ref=e453] [cursor=pointer]:
+                  - /url: /open/discovery-result/1241
+                - button "Track This" [ref=e455] [cursor=pointer]:
+                  - img [ref=e456]
+                  - text: Track This
+            - generic [ref=e457]:
+              - generic [ref=e458]:
+                - img [ref=e459]:
+                  - generic [ref=e462]: "39"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "39"
+                  - generic:
+                    - generic: Discount
+                    - generic: 25pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e463]: "-44.4% OFF"
+              - generic [ref=e464]: Small Standing Desk Adjustable Height, Mobile Stand Up Desk with Wheels, 32 Inch Portable Rolling Desks Conference Room Tablesf for Walking Pad Treadmill Black
+              - generic [ref=e465]:
+                - generic [ref=e467]: Amazon
+                - generic [ref=e468]: Related
+              - generic [ref=e469]:
+                - generic [ref=e470]: $49.99
+                - generic [ref=e471]: $89.99
+              - generic [ref=e472]: You save $40.00
+              - generic [ref=e473]:
+                - generic [ref=e474]: Match
+                - generic [ref=e477]: 54%
+              - generic [ref=e478]:
+                - link "View on Amazon ↗" [ref=e480] [cursor=pointer]:
+                  - /url: /open/discovery-result/1242
+                - button "Track This" [ref=e482] [cursor=pointer]:
+                  - img [ref=e483]
+                  - text: Track This
+            - generic [ref=e484]:
+              - generic [ref=e485]:
+                - img [ref=e486]:
+                  - generic [ref=e489]: "38"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "38"
+                  - generic:
+                    - generic: Discount
+                    - generic: 40pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 7pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e490]: "-77.9% OFF"
+              - generic [ref=e491]: Costway Electric Standing Desk Height Adjustable Sit to Stand Computer Workstation Home Office
+              - generic [ref=e492]:
+                - generic [ref=e494]: Target
+                - generic [ref=e495]: Related
+              - generic [ref=e496]:
+                - generic [ref=e497]: $74.99
+                - generic [ref=e498]: $339.99
+              - generic [ref=e499]: You save $265.00
+              - generic [ref=e500]:
+                - generic [ref=e501]: Match
+                - generic [ref=e504]: 64%
+              - generic [ref=e505]:
+                - link "View on Target ↗" [ref=e507] [cursor=pointer]:
+                  - /url: /open/discovery-result/1243
+                - button "Track This" [ref=e509] [cursor=pointer]:
+                  - img [ref=e510]
+                  - text: Track This
+            - generic [ref=e511]:
+              - generic [ref=e512]:
+                - img [ref=e513]:
+                  - generic [ref=e516]: "38"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "38"
+                  - generic:
+                    - generic: Discount
+                    - generic: 21pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e517]: "-37.5% OFF"
+              - generic [ref=e518]: HUANUO 32'' Small Standing Desk with Wheels,28.7"-46.1" Heigh Adjustable Portable Rolling Desks,Mobile Stand Up Desk for Walking Pad and Treadmill,Sit to Stand Computer Workstation for Bedroom,Walnut
+              - generic [ref=e519]:
+                - generic [ref=e521]: Amazon
+                - generic [ref=e522]: Related
+              - generic [ref=e523]:
+                - generic [ref=e524]: $49.99
+                - generic [ref=e525]: $79.99
+              - generic [ref=e526]: You save $30.00
+              - generic [ref=e527]:
+                - generic [ref=e528]: Match
+                - generic [ref=e531]: 64%
+              - generic [ref=e532]:
+                - link "View on Amazon ↗" [ref=e534] [cursor=pointer]:
+                  - /url: /open/discovery-result/1244
+                - button "Track This" [ref=e536] [cursor=pointer]:
+                  - img [ref=e537]
+                  - text: Track This
+            - generic [ref=e538]:
+              - generic [ref=e539]:
+                - img [ref=e540]:
+                  - generic [ref=e543]: "37"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "37"
+                  - generic:
+                    - generic: Discount
+                    - generic: 20pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e544]: "-35.3% OFF"
+              - generic [ref=e545]: FLEXISPOT EN1 One-Piece Standing Desk, 48"x24" Seamless Desktop Electric Height Adjustable for Home Office, Study Rooms & Multi-Device Workstations, Black
+              - generic [ref=e546]:
+                - generic [ref=e548]: Amazon
+                - generic [ref=e549]: Related
+              - generic [ref=e550]:
+                - generic [ref=e551]: $109.97
+                - generic [ref=e552]: $169.99
+              - generic [ref=e553]: You save $60.02
+              - generic [ref=e554]:
+                - generic [ref=e555]: Match
+                - generic [ref=e558]: 62%
+              - generic [ref=e559]:
+                - link "View on Amazon ↗" [ref=e561] [cursor=pointer]:
+                  - /url: /open/discovery-result/1245
+                - button "Track This" [ref=e563] [cursor=pointer]:
+                  - img [ref=e564]
+                  - text: Track This
+            - generic [ref=e565]:
+              - generic [ref=e566]:
+                - img [ref=e567]:
+                  - generic [ref=e570]: "34"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "34"
+                  - generic:
+                    - generic: Discount
+                    - generic: 17pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 16pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e571]: "-31.3% OFF"
+              - generic [ref=e572]: HUANUO Electric Standing Desk, Whole Piece Desktop, Adjustable Height Computer Desks, 4 Height Memory Settings, Sit Stand Up Desk for Home Office, 48" x 24", Black
+              - generic [ref=e573]:
+                - generic [ref=e575]: Amazon
+                - generic [ref=e576]: Related
+              - generic [ref=e577]:
+                - generic [ref=e578]: $109.99
+                - generic [ref=e579]: $159.99
+              - generic [ref=e580]: You save $50.00
+              - generic [ref=e581]:
+                - generic [ref=e582]: Match
+                - generic [ref=e585]: 46%
+              - generic [ref=e586]:
+                - link "View on Amazon ↗" [ref=e588] [cursor=pointer]:
+                  - /url: /open/discovery-result/1246
+                - button "Track This" [ref=e590] [cursor=pointer]:
+                  - img [ref=e591]
+                  - text: Track This
+            - generic [ref=e592]:
+              - generic [ref=e593]:
+                - img [ref=e594]:
+                  - generic [ref=e597]: "33"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "33"
+                  - generic:
+                    - generic: Discount
+                    - generic: 18pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 18pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e598]: "-32.9% OFF"
+              - generic [ref=e599]: Marsail Mobile Stand Up Desk with Wheels, Adjustable Height Desk from 28.3″ to 46.5″, Rolling Standing Desk with Lockable Wheels, Portable Small Desk for Walking Pad and Treadmill, White
+              - generic [ref=e600]:
+                - generic [ref=e602]: Amazon
+                - generic [ref=e603]: Related
+              - generic [ref=e604]:
+                - generic [ref=e605]: $46.99
+                - generic [ref=e606]: $69.99
+              - generic [ref=e607]: You save $23.00
+              - generic [ref=e608]:
+                - generic [ref=e609]: Match
+                - generic [ref=e612]: 53%
+              - generic [ref=e613]:
+                - link "View on Amazon ↗" [ref=e615] [cursor=pointer]:
+                  - /url: /open/discovery-result/1249
+                - button "Track This" [ref=e617] [cursor=pointer]:
+                  - img [ref=e618]
+                  - text: Track This
+            - generic [ref=e619]:
+              - generic [ref=e620]:
+                - img [ref=e621]:
+                  - generic [ref=e624]: "30"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "30"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e625]: "-25.0% OFF"
+              - generic [ref=e626]: ErGear Height Adjustable Electric Standing Desk, 48 x 24 Inches Sit Stand up Desk, Memory Computer Home Office Desk, Black
+              - generic [ref=e627]:
+                - generic [ref=e629]: Amazon
+                - generic [ref=e630]: Related
+              - generic [ref=e631]:
+                - generic [ref=e632]: $104.99
+                - generic [ref=e633]: $139.99
+              - generic [ref=e634]: You save $35.00
+              - generic [ref=e635]:
+                - generic [ref=e636]: Match
+                - generic [ref=e639]: 54%
+              - generic [ref=e640]:
+                - link "View on Amazon ↗" [ref=e642] [cursor=pointer]:
+                  - /url: /open/discovery-result/1251
+                - button "Track This" [ref=e644] [cursor=pointer]:
+                  - img [ref=e645]
+                  - text: Track This
+            - generic [ref=e646]:
+              - generic [ref=e647]:
+                - img [ref=e648]:
+                  - generic [ref=e651]: "30"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "30"
+                  - generic:
+                    - generic: Discount
+                    - generic: 13pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e652]: "-23.3% OFF"
+              - generic [ref=e653]: Furmax 55 x 24 Inches Electric Height Adjustable Standing Desk Large Sit Stand Up Desk Home Office Computer Desk Memory Preset with T-Shaped Metal Bracket, Black
+              - generic [ref=e654]:
+                - generic [ref=e656]: Amazon
+                - generic [ref=e657]: Related
+              - generic [ref=e658]:
+                - generic [ref=e659]: $99.74
+                - generic [ref=e660]: $129.99
+              - generic [ref=e661]: You save $30.25
+              - generic [ref=e662]:
+                - generic [ref=e663]: Match
+                - generic [ref=e666]: 60%
+              - generic [ref=e667]:
+                - link "View on Amazon ↗" [ref=e669] [cursor=pointer]:
+                  - /url: /open/discovery-result/1252
+                - button "Track This" [ref=e671] [cursor=pointer]:
+                  - img [ref=e672]
+                  - text: Track This
+            - generic [ref=e673]:
+              - generic [ref=e674]:
+                - img [ref=e675]:
+                  - generic [ref=e678]: "29"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "29"
+                  - generic:
+                    - generic: Discount
+                    - generic: 12pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e679]: "-22.2% OFF"
+              - generic [ref=e680]: Furmax Electric Standing Desk, 45 x 24 Inches Sit Stand up Desk, Sit Stand Height Adjustable Home Office Desk with 4 Height Position Memory - with Splice Board (Rustic Brown, 45)
+              - generic [ref=e681]:
+                - generic [ref=e683]: Amazon
+                - generic [ref=e684]: Related
+              - generic [ref=e685]:
+                - generic [ref=e686]: $69.98
+                - generic [ref=e687]: $89.99
+              - generic [ref=e688]: You save $20.01
+              - generic [ref=e689]:
+                - generic [ref=e690]: Match
+                - generic [ref=e693]: 57%
+              - generic [ref=e694]:
+                - link "View on Amazon ↗" [ref=e696] [cursor=pointer]:
+                  - /url: /open/discovery-result/1253
+                - button "Track This" [ref=e698] [cursor=pointer]:
+                  - img [ref=e699]
+                  - text: Track This
+            - generic [ref=e700]:
+              - generic [ref=e701]:
+                - img [ref=e702]:
+                  - generic [ref=e705]: "29"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "29"
+                  - generic:
+                    - generic: Discount
+                    - generic: 12pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e706]: "-21.5% OFF"
+              - generic [ref=e707]: Sweetcrispy Electric Standing Desk Adjustable Height, 48x24 Inch Sit Stand Up Home Office Desks Computer Workstation PC Work Table with 3 Memory Preset Splice Wood Board Metal Frame, White
+              - generic [ref=e708]:
+                - generic [ref=e710]: Amazon
+                - generic [ref=e711]: Related
+              - generic [ref=e712]:
+                - generic [ref=e713]: $78.46
+                - generic [ref=e714]: $99.95
+              - generic [ref=e715]: You save $21.49
+              - generic [ref=e716]:
+                - generic [ref=e717]: Match
+                - generic [ref=e720]: 61%
+              - generic [ref=e721]:
+                - link "View on Amazon ↗" [ref=e723] [cursor=pointer]:
+                  - /url: /open/discovery-result/1254
+                - button "Track This" [ref=e725] [cursor=pointer]:
+                  - img [ref=e726]
+                  - text: Track This
+            - generic [ref=e727]:
+              - generic [ref=e728]:
+                - img [ref=e729]:
+                  - generic [ref=e732]: "28"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "28"
+                  - generic:
+                    - generic: Discount
+                    - generic: 10pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 17pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e733]: "-17.5% OFF"
+              - generic [ref=e734]: HUANUO 71 x 35 inch Electric Standing Desk, Powerful Brushless Motor Large Height Adjustable Table, 4 Memory Preset Sit Stand Up Desk, Home Office Computer Table with Thick T-Shaped Frame, Vintage
+              - generic [ref=e735]:
+                - generic [ref=e737]: Amazon
+                - generic [ref=e738]: Related
+              - generic [ref=e739]:
+                - generic [ref=e740]: $329.99
+                - generic [ref=e741]: $399.99
+              - generic [ref=e742]: You save $70.00
+              - generic [ref=e743]:
+                - generic [ref=e744]: Match
+                - generic [ref=e747]: 48%
+              - generic [ref=e748]:
+                - link "View on Amazon ↗" [ref=e750] [cursor=pointer]:
+                  - /url: /open/discovery-result/1255
+                - button "Track This" [ref=e752] [cursor=pointer]:
+                  - img [ref=e753]
+                  - text: Track This
+            - generic [ref=e754]:
+              - generic [ref=e755]:
+                - img [ref=e756]:
+                  - generic [ref=e759]: "28"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "28"
+                  - generic:
+                    - generic: Discount
+                    - generic: 11pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e760]: "-20.9% OFF"
+              - generic [ref=e761]: OffiGo 63 Inch Reversible L Shaped Electric Standing Desk, Height Adjustable Corner Stand up Desk, Ergonomic Large Lift Computer Table for Home, Office, Workstation, Black
+              - generic [ref=e762]:
+                - generic [ref=e764]: Amazon
+                - generic [ref=e765]: Related
+              - generic [ref=e766]:
+                - generic [ref=e767]: $169.99
+                - generic [ref=e768]: $214.99
+              - generic [ref=e769]: You save $45.00
+              - generic [ref=e770]:
+                - generic [ref=e771]: Match
+                - generic [ref=e774]: 55%
+              - generic [ref=e775]:
+                - link "View on Amazon ↗" [ref=e777] [cursor=pointer]:
+                  - /url: /open/discovery-result/1256
+                - button "Track This" [ref=e779] [cursor=pointer]:
+                  - img [ref=e780]
+                  - text: Track This
+            - generic [ref=e781]:
+              - generic [ref=e782]:
+                - img [ref=e783]:
+                  - generic [ref=e786]: "28"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "28"
+                  - generic:
+                    - generic: Discount
+                    - generic: 11pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e787]: "-20.0% OFF"
+              - generic [ref=e788]: OffiGo 63 Inch L Shaped Electric Standing Desk with Drawers, Height Adjustable Large Desk with Power Outlets, Sit Stand Table, Writing Computer Desk for Home, Office, Workstation, Rustic Brown
+              - generic [ref=e789]:
+                - generic [ref=e791]: Amazon
+                - generic [ref=e792]: Related
+              - generic [ref=e793]:
+                - generic [ref=e794]: $199.99
+                - generic [ref=e795]: $249.99
+              - generic [ref=e796]: You save $50.00
+              - generic [ref=e797]:
+                - generic [ref=e798]: Match
+                - generic [ref=e801]: 55%
+              - generic [ref=e802]:
+                - link "View on Amazon ↗" [ref=e804] [cursor=pointer]:
+                  - /url: /open/discovery-result/1257
+                - button "Track This" [ref=e806] [cursor=pointer]:
+                  - img [ref=e807]
+                  - text: Track This
+            - generic [ref=e808]:
+              - generic [ref=e809]:
+                - img [ref=e810]:
+                  - generic [ref=e813]: "27"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "27"
+                  - generic:
+                    - generic: Discount
+                    - generic: 9pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e814]: "-16.7% OFF"
+              - generic [ref=e815]: OffiGo L Shaped Electric Standing Desk with Wooden Drawers, 55 Inch Height Adjustable Corner Workstation with Power Outlets, Sit Stand Table for Home, Office, White
+              - generic [ref=e816]:
+                - generic [ref=e818]: Amazon
+                - generic [ref=e819]: Related
+              - generic [ref=e820]:
+                - generic [ref=e821]: $199.98
+                - generic [ref=e822]: $239.99
+              - generic [ref=e823]: You save $40.01
+              - generic [ref=e824]:
+                - generic [ref=e825]: Match
+                - generic [ref=e828]: 59%
+              - generic [ref=e829]:
+                - link "View on Amazon ↗" [ref=e831] [cursor=pointer]:
+                  - /url: /open/discovery-result/1258
+                - button "Track This" [ref=e833] [cursor=pointer]:
+                  - img [ref=e834]
+                  - text: Track This
+            - generic [ref=e835]:
+              - generic [ref=e836]:
+                - img [ref=e837]:
+                  - generic [ref=e840]: "26"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "26"
+                  - generic:
+                    - generic: Discount
+                    - generic: 9pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 18pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e841]: "-16.4% OFF"
+              - generic [ref=e842]: OffiGo 55 Inch L Shaped Electric Standing Desk with Drawers & File Cabinet Sets, Executive Sit Stand Desk, Height Adjustable Computer Desk for Home Office, Writing, Workstation, Walnut+Black
+              - generic [ref=e843]:
+                - generic [ref=e845]: Amazon
+                - generic [ref=e846]: Related
+              - generic [ref=e847]:
+                - generic [ref=e848]: $229.99
+                - generic [ref=e849]: $274.99
+              - generic [ref=e850]: You save $45.00
+              - generic [ref=e851]:
+                - generic [ref=e852]: Match
+                - generic [ref=e855]: 52%
+              - generic [ref=e856]:
+                - link "View on Amazon ↗" [ref=e858] [cursor=pointer]:
+                  - /url: /open/discovery-result/1259
+                - button "Track This" [ref=e860] [cursor=pointer]:
+                  - img [ref=e861]
+                  - text: Track This
+            - generic [ref=e862]:
+              - generic [ref=e863]:
+                - img [ref=e864]:
+                  - generic [ref=e867]: "26"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "26"
+                  - generic:
+                    - generic: Discount
+                    - generic: 8pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 18pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e868]: "-15.0% OFF"
+              - generic [ref=e869]: Electric Standing Desk Adjustable Height - 40 Inch Sit Stand Desk with Storage Drawers , Small Standing Desks with Shelf Monitor Stand, Kids Girls Computer Desks for Bedroom Home Office, Rustic Brown
+              - generic [ref=e870]:
+                - generic [ref=e872]: Amazon
+                - generic [ref=e873]: Related
+              - generic [ref=e874]:
+                - generic [ref=e875]: $118.99
+                - generic [ref=e876]: $139.99
+              - generic [ref=e877]: You save $21.00
+              - generic [ref=e878]:
+                - generic [ref=e879]: Match
+                - generic [ref=e882]: 53%
+              - generic [ref=e883]:
+                - link "View on Amazon ↗" [ref=e885] [cursor=pointer]:
+                  - /url: /open/discovery-result/1261
+                - button "Track This" [ref=e887] [cursor=pointer]:
+                  - img [ref=e888]
+                  - text: Track This
+            - generic [ref=e889]:
+              - generic [ref=e890]:
+                - img [ref=e891]:
+                  - generic [ref=e894]: "26"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "26"
+                  - generic:
+                    - generic: Discount
+                    - generic: 5pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e895]: "-9.1% OFF"
+              - generic [ref=e896]: FEZIBO Standing Desk, 48 × 24 Inches Electric Height Adjustable, Sit and Stand Up, Computer Office Desk with Splice Board, White Frame/Maple TOP
+              - generic [ref=e897]:
+                - generic [ref=e899]: Amazon
+                - generic [ref=e900]: Related
+              - generic [ref=e901]:
+                - generic [ref=e902]: $99.99
+                - generic [ref=e903]: $109.99
+              - generic [ref=e904]: You save $10.00
+              - generic [ref=e905]:
+                - generic [ref=e906]: Match
+                - generic [ref=e909]: 60%
+              - generic [ref=e910]:
+                - link "View on Amazon ↗" [ref=e912] [cursor=pointer]:
+                  - /url: /open/discovery-result/1260
+                - button "Track This" [ref=e914] [cursor=pointer]:
+                  - img [ref=e915]
+                  - text: Track This
+            - generic [ref=e916]:
+              - generic [ref=e917]:
+                - img [ref=e918]:
+                  - generic [ref=e921]: "25"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "25"
+                  - generic:
+                    - generic: Discount
+                    - generic: 8pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e922]: "-14.1% OFF"
+              - generic [ref=e923]: Small Portable Rolling Standing Desk - 32 Inch Adjustable Mobile Stand Up Gaming Desks with 2 Fabric Drawers on Wheels, Couch Sofa Side Laptop Table with Storage for Home Office, Black
+              - generic [ref=e924]:
+                - generic [ref=e926]: Amazon
+                - generic [ref=e927]: Related
+              - generic [ref=e928]:
+                - generic [ref=e929]: $84.99
+                - generic [ref=e930]: $98.99
+              - generic [ref=e931]: You save $14.00
+              - generic [ref=e932]:
+                - generic [ref=e933]: Match
+                - generic [ref=e936]: 56%
+              - generic [ref=e937]:
+                - link "View on Amazon ↗" [ref=e939] [cursor=pointer]:
+                  - /url: /open/discovery-result/1262
+                - button "Track This" [ref=e941] [cursor=pointer]:
+                  - img [ref=e942]
+                  - text: Track This
+            - generic [ref=e943]:
+              - generic [ref=e944]:
+                - img [ref=e945]:
+                  - generic [ref=e948]: "23"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "23"
+                  - generic:
+                    - generic: Discount
+                    - generic: 5pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 17pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e949]: "-9.2% OFF"
+              - generic [ref=e950]: Marsail Electric Standing Desk, Adjustable Height Stand up Desk, 55 x 24 Inches Sit Stand Home Office Desk, Computer Desk, Rustic Brown
+              - generic [ref=e951]:
+                - generic [ref=e953]: Amazon
+                - generic [ref=e954]: Related
+              - generic [ref=e955]:
+                - generic [ref=e956]: $95.40
+                - generic [ref=e957]: $105.07
+              - generic [ref=e958]: You save $9.67
+              - generic [ref=e959]:
+                - generic [ref=e960]: Match
+                - generic [ref=e963]: 50%
+              - generic [ref=e964]:
+                - link "View on Amazon ↗" [ref=e966] [cursor=pointer]:
+                  - /url: /open/discovery-result/1263
+                - button "Track This" [ref=e968] [cursor=pointer]:
+                  - img [ref=e969]
+                  - text: Track This
+  - link "Check Now" [ref=e970] [cursor=pointer]:
+    - /url: /check
+    - img [ref=e971]
+    - text: Check Now

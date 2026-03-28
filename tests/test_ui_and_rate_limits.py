@@ -108,6 +108,55 @@ def test_product_detail_and_history_templates_include_mobile_table_markup(tmp_pa
     assert 'data-label="vs Target"' in history_html
 
 
+def test_search_flow_pages_hide_global_mobile_check_cta(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    search_id = database.create_discovery_search("standing desk", None, 300.0)
+    database.update_discovery_search_state(
+        search_id,
+        status="completed",
+        sources_total=1,
+        sources_finished=1,
+    )
+
+    client = app_module.app.test_client()
+
+    discover_html = client.get("/discover").get_data(as_text=True)
+    add_html = client.get("/add").get_data(as_text=True)
+    results_html = client.get(f"/discover/results/{search_id}").get_data(as_text=True)
+
+    assert 'class="mobile-check-now"' not in discover_html
+    assert 'class="mobile-check-now"' not in add_html
+    assert 'class="mobile-check-now"' not in results_html
+
+
+def test_base_template_exposes_app_shell_metadata_and_assets(tmp_path, monkeypatch):
+    _, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    client = app_module.app.test_client()
+    html = client.get("/").get_data(as_text=True)
+
+    assert 'viewport-fit=cover' in html
+    assert 'name="apple-mobile-web-app-capable" content="yes"' in html
+    assert 'name="apple-mobile-web-app-title" content="PricePulse"' in html
+    assert 'rel="manifest" href="/static/manifest.webmanifest"' in html
+    assert 'rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"' in html
+
+    manifest = client.get("/static/manifest.webmanifest")
+    apple_icon = client.get("/static/icons/apple-touch-icon.png")
+    icon_192 = client.get("/static/icons/icon-192.png")
+    icon_512 = client.get("/static/icons/icon-512.png")
+
+    assert manifest.status_code == 200
+    assert manifest.is_json
+    assert apple_icon.status_code == 200
+    assert apple_icon.mimetype == "image/png"
+    assert icon_192.status_code == 200
+    assert icon_192.mimetype == "image/png"
+    assert icon_512.status_code == 200
+    assert icon_512.mimetype == "image/png"
+
+
 def test_history_template_supports_any_drop_mode(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
 
