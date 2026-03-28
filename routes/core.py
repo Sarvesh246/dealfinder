@@ -153,7 +153,14 @@ def server_error(error):
     )
 
 
-@main_bp.route("/", endpoint="index")
+@main_bp.route("/", endpoint="home")
+def home():
+    from .discovery import discover_page
+
+    return discover_page()
+
+
+@main_bp.route("/dashboard", endpoint="index")
 def index():
     raw_products = get_all_products()
     product_ids = [int(product["id"]) for product in raw_products]

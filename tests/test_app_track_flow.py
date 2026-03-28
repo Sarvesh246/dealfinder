@@ -189,7 +189,7 @@ def test_discover_track_uses_clicked_result_without_rerunning_search(tmp_path, m
     response = client.post(f"/discover/track/{result_id}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
+    assert response.headers["Location"].endswith("/dashboard")
 
     products = database.get_all_products()
     assert len(products) == 1
@@ -260,7 +260,7 @@ def test_discover_track_reuses_verified_discovery_result_if_live_verify_fails(tm
     response = client.post(f"/discover/track/{result_id}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
+    assert response.headers["Location"].endswith("/dashboard")
 
     products = database.get_all_products()
     assert len(products) == 1
@@ -325,7 +325,7 @@ def test_discover_track_allows_user_selected_related_result_as_direct_url_tracke
     response = client.post(f"/discover/track/{result_id}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
+    assert response.headers["Location"].endswith("/dashboard")
 
     product = database.get_all_products()[0]
     assert product["name"] == "Apple AirPods Pro 2 Wireless Earbuds"
@@ -401,7 +401,7 @@ def test_discover_track_uses_specific_clicked_result_when_page_fetch_temporarily
     response = client.post(f"/discover/track/{result_id}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
+    assert response.headers["Location"].endswith("/dashboard")
 
     product = database.get_all_products()[0]
     assert product["name"] == "Apple AirPods Pro 2 Wireless Earbuds"
@@ -473,7 +473,7 @@ def test_discover_track_promotes_category_result_to_specific_tracker(tmp_path, m
     response = client.post(f"/discover/track/{result_id}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
+    assert response.headers["Location"].endswith("/dashboard")
     assert seen_specs
     assert seen_specs[0].query_type != "category"
     assert seen_specs[0].family == "standing_desk"
@@ -545,7 +545,7 @@ def test_discover_track_promotes_keyboard_category_primary_to_exact_tracker(tmp_
     response = client.post(f"/discover/track/{result_id}")
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
+    assert response.headers["Location"].endswith("/dashboard")
     assert seen_specs
     assert seen_specs[0].query_type == "exact_model"
     assert seen_specs[0].family == "keyboard"
@@ -600,7 +600,7 @@ def test_track_link_success_with_target_price(tmp_path, monkeypatch):
     )
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
+    assert response.headers["Location"].endswith("/dashboard")
 
     products = database.get_all_products()
     assert len(products) == 1
@@ -649,7 +649,7 @@ def test_track_link_blank_target_uses_any_drop_and_generic_source(tmp_path, monk
     )
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/")
+    assert response.headers["Location"].endswith("/dashboard")
 
     product = database.get_all_products()[0]
     assert product["origin_type"] == "direct_link"

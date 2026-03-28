@@ -201,7 +201,7 @@ def test_dashboard_cards_link_to_product_detail(tmp_path, monkeypatch):
     product_id = database.add_product("Ninja AF101 Air Fryer", 89.0)
 
     client = app_module.app.test_client()
-    response = client.get("/")
+    response = client.get("/dashboard")
     html = response.get_data(as_text=True)
 
     assert response.status_code == 200
@@ -241,7 +241,7 @@ def test_bestbuy_links_use_redirect_routes_and_copy_fallback(tmp_path, monkeypat
 
     client = app_module.app.test_client()
 
-    dashboard = client.get("/")
+    dashboard = client.get("/dashboard")
     dashboard_html = dashboard.get_data(as_text=True)
     assert f'href="/open/source/{ps_id}"' in dashboard_html
     assert 'data-copy-url="https://www.bestbuy.com/product/playstation-5-slim-console-1tb-playstation-5/JXHQ37TYLC"' in dashboard_html
@@ -460,6 +460,11 @@ def test_app_sets_security_headers_and_healthz(tmp_path, monkeypatch):
     assert home.headers["X-Frame-Options"] == "SAMEORIGIN"
     assert home.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
     assert "geolocation=()" in home.headers["Permissions-Policy"]
+    assert "Find the <span class=\"gradient-word\">Best Deal</span> On Anything" in home.get_data(as_text=True)
+
+    dashboard = client.get("/dashboard")
+    assert dashboard.status_code == 200
+    assert "Dashboard" in dashboard.get_data(as_text=True)
 
     health = client.get("/healthz")
     payload = health.get_json()
