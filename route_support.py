@@ -26,6 +26,7 @@ from product_verifier import QueryType, parse_product_spec, verification_result_
 from scraper import (
     SearchExecutionContext,
     discover_product_matches,
+    inspect_direct_link,
     verify_candidate_listing,
 )
 from template_utils import canonical_external_url
@@ -95,6 +96,82 @@ def matches_from_clicked_discovery_result(result, spec, source):
     return {
         "verified": [fallback_row] if label in {"verified_exact", "verified_named"} else [],
         "ambiguous": [fallback_row] if label == "verified_related" else [],
+    }
+
+
+def _user_selected_listing_row(result, spec, *, url, title, price, match_label, reason):
+    return {
+        "url": url,
+        "price": price,
+        "name_found": title,
+        "verification_state": "verified",
+        "verification_reason": reason,
+        "health_state": "healthy",
+        "matched_product_name": title,
+        "fingerprint_brand": spec.brand,
+        "fingerprint_family": spec.family,
+        "fingerprint_model": spec.model_token,
+        "fingerprint_json": None,
+        "match_label": match_label or "user_selected_listing",
+    }
+
+
+def direct_url_matches_from_clicked_result(result, source):
+    result_title = (result.get("product_name") or "").strip()
+    result_url = (result.get("product_url") or "").strip()
+    result_price = result.get("current_price")
+    if not result_title or not result_url or result_price is None:
+        return None
+
+    result_spec = parse_product_spec(result_title)
+    if result_spec.query_type == QueryType.CATEGORY.value:
+        return None
+
+    label = (result.get("verification_label") or "").strip().lower() or "user_selected_listing"
+    inspection = inspect_direct_link(
+        result_url,
+        source=source,
+        context=SearchExecutionContext(),
+    )
+    if inspection.get("ok"):
+        matches = matches_from_direct_link_inspection(inspection)
+        promoted = (matches.get("verified") or matches.get("ambiguous") or [])
+        if promoted:
+            title = (inspection.get("title") or result_title).strip()
+            title_spec = parse_product_spec(title)
+            if title_spec.query_type == QueryType.CATEGORY.value:
+                return None
+            row = dict(promoted[0])
+            row.update(
+                _user_selected_listing_row(
+                    result,
+                    title_spec,
+                    url=inspection.get("url") or result_url,
+                    title=title,
+                    price=row.get("price") if row.get("price") is not None else inspection.get("price") or result_price,
+                    match_label=row.get("match_label") or label,
+                    reason="user_selected_listing",
+                )
+            )
+            return {"verified": [row], "ambiguous": [], "tracking_name": title}
+
+    if inspection.get("reason") in {"invalid_url", "not_product_url"}:
+        return None
+
+    return {
+        "verified": [
+            _user_selected_listing_row(
+                result,
+                result_spec,
+                url=result_url,
+                title=result_title,
+                price=result_price,
+                match_label=label,
+                reason="user_selected_listing_fallback",
+            )
+        ],
+        "ambiguous": [],
+        "tracking_name": result_title,
     }
 
 

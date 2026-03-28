@@ -1,5 +1,4 @@
 import importlib
-import re
 import sys
 from pathlib import Path
 
@@ -256,11 +255,8 @@ def test_settings_template_marks_pending_sources_disabled(tmp_path, monkeypatch)
     assert "Certified" in html
     assert "Micro Center" in html
     assert "Pending" in html
-    assert f'value="{microcenter["id"]}"' in html
-    assert re.search(
-        rf'<input[^>]*value="{microcenter["id"]}"[^>]*disabled',
-        html,
-    )
+    # Pending sources are not form controls (no checkbox); saves cannot toggle them.
+    assert f'name="source_ids" value="{microcenter["id"]}"' not in html
 
 
 def test_add_and_discover_only_show_live_available_sources(tmp_path, monkeypatch):
@@ -369,6 +365,72 @@ def test_discovery_results_show_partial_coverage_banner(tmp_path, monkeypatch):
     assert "Walmart" in html
 
 
+def test_discovery_results_render_progressively_and_status_endpoint_updates(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    walmart = next(row for row in database.get_all_sources() if row["domain"] == "walmart.com")
+    amazon = next(row for row in database.get_all_sources() if row["domain"] == "amazon.com")
+
+    search_id = database.create_discovery_search(
+        "standing desk",
+        None,
+        400.0,
+        status="running",
+        sources_total=2,
+        sources_finished=1,
+    )
+    database.add_discovery_source_run(
+        search_id,
+        amazon["id"],
+        outcome="ok",
+        fetch_strategy="direct",
+        failure_reason=None,
+        raw_count=3,
+        eligible_count=2,
+        returned_count=1,
+        duration_ms=640,
+    )
+    database.add_discovery_source_run(
+        search_id,
+        walmart["id"],
+        outcome="checking",
+        fetch_strategy="direct",
+        failure_reason=None,
+        duration_ms=0,
+    )
+    database.add_discovery_result(
+        search_id,
+        amazon["id"],
+        "Standing Desk Pro",
+        329.0,
+        399.0,
+        18.0,
+        "https://example.com/desk",
+        relevance_score=0.93,
+        deal_score=48,
+        discount_confirmed=1,
+        verification_label="verified_named",
+    )
+
+    client = app_module.app.test_client()
+
+    page = client.get(f"/discover/results/{search_id}")
+    html = page.get_data(as_text=True)
+    assert page.status_code == 200
+    assert "Checking stores for live deals" not in html
+    assert 'data-discovery-shell' in html
+    assert "1 / 2 stores checked" in html
+    assert "checking" in html.lower()
+
+    status = client.get(f"/discover/status/{search_id}")
+    payload = status.get_json()
+    assert status.status_code == 200
+    assert payload["status"] == "running"
+    assert payload["progress"]["finished"] == 1
+    assert "Standing Desk Pro" in payload["results_html"]
+    assert "Walmart" in payload["progress_html"]
+
+
 def test_product_page_and_settings_show_source_access_health(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
 
@@ -465,10 +527,10 @@ def test_discover_track_route_has_result_cooldown(tmp_path, monkeypatch):
 def test_inline_source_chip_css_keeps_checkbox_accessible(tmp_path, monkeypatch):
     _load_test_app(tmp_path, monkeypatch)
     add_template = Path("C:/Projects/Cursor/Deal Finder/templates/add.html").read_text(encoding="utf-8")
-    discover_template = Path("C:/Projects/Cursor/Deal Finder/templates/discover.html").read_text(encoding="utf-8")
+    discover_css = Path("C:/Projects/Cursor/Deal Finder/static/css/pages/discover.css").read_text(encoding="utf-8")
     shared_css = Path("C:/Projects/Cursor/Deal Finder/static/css/app.css").read_text(encoding="utf-8")
 
     assert ".sr-only" in add_template
-    assert ".sr-only" in discover_template
+    assert ".sr-only" in discover_css
     assert "clip: rect(0, 0, 0, 0);" in shared_css
-    assert ":focus-within" in add_template or ":focus-within" in discover_template
+    assert ":focus-within" in add_template or ":focus-within" in discover_css

@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from threading import Lock, Thread
 
+from config import ENABLE_BROWSER_WARMUP
 from database import init_db
 from hf_utils import get_smart_engine
 from scraper import start_browser_warmup
@@ -37,11 +38,12 @@ def ensure_database_ready() -> None:
         logging.error(f"[{datetime.now()}] init_db at startup failed: {exc}")
 
 
-def start_runtime_warmups() -> None:
+def start_runtime_warmups(*, process_kind: str = "web") -> None:
     global _WARMUPS_STARTED
     with _WARMUPS_LOCK:
         if _WARMUPS_STARTED:
             return
         _WARMUPS_STARTED = True
     Thread(target=get_smart_engine, daemon=True).start()
-    Thread(target=start_browser_warmup, daemon=True).start()
+    if process_kind == "worker" and ENABLE_BROWSER_WARMUP:
+        Thread(target=start_browser_warmup, daemon=True).start()

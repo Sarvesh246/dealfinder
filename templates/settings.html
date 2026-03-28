@@ -4,342 +4,7 @@
 {% block meta_description %}Manage enabled stores and confirm that your global Gmail and Discord notifications are ready before you start tracking products.{% endblock %}
 
 {% block head %}
-<style>
-  .settings-outer { display: flex; justify-content: center; }
-  .settings-stack {
-    width: 100%;
-    max-width: 760px;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  }
-  .settings-card { padding: 32px; border-radius: var(--radius); }
-  .back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: var(--text-secondary);
-    margin-bottom: 20px;
-    transition: color 180ms ease;
-  }
-  .back-link:hover { color: var(--text-primary); }
-  .settings-title {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin-bottom: 6px;
-  }
-  .settings-subtitle {
-    font-size: 14px;
-    color: var(--text-secondary);
-    max-width: 560px;
-    line-height: 1.5;
-  }
-  .section-title {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    margin-bottom: 14px;
-  }
-  .source-list { display: flex; flex-direction: column; }
-  .source-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-  }
-  .source-item:last-child { border-bottom: none; }
-  .source-item-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .source-item-info { flex: 1; min-width: 0; }
-  .source-item-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .source-item-domain {
-    font-size: 12px;
-    color: var(--text-muted);
-    margin-top: 1px;
-  }
-  .source-item-note {
-    font-size: 12px;
-    color: var(--text-secondary);
-    margin-top: 5px;
-    line-height: 1.45;
-  }
-  .source-item-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    padding: 4px 9px;
-    border-radius: 999px;
-  }
-  .source-item-badge.live {
-    color: var(--price-good);
-    background: rgba(0,229,160,0.12);
-    border: 1px solid rgba(0,229,160,0.25);
-  }
-  .source-item-badge.pending {
-    color: var(--price-warn);
-    background: rgba(255,181,71,0.12);
-    border: 1px solid rgba(255,181,71,0.25);
-  }
-  .source-item-wave {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    color: var(--text-muted);
-  }
-  .toggle-switch {
-    position: relative;
-    display: inline-block;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-  .toggle-switch input {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-  .toggle-track {
-    display: block;
-    width: 40px;
-    height: 22px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid var(--glass-border);
-    transition: all 200ms ease;
-    position: relative;
-  }
-  .toggle-thumb {
-    display: block;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--text-muted);
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    transition: all 200ms ease;
-  }
-  .toggle-switch input:checked + .toggle-track {
-    background: rgba(124,92,252,0.3);
-    border-color: rgba(124,92,252,0.5);
-  }
-  .toggle-switch input:checked + .toggle-track .toggle-thumb {
-    background: var(--accent-purple);
-    transform: translateX(18px);
-  }
-  .toggle-switch.disabled {
-    cursor: not-allowed;
-    opacity: 0.55;
-  }
-  .toggle-switch input:disabled + .toggle-track {
-    background: rgba(255,255,255,0.03);
-  }
-  .btn-save {
-    padding: 10px 20px;
-    font-size: 14px;
-    margin-top: 20px;
-  }
-  .notify-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-  .notify-box {
-    padding: 18px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.035);
-    border: 1px solid var(--glass-border);
-  }
-  .notify-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-  .notify-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  .notify-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    padding: 4px 9px;
-    border-radius: 999px;
-  }
-  .notify-badge.on {
-    color: var(--price-good);
-    background: rgba(0,229,160,0.12);
-    border: 1px solid rgba(0,229,160,0.25);
-  }
-  .notify-badge.off {
-    color: var(--price-bad);
-    background: rgba(255,79,106,0.12);
-    border: 1px solid rgba(255,79,106,0.25);
-  }
-  .notify-copy {
-    font-size: 13px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-    margin-bottom: 12px;
-  }
-  .notify-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .notify-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 9px 14px;
-    border-radius: 10px;
-    border: 1px solid var(--glass-border);
-    background: rgba(255,255,255,0.04);
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 180ms ease;
-  }
-  .notify-btn:hover {
-    color: var(--text-primary);
-    background: var(--glass-hover);
-    border-color: rgba(255,255,255,0.14);
-  }
-  .notify-foot {
-    margin-top: 14px;
-    font-size: 12px;
-    color: var(--text-muted);
-  }
-  .runtime-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-  .runtime-box {
-    padding: 18px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.035);
-    border: 1px solid var(--glass-border);
-  }
-  .runtime-name {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 8px;
-  }
-  .runtime-copy {
-    font-size: 13px;
-    color: var(--text-secondary);
-    line-height: 1.5;
-  }
-  .runtime-list {
-    display: grid;
-    gap: 8px;
-  }
-  .runtime-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 13px;
-  }
-  .runtime-row strong {
-    color: var(--text-primary);
-    font-weight: 600;
-  }
-  .runtime-stack {
-    display: grid;
-    gap: 10px;
-  }
-  .runtime-stack-item {
-    padding-top: 10px;
-    border-top: 1px solid rgba(255,255,255,0.06);
-  }
-  .runtime-stack-item:first-child {
-    padding-top: 0;
-    border-top: none;
-  }
-  .runtime-stack-title {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 4px;
-  }
-  .runtime-stack-copy {
-    font-size: 12px;
-    color: var(--text-secondary);
-    line-height: 1.45;
-  }
-  .runtime-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    padding: 4px 9px;
-    border-radius: 999px;
-  }
-  .runtime-pill.good {
-    color: var(--price-good);
-    background: rgba(0,229,160,0.12);
-    border: 1px solid rgba(0,229,160,0.25);
-  }
-  .runtime-pill.warn {
-    color: var(--price-warn);
-    background: rgba(255,181,71,0.12);
-    border: 1px solid rgba(255,181,71,0.25);
-  }
-  .runtime-pill.bad {
-    color: var(--price-bad);
-    background: rgba(255,79,106,0.12);
-    border: 1px solid rgba(255,79,106,0.25);
-  }
-  @media (max-width: 639px) {
-    .settings-card { padding: 24px 16px; }
-    .notify-grid { grid-template-columns: 1fr; }
-    .runtime-grid { grid-template-columns: 1fr; }
-    .source-item { flex-wrap: wrap; }
-    .btn-save { width: 100%; justify-content: center; }
-  }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pages/settings.css') }}" />
 {% endblock %}
 
 {% block content %}
@@ -463,36 +128,145 @@
 
     <div class="card settings-card fade-in" style="animation-delay:180ms">
       <div class="section-title">Default Sources</div>
-      <form method="POST" action="{{ url_for('settings_sources_save') }}">
-        <div class="source-list">
-          {% for s in sources | default([], true) %}
-          <div class="source-item">
-            <span class="source-item-dot" style="background:{{ s.logo_color | default('#7C5CFC') }}"></span>
-            <div class="source-item-info">
-              <div class="source-item-name">
-                <span>{{ s.name }}</span>
-                <span class="source-item-badge {{ 'live' if s.certified else 'pending' }}">
-                  {{ 'Certified' if s.certified else 'Pending' }}
-                </span>
-                {% if s.rollout_wave %}
-                  <span class="source-item-wave">{{ s.rollout_wave | replace('_', ' ') }}</span>
-                {% endif %}
-              </div>
-              <div class="source-item-domain">{{ s.domain }}</div>
-              {% if s.certification_notes %}
-                <div class="source-item-note">{{ s.certification_notes }}</div>
-              {% endif %}
-            </div>
-            <label class="toggle-switch {{ '' if s.certified else 'disabled' }}">
-              <input type="checkbox" name="source_ids" value="{{ s.id }}" {% if s.enabled %}checked{% endif %} {% if not s.certified %}disabled{% endif %} />
-              <span class="toggle-track"><span class="toggle-thumb"></span></span>
-            </label>
+      <p class="sources-intro">Enable stores for new searches. Use the filter and bulk actions to manage many sources without a long list.</p>
+      <form method="POST" action="{{ url_for('settings_sources_save') }}" id="sources-form">
+        <div class="sources-toolbar">
+          <label class="sources-filter-wrap">
+            <span class="sr-only">Filter stores</span>
+            <svg class="sources-filter-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <circle cx="11" cy="11" r="8"></circle>
+              <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <input type="search" class="sources-filter-input" id="sources-filter" placeholder="Filter by name or domain…" autocomplete="off" />
+          </label>
+          <div class="sources-bulk" role="group" aria-label="Bulk toggle certified stores">
+            <button type="button" class="sources-bulk-btn" id="sources-enable-certified">Enable all certified</button>
+            <button type="button" class="sources-bulk-btn" id="sources-disable-certified">Disable all certified</button>
           </div>
-          {% endfor %}
         </div>
+
+        <div class="source-panel">
+          <div class="source-panel-head">
+            <span class="source-panel-title">Certified</span>
+            <span class="source-panel-meta">{{ sources | selectattr('certified') | list | length }} stores</span>
+          </div>
+          <div class="source-chip-grid" id="source-chip-grid-certified" data-source-group="certified">
+            {% for s in sources | default([], true) %}
+            {% if s.certified %}
+            <label
+              class="source-chip"
+              for="src-{{ s.id }}"
+              data-search="{{ (s.name ~ ' ' ~ s.domain) | lower | e }}"
+              title="{% if s.certification_notes %}{{ s.certification_notes | e }}{% else %}{{ s.domain }}{% endif %}"
+            >
+              <span class="source-chip-dot" style="background:{{ s.logo_color | default('#7C5CFC') }}"></span>
+              <span class="source-chip-text">
+                <span class="source-chip-name">{{ s.name }}</span>
+                <span class="source-chip-domain">{{ s.domain }}</span>
+              </span>
+              <span class="source-chip-toggle">
+                <span class="toggle-switch">
+                  <input type="checkbox" id="src-{{ s.id }}" name="source_ids" value="{{ s.id }}" {% if s.enabled %}checked{% endif %} />
+                  <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                </span>
+              </span>
+            </label>
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+
+        {% set pending = (sources | default([], true)) | rejectattr('certified') | list %}
+        {% if pending %}
+        <details class="source-pending-details">
+          <summary class="source-pending-summary">
+            <span class="source-pending-summary-label">
+              <span>Pending certification</span>
+              <span class="source-pending-count">{{ pending | length }}</span>
+            </span>
+          </summary>
+          <p class="source-pending-hint">These sources stay off until they are certified. No action needed here.</p>
+          <div class="source-chip-grid source-chip-grid--static" aria-disabled="true">
+            {% for s in pending %}
+            <div
+              class="source-chip source-chip--pending"
+              data-search="{{ (s.name ~ ' ' ~ s.domain) | lower | e }}"
+              title="{% if s.certification_notes %}{{ s.certification_notes | e }}{% else %}Pending certification{% endif %}"
+            >
+              <span class="source-chip-dot" style="background:{{ s.logo_color | default('#7C5CFC') }}"></span>
+              <span class="source-chip-text">
+                <span class="source-chip-name">{{ s.name }}</span>
+                <span class="source-chip-domain">{{ s.domain }}</span>
+                {% if s.rollout_wave %}
+                <span class="source-chip-wave">{{ s.rollout_wave | replace('_', ' ') }}</span>
+                {% endif %}
+              </span>
+              <span class="source-chip-badge-pending">Pending</span>
+            </div>
+            {% endfor %}
+          </div>
+        </details>
+        {% endif %}
+
         <button type="submit" class="btn-primary btn-save">Save Source Settings</button>
       </form>
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var filterInput = document.getElementById("sources-filter");
+  var gridCert = document.getElementById("source-chip-grid-certified");
+  var details = document.querySelector(".source-pending-details");
+
+  function chipSelector(root) {
+    return root ? root.querySelectorAll(".source-chip") : [];
+  }
+
+  function applyFilter() {
+    var q = (filterInput && filterInput.value || "").trim().toLowerCase();
+    var terms = q ? q.split(/\s+/).filter(Boolean) : [];
+
+    function matches(el) {
+      if (!terms.length) return true;
+      var hay = (el.getAttribute("data-search") || "") + " ";
+      return terms.every(function (t) { return hay.indexOf(t) !== -1; });
+    }
+
+    [].forEach.call(chipSelector(gridCert), function (el) {
+      el.hidden = !matches(el);
+    });
+    if (details) {
+      [].forEach.call(chipSelector(details), function (el) {
+        el.hidden = !matches(el);
+      });
+      if (terms.length) {
+        var anyPending = [].some.call(chipSelector(details), function (el) { return !el.hidden; });
+        details.style.display = anyPending ? "" : "none";
+      } else {
+        details.style.display = "";
+      }
+    }
+  }
+
+  if (filterInput) {
+    filterInput.addEventListener("input", applyFilter);
+    filterInput.addEventListener("search", applyFilter);
+  }
+
+  function certifiedCheckboxes() {
+    return gridCert ? gridCert.querySelectorAll('input[type="checkbox"][name="source_ids"]') : [];
+  }
+
+  document.getElementById("sources-enable-certified")?.addEventListener("click", function () {
+    [].forEach.call(certifiedCheckboxes(), function (cb) { cb.checked = true; });
+  });
+  document.getElementById("sources-disable-certified")?.addEventListener("click", function () {
+    [].forEach.call(certifiedCheckboxes(), function (cb) { cb.checked = false; });
+  });
+})();
+</script>
 {% endblock %}

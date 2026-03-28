@@ -378,11 +378,29 @@ def _upgrade_discovery_searches_schema(cursor):
         ("filter_condition", "TEXT DEFAULT 'new_only'"),
         ("filter_product_type", "TEXT DEFAULT 'primary_only'"),
         ("filter_brand", "TEXT DEFAULT 'exact'"),
+        ("status", "TEXT DEFAULT 'completed'"),
+        ("started_at", "TEXT"),
+        ("completed_at", "TEXT"),
+        ("sources_total", "INTEGER DEFAULT 0"),
+        ("sources_finished", "INTEGER DEFAULT 0"),
     ):
         if col not in have:
             cursor.execute(
                 f"ALTER TABLE discovery_searches ADD COLUMN {col} {decl}"
             )
+    try:
+        cursor.execute(
+            """
+            UPDATE discovery_searches
+            SET status = COALESCE(NULLIF(status, ''), 'completed'),
+                started_at = COALESCE(started_at, searched_at),
+                completed_at = COALESCE(completed_at, searched_at),
+                sources_total = COALESCE(sources_total, 0),
+                sources_finished = COALESCE(sources_finished, 0)
+            """
+        )
+    except sqlite3.OperationalError:
+        return
 
 
 def _ensure_columns(cursor, table_name: str, additions: list[tuple[str, str]]) -> None:
@@ -791,6 +809,11 @@ def init_db():
                 filter_condition    TEXT DEFAULT 'new_only',
                 filter_product_type TEXT DEFAULT 'primary_only',
                 filter_brand        TEXT DEFAULT 'exact',
+                status              TEXT DEFAULT 'completed',
+                started_at          TEXT,
+                completed_at        TEXT,
+                sources_total       INTEGER DEFAULT 0,
+                sources_finished    INTEGER DEFAULT 0,
                 FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
             )
         """)
@@ -1491,6 +1514,48 @@ def get_product_sources(product_id):
         return []
 
 
+def get_product_sources_for_products(product_ids: list[int] | tuple[int, ...]) -> dict[int, list]:
+    ids = [int(pid) for pid in product_ids if pid]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            f"""
+            SELECT ps.*, COALESCE(ps.source_label_override, s.name) AS source_name,
+                   COALESCE(ps.source_domain_override, s.domain) AS domain, s.logo_color,
+                   s.search_url_template, p.name AS product_name, p.target_price,
+                   p.raw_query, p.canonical_query, p.brand, p.family,
+                   p.model_token, p.variant_tokens, p.match_mode, p.query_type,
+                   p.match_status, p.alert_mode, p.origin_type
+            FROM product_sources ps
+            JOIN sources s ON ps.source_id = s.id
+            JOIN products p ON ps.product_id = p.id
+            WHERE ps.product_id IN ({placeholders})
+            ORDER BY
+                ps.product_id ASC,
+                CASE
+                    WHEN ps.verification_state = 'verified'
+                     AND ps.health_state = 'healthy'
+                     AND ps.current_price IS NOT NULL
+                    THEN 0
+                    ELSE 1
+                END,
+                ps.current_price ASC
+            """,
+            ids,
+        ).fetchall()
+        conn.close()
+        grouped: dict[int, list] = {pid: [] for pid in ids}
+        for row in rows:
+            grouped.setdefault(int(row["product_id"]), []).append(row)
+        return grouped
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] get_product_sources_for_products error: {exc}")
+        return {}
+
+
 def get_all_active_product_sources():
     """Return every enabled product_source with product and source info."""
     try:
@@ -1764,6 +1829,29 @@ def add_price_history(product_source_id, price):
         conn.close()
     except Exception as exc:
         logging.error(f"[{datetime.now()}] add_price_history({product_source_id}) error: {exc}")
+
+
+def add_price_history_bulk(entries: list[tuple[int, float]]) -> None:
+    if not entries:
+        return
+    checked_at = datetime.now().isoformat()
+    values = [
+        (int(product_source_id), price, checked_at)
+        for product_source_id, price in entries
+        if product_source_id and price is not None
+    ]
+    if not values:
+        return
+    try:
+        conn = get_connection()
+        conn.executemany(
+            "INSERT INTO price_history (product_source_id, price, checked_at) VALUES (?, ?, ?)",
+            values,
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] add_price_history_bulk error: {exc}")
 
 
 def get_price_history(product_id):
@@ -2542,22 +2630,35 @@ def create_discovery_search(
     filter_condition="new_only",
     filter_product_type="primary_only",
     filter_brand="exact",
+    *,
+    status="completed",
+    started_at=None,
+    completed_at=None,
+    sources_total=0,
+    sources_finished=0,
 ):
     try:
+        searched_at = datetime.now().isoformat()
         conn = get_connection()
         cur = conn.cursor()
         cur.execute(
             "INSERT INTO discovery_searches (query, category_id, max_price, searched_at, "
-            "filter_condition, filter_product_type, filter_brand) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "filter_condition, filter_product_type, filter_brand, status, started_at, "
+            "completed_at, sources_total, sources_finished) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 query,
                 category_id or None,
                 max_price,
-                datetime.now().isoformat(),
+                searched_at,
                 filter_condition,
                 filter_product_type,
                 filter_brand,
+                status or "completed",
+                started_at,
+                completed_at,
+                int(sources_total or 0),
+                int(sources_finished or 0),
             ),
         )
         conn.commit()
@@ -2611,6 +2712,83 @@ def update_discovery_search_count(search_id, count):
         logging.error(f"[{datetime.now()}] update_discovery_search_count error: {exc}")
 
 
+def update_discovery_search_state(
+    search_id: int,
+    *,
+    status: str | None = None,
+    started_at: str | None = None,
+    completed_at: str | None = None,
+    sources_total: int | None = None,
+    sources_finished: int | None = None,
+    result_count: int | None = None,
+) -> None:
+    fields: dict[str, object] = {}
+    if status is not None:
+        fields["status"] = status
+    if started_at is not None:
+        fields["started_at"] = started_at
+    if completed_at is not None:
+        fields["completed_at"] = completed_at
+    if sources_total is not None:
+        fields["sources_total"] = int(sources_total)
+    if sources_finished is not None:
+        fields["sources_finished"] = int(sources_finished)
+    if result_count is not None:
+        fields["result_count"] = int(result_count)
+    if not fields:
+        return
+    try:
+        conn = get_connection()
+        sets = ", ".join(f"{name} = ?" for name in fields)
+        values = list(fields.values()) + [search_id]
+        conn.execute(
+            f"UPDATE discovery_searches SET {sets} WHERE id = ?",
+            values,
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] update_discovery_search_state error: {exc}")
+
+
+def seed_discovery_source_runs(search_id: int, sources: list) -> None:
+    if not sources:
+        return
+    now = datetime.now().isoformat()
+    values = []
+    for source in sources:
+        sid = source["id"] if hasattr(source, "keys") else source
+        values.append(
+            (
+                search_id,
+                sid,
+                "checking",
+                None,
+                None,
+                0,
+                0,
+                0,
+                0,
+                now,
+            )
+        )
+    try:
+        conn = get_connection()
+        conn.executemany(
+            """
+            INSERT INTO discovery_source_runs (
+                search_id, source_id, outcome, fetch_strategy, failure_reason,
+                raw_count, eligible_count, returned_count, duration_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            values,
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] seed_discovery_source_runs error: {exc}")
+
+
 def add_discovery_source_run(
     search_id: int,
     source_id: int | None,
@@ -2649,6 +2827,88 @@ def add_discovery_source_run(
         conn.close()
     except Exception as exc:
         logging.error(f"[{datetime.now()}] add_discovery_source_run error: {exc}")
+
+
+def upsert_discovery_source_run(
+    search_id: int,
+    source_id: int | None,
+    *,
+    outcome: str,
+    fetch_strategy: str | None = None,
+    failure_reason: str | None = None,
+    raw_count: int = 0,
+    eligible_count: int = 0,
+    returned_count: int = 0,
+    duration_ms: int = 0,
+) -> None:
+    now = datetime.now().isoformat()
+    try:
+        conn = get_connection()
+        existing = conn.execute(
+            """
+            SELECT id
+            FROM discovery_source_runs
+            WHERE search_id = ?
+              AND (
+                    (source_id IS NULL AND ? IS NULL)
+                    OR source_id = ?
+                  )
+            ORDER BY id ASC
+            LIMIT 1
+            """,
+            (search_id, source_id, source_id),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                """
+                UPDATE discovery_source_runs
+                SET outcome = ?,
+                    fetch_strategy = ?,
+                    failure_reason = ?,
+                    raw_count = ?,
+                    eligible_count = ?,
+                    returned_count = ?,
+                    duration_ms = ?,
+                    created_at = ?
+                WHERE id = ?
+                """,
+                (
+                    outcome,
+                    fetch_strategy,
+                    failure_reason,
+                    int(raw_count or 0),
+                    int(eligible_count or 0),
+                    int(returned_count or 0),
+                    int(duration_ms or 0),
+                    now,
+                    existing["id"],
+                ),
+            )
+        else:
+            conn.execute(
+                """
+                INSERT INTO discovery_source_runs (
+                    search_id, source_id, outcome, fetch_strategy, failure_reason,
+                    raw_count, eligible_count, returned_count, duration_ms, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    search_id,
+                    source_id,
+                    outcome,
+                    fetch_strategy,
+                    failure_reason,
+                    int(raw_count or 0),
+                    int(eligible_count or 0),
+                    int(returned_count or 0),
+                    int(duration_ms or 0),
+                    now,
+                ),
+            )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] upsert_discovery_source_run error: {exc}")
 
 
 def get_discovery_source_runs(search_id: int):
@@ -2712,6 +2972,57 @@ def get_discovery_results(search_id):
     except Exception as exc:
         logging.error(f"[{datetime.now()}] get_discovery_results({search_id}) error: {exc}")
         return []
+
+
+def replace_discovery_results(search_id: int, rows: list[dict]) -> None:
+    timestamp = datetime.now().isoformat()
+    values = []
+    for row in rows:
+        also_json = None
+        if row.get("also_available_at"):
+            import json as _json
+
+            also_json = _json.dumps(row.get("also_available_at"))
+        values.append(
+            (
+                search_id,
+                row.get("source_id"),
+                row.get("product_name"),
+                row.get("current_price"),
+                row.get("original_price"),
+                round(float(row.get("discount_percent") or 0), 1),
+                row.get("product_url"),
+                timestamp,
+                float(row.get("relevance_score") or 0),
+                float(row.get("deal_score") or 0),
+                row.get("group_id"),
+                also_json,
+                1 if row.get("discount_confirmed", True) else 0,
+                row.get("verification_label", "related"),
+            )
+        )
+    try:
+        conn = get_connection()
+        conn.execute("DELETE FROM discovery_results WHERE search_id = ?", (search_id,))
+        if values:
+            conn.executemany(
+                """
+                INSERT INTO discovery_results (
+                    search_id, source_id, product_name, current_price, original_price,
+                    discount_percent, product_url, discovered_at, relevance_score,
+                    deal_score, group_id, also_available_at, discount_confirmed, verification_label
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                values,
+            )
+        conn.execute(
+            "UPDATE discovery_searches SET result_count = ? WHERE id = ?",
+            (len(values), search_id),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] replace_discovery_results error: {exc}")
 
 
 def get_discovery_result_by_id(result_id):

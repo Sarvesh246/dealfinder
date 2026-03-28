@@ -14,10 +14,9 @@ from config import STATIC_DIR
 from database import (
     get_all_products,
     get_all_sources,
-    get_best_source_url,
     get_enabled_sources,
     get_last_checked_time,
-    get_product_sources,
+    get_product_sources_for_products,
     get_runtime_diagnostics,
 )
 from template_utils import coerce_float
@@ -157,13 +156,25 @@ def server_error(error):
 @main_bp.route("/", endpoint="index")
 def index():
     raw_products = get_all_products()
+    product_ids = [int(product["id"]) for product in raw_products]
+    sources_by_product = get_product_sources_for_products(product_ids)
 
     products = []
     for product in raw_products:
         item = dict(product)
-        sources = get_product_sources(product["id"])
-        item["url"] = get_best_source_url(product["id"])
+        sources = sources_by_product.get(int(product["id"]), [])
         item["sources"] = [dict(source) for source in sources]
+        best_source = next(
+            (
+                source
+                for source in sources
+                if source["current_price"] is not None
+                and source["verification_state"] == "verified"
+                and source["health_state"] == "healthy"
+            ),
+            None,
+        )
+        item["url"] = best_source["discovered_url"] if best_source else ""
         item["sources_found"] = sum(1 for source in sources if source["current_price"] is not None)
 
         last_checked = None

@@ -96,6 +96,39 @@ def _verified_named_result(url, title, price, *, family="pressure_cooker", brand
     )
 
 
+def _ambiguous_related_result(url, title, price, *, family="airpods", brand="apple", model_token=None):
+    normalized_model_tokens = (model_token.lower(),) if model_token else ()
+    model_tokens = (model_token,) if model_token else ()
+    fingerprint = ListingFingerprint(
+        url=url,
+        domain="example.com",
+        title=title,
+        brand=brand,
+        family=family,
+        model_tokens=model_tokens,
+        normalized_model_tokens=normalized_model_tokens,
+        variant_tokens=(),
+        current_price=price,
+        accessory_signal=False,
+        compatibility_signal=False,
+        bundle_signal=False,
+        hard_block_signal=False,
+        raw_text=title,
+    )
+    return VerificationResult(
+        status="ambiguous",
+        reason="related_product",
+        health_state="healthy",
+        product_name=title,
+        current_price=price,
+        brand=brand,
+        family=family,
+        model_token=model_token,
+        match_label="verified_related",
+        fingerprint=fingerprint,
+    )
+
+
 def _inspection(url, title, price, verification, *, domain="example.com"):
     return {
         "ok": verification.status in {"verified", "ambiguous"},
@@ -241,6 +274,144 @@ def test_discover_track_reuses_verified_discovery_result_if_live_verify_fails(tm
     assert source["verification_state"] == "verified"
     assert source["verification_reason"] == "reused_discovery_verification"
     assert source["discovered_url"] == "https://example.com/airpods-pro-3"
+
+
+def test_discover_track_allows_user_selected_related_result_as_direct_url_tracker(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    import route_support
+
+    search_id = database.create_discovery_search("airpods pro 3", None, 200.0)
+    database.add_discovery_result(
+        search_id,
+        1,
+        "Apple AirPods Pro 2 Wireless Earbuds",
+        179.0,
+        249.0,
+        28.1,
+        "https://example.com/airpods-pro-2",
+        relevance_score=94,
+        deal_score=45,
+        discount_confirmed=1,
+        verification_label="verified_related",
+    )
+    result_id = database.get_discovery_results(search_id)[0]["id"]
+
+    monkeypatch.setattr(
+        route_support,
+        "verify_candidate_listing",
+        lambda spec, source, candidate: _ambiguous_related_result(
+            candidate["product_url"],
+            candidate["product_name"],
+            179.0,
+            model_token="AIRPODSPRO2",
+        ),
+    )
+    monkeypatch.setattr(
+        route_support,
+        "inspect_direct_link",
+        lambda url, source=None, context=None: _inspection(
+            "https://example.com/airpods-pro-2",
+            "Apple AirPods Pro 2 Wireless Earbuds",
+            179.0,
+            _verified_result(
+                "https://example.com/airpods-pro-2",
+                "Apple AirPods Pro 2 Wireless Earbuds",
+                179.0,
+            ),
+        ),
+    )
+
+    client = app_module.app.test_client()
+    response = client.post(f"/discover/track/{result_id}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+    product = database.get_all_products()[0]
+    assert product["name"] == "Apple AirPods Pro 2 Wireless Earbuds"
+    assert product["current_price"] == 179.0
+
+    source_row = database.get_product_sources(product["id"])[0]
+    assert source_row["tracking_mode"] == "direct_url"
+    assert source_row["verification_state"] == "verified"
+    assert source_row["verification_reason"] == "user_selected_listing"
+    assert source_row["discovered_url"] == "https://example.com/airpods-pro-2"
+
+
+def test_discover_track_uses_specific_clicked_result_when_page_fetch_temporarily_fails(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    import route_support
+
+    search_id = database.create_discovery_search("airpods pro 3", None, 200.0)
+    database.add_discovery_result(
+        search_id,
+        1,
+        "Apple AirPods Pro 2 Wireless Earbuds",
+        179.0,
+        249.0,
+        28.1,
+        "https://example.com/airpods-pro-2",
+        relevance_score=94,
+        deal_score=45,
+        discount_confirmed=1,
+        verification_label="related",
+    )
+    result_id = database.get_discovery_results(search_id)[0]["id"]
+
+    rejected = VerificationResult(
+        status="rejected",
+        reason="query_mismatch",
+        health_state="healthy",
+        product_name="Apple AirPods Pro 2 Wireless Earbuds",
+        current_price=None,
+        brand="apple",
+        family="airpods",
+        model_token="AIRPODSPRO2",
+        match_label="related",
+        fingerprint=ListingFingerprint(
+            url="https://example.com/airpods-pro-2",
+            domain="example.com",
+            title="Apple AirPods Pro 2 Wireless Earbuds",
+            brand="apple",
+            family="airpods",
+            model_tokens=("AIRPODSPRO2",),
+            normalized_model_tokens=("airpodspro2",),
+            variant_tokens=(),
+            current_price=None,
+            accessory_signal=False,
+            compatibility_signal=False,
+            bundle_signal=False,
+            hard_block_signal=False,
+            raw_text="Apple AirPods Pro 2 Wireless Earbuds",
+        ),
+    )
+    monkeypatch.setattr(route_support, "verify_candidate_listing", lambda *args, **kwargs: rejected)
+    monkeypatch.setattr(
+        route_support,
+        "inspect_direct_link",
+        lambda url, source=None, context=None: {
+            "ok": False,
+            "reason": "fetch_failed",
+            "url": url,
+            "domain": "example.com",
+        },
+    )
+
+    client = app_module.app.test_client()
+    response = client.post(f"/discover/track/{result_id}")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/")
+
+    product = database.get_all_products()[0]
+    assert product["name"] == "Apple AirPods Pro 2 Wireless Earbuds"
+    assert product["current_price"] == 179.0
+
+    source_row = database.get_product_sources(product["id"])[0]
+    assert source_row["tracking_mode"] == "direct_url"
+    assert source_row["verification_state"] == "verified"
+    assert source_row["verification_reason"] == "user_selected_listing_fallback"
+    assert source_row["discovered_url"] == "https://example.com/airpods-pro-2"
 
 
 def test_add_route_redirects_broad_category_queries_to_discovery(tmp_path, monkeypatch):

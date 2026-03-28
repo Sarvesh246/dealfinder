@@ -48,6 +48,7 @@ def test_app_factory_registers_current_routes_and_endpoints(tmp_path, monkeypatc
         "discover_page",
         "discover_search",
         "discover_results",
+        "discover_status",
         "discover_track",
         "add_page",
         "add_product_route",
@@ -97,3 +98,24 @@ def test_status_for_price_handles_threshold_and_any_drop_modes():
     assert status_for_price(219.0, 200.0, "target_threshold") == "watching"
     assert status_for_price(199.0, None, "target_threshold") == "watching"
     assert status_for_price(199.0, None, "any_drop") == "watching"
+
+
+def test_local_worker_autostart_only_applies_to_local_runtime(tmp_path, monkeypatch):
+    app_module = _load_test_app(tmp_path, monkeypatch)
+
+    assert app_module._should_autostart_local_worker(
+        env={},
+        flask_debug=False,
+    ) is True
+    assert app_module._should_autostart_local_worker(
+        env={"WERKZEUG_RUN_MAIN": "true"},
+        flask_debug=True,
+    ) is True
+    assert app_module._should_autostart_local_worker(
+        env={},
+        flask_debug=True,
+    ) is False
+    assert app_module._should_autostart_local_worker(
+        env={"RAILWAY_ENVIRONMENT": "production"},
+        flask_debug=False,
+    ) is False

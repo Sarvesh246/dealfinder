@@ -22,7 +22,7 @@ def main() -> None:
     worker_id = _worker_id()
     configure_logging()
     ensure_database_ready()
-    start_runtime_warmups()
+    start_runtime_warmups(process_kind="worker")
     worker_heartbeat(worker_id)
     scheduler = create_worker_scheduler(worker_id)
     scheduler.start()

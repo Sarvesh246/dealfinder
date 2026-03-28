@@ -1,0 +1,108 @@
+<div class="disco-progress-headline">
+  <h1 class="disco-title">
+    Best Deals: {{ search.category_name or search.query }}
+    {% if ai_enhanced %}
+    <span class="ai-badge">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+        <path d="M2 17l10 5 10-5"></path>
+        <path d="M2 12l10 5 10-5"></path>
+      </svg>
+      AI Ranked
+    </span>
+    {% endif %}
+  </h1>
+  <p class="disco-subtitle">
+    {% if search.max_price %}Under ${{ "%.2f" | format(search.max_price) }} · {% endif %}
+    {% if progress.active %}
+      {{ progress.finished }} of {{ progress.total }} stores checked
+      {% if results %} · {{ results | length }} current result{{ '' if results|length == 1 else 's' }}{% endif %}
+      · Started {{ search.started_at | default(search.searched_at, true) | relative_time }}
+    {% elif progress.failed %}
+      Search stopped before all stores completed · {{ results | length }} result{{ '' if results|length == 1 else 's' }} available
+    {% else %}
+      {{ results | length }} result{{ '' if results|length == 1 else 's' }} found
+      · {{ search.completed_at | default(search.searched_at, true) | relative_time }}
+    {% endif %}
+  </p>
+  {% set fc = search.filter_condition|default('new_only') %}
+  {% set fp = search.filter_product_type|default('primary_only') %}
+  {% set fb = search.filter_brand|default('exact') %}
+  <p class="disco-filter-summary">
+    <span class="df-pill">{% if fc == 'new_only' %}New only{% elif fc == 'include_refurb' %}Inc. renewed / refurbished{% else %}All conditions{% endif %}</span>
+    <span class="df-pill">{% if fp == 'primary_only' %}Main products{% else %}+ Accessories{% endif %}</span>
+    <span class="df-pill">{% if fb == 'exact' %}Exact brand line{% else %}+ Similar brands{% endif %}</span>
+  </p>
+</div>
+
+{% if progress.total %}
+<div class="card disco-progress-shell{% if progress.active %} is-active{% endif %}{% if progress.completed %} is-complete{% endif %}{% if progress.failed %} is-failed{% endif %}">
+  <div class="disco-progress-top">
+    <div class="disco-progress-copy">
+      <div class="disco-progress-kicker">Search Progress</div>
+      <div class="disco-progress-value">
+        {{ progress.finished }} / {{ progress.total }} stores checked
+      </div>
+      <div class="disco-progress-note">
+        {% if progress.active %}
+          Results update as each store finishes.
+        {% elif progress.failed %}
+          Search failed before every store returned.
+        {% else %}
+          Search complete.
+        {% endif %}
+      </div>
+    </div>
+    <div class="disco-progress-state state-{{ progress.status }}">
+      {% if progress.active %}Checking{% elif progress.failed %}Needs retry{% else %}Ready{% endif %}
+    </div>
+  </div>
+  <div class="disco-progress-track" aria-hidden="true">
+    <span class="disco-progress-fill" style="width: {{ progress.percent }}%"></span>
+  </div>
+  <div class="disco-source-pills">
+    {% for run in source_runs %}
+    {% set outcome = run.outcome|default('checking') %}
+    <div class="source-pill source-pill-{{ outcome }}">
+      <span class="source-pill-dot"></span>
+      <span class="source-pill-name">{{ run.source_name }}</span>
+      <span class="source-pill-status">
+        {% if outcome == 'ok' %}
+          done
+        {% elif outcome == 'no_results' %}
+          no deal
+        {% elif outcome == 'blocked' %}
+          blocked
+        {% elif outcome == 'timeout' %}
+          timeout
+        {% elif outcome == 'unavailable' %}
+          unavailable
+        {% elif outcome == 'error' %}
+          error
+        {% else %}
+          checking
+        {% endif %}
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if coverage_summary and coverage_summary.has_partial_coverage %}
+<div class="coverage-banner fade-in">
+  <strong>{{ coverage_summary.message }}</strong>
+  <div>Store coverage is limited right now. Results may be incomplete until the affected stores recover.</div>
+  <details>
+    <summary>View details</summary>
+    <div class="coverage-details">
+      {% for detail in coverage_summary.details %}
+      <div class="coverage-detail-row">
+        <span class="coverage-detail-outcome">{{ detail.outcome | replace('_', ' ') }}</span>
+        <span>{{ detail.stores | join(', ') }}{% if detail.reason %} — {{ detail.reason | replace('_', ' ') }}{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+</div>
+{% endif %}
