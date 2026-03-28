@@ -194,17 +194,25 @@ def add_product_route():
     total = len(selected_sources)
     verified = outcomes["verified"]
     pending = outcomes["pending_confirmation"]
+    unavailable = (
+        outcomes.get("blocked", 0)
+        + outcomes.get("timeout", 0)
+        + outcomes.get("unavailable", 0)
+        + outcomes.get("error", 0)
+    )
     if search_all:
         flash(
             f'Now tracking "{name}" — verified on {verified} of {total} sources'
             + (f", {pending} need confirmation" if pending else "")
+            + (f", {unavailable} temporarily unavailable" if unavailable else "")
             + " (all registered stores).",
             "success",
         )
     else:
         flash(
             f'Now tracking "{name}" — verified on {verified} of {total} sources'
-            + (f", {pending} need confirmation" if pending else ""),
+            + (f", {pending} need confirmation" if pending else "")
+            + (f", {unavailable} temporarily unavailable" if unavailable else ""),
             "success",
         )
     if pending:
@@ -449,7 +457,7 @@ def product_sources_save(product_id):
             add_product_source(product_id, sid, enabled=1, status="not_found")
 
     if newly_added:
-        outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0}
+        outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0, "blocked": 0, "timeout": 0, "unavailable": 0, "error": 0}
         context = SearchExecutionContext()
 
         def task(source_id):
@@ -482,9 +490,12 @@ def product_sources_save(product_id):
             if outcome in outcomes:
                 outcomes[outcome] += 1
         compute_best_price(product_id)
+        unavailable = outcomes["blocked"] + outcomes["timeout"] + outcomes["unavailable"] + outcomes["error"]
         flash(
             f"Sources updated — {outcomes['verified']} verified, "
-            f"{outcomes['pending_confirmation']} pending confirmation.",
+            f"{outcomes['pending_confirmation']} pending confirmation"
+            + (f", {unavailable} temporarily unavailable" if unavailable else "")
+            + ".",
             "success",
         )
         if outcomes["pending_confirmation"]:
@@ -504,7 +515,7 @@ def rediscover_route(product_id):
         return redirect(url_for("index"))
 
     ps_list = get_product_sources(product_id)
-    outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0}
+    outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0, "blocked": 0, "timeout": 0, "unavailable": 0, "error": 0}
     context = SearchExecutionContext()
 
     def rediscover_task(ps_row):
@@ -553,9 +564,12 @@ def rediscover_route(product_id):
             outcomes[outcome] += 1
 
     compute_best_price(product_id)
+    unavailable = outcomes["blocked"] + outcomes["timeout"] + outcomes["unavailable"] + outcomes["error"]
     flash(
         f"Re-discovery complete — {outcomes['verified']} verified, "
-        f"{outcomes['pending_confirmation']} pending confirmation.",
+        f"{outcomes['pending_confirmation']} pending confirmation"
+        + (f", {unavailable} temporarily unavailable" if unavailable else "")
+        + ".",
         "success",
     )
     if outcomes["pending_confirmation"]:

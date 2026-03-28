@@ -53,6 +53,15 @@ from config import (
     STRICT_VERIFY_WORKERS,
 )
 from observability import log_event
+from .protected_fetch import (
+    fetch_via_provider,
+    is_protected_domain,
+    note_fetch_failure,
+    note_fetch_success,
+    provider_enabled_for,
+    should_bypass_direct,
+    should_try_provider_after_failure,
+)
 
 from product_verifier import (
     ProductSpec,
@@ -185,6 +194,29 @@ class SearchExecutionContext:
         session.mount("https://", adapter)
         self._thread_local.session = session
         return session
+
+
+_PROTECTED_SESSION_POOL: dict[str, requests.Session] = {}
+_PROTECTED_SESSION_LOCK = threading.Lock()
+
+
+def _get_fetch_session(url: str, context: SearchExecutionContext | None = None) -> requests.Session:
+    domain = urlparse(url).netloc.lower().replace("www.", "")
+    if is_protected_domain(domain):
+        with _PROTECTED_SESSION_LOCK:
+            session = _PROTECTED_SESSION_POOL.get(domain)
+            if session is None:
+                session = requests.Session()
+                adapter = HTTPAdapter(
+                    pool_connections=max(8, REQUEST_POOL_SIZE),
+                    pool_maxsize=max(8, REQUEST_POOL_SIZE),
+                    max_retries=0,
+                )
+                session.mount("http://", adapter)
+                session.mount("https://", adapter)
+                _PROTECTED_SESSION_POOL[domain] = session
+            return session
+    return context.get_session() if context else requests.Session()
 
 
 @dataclass
@@ -340,7 +372,7 @@ class BrowserPool:
         warm_domains = tuple(
             domain.strip().lower().replace("www.", "")
             for domain in (domains or BROWSER_WARMUP_DOMAINS)
-            if domain and domain.strip()
+            if domain and domain.strip() and not provider_enabled_for(domain)
         )
 
         def loop() -> None:
@@ -1223,8 +1255,10 @@ def _fetch_soup(
     timeout_seconds: int | float = 25,
 ) -> BeautifulSoup | None:
     global _LAST_REQUESTS_FAILURE
+    source_domain = urlparse(url).netloc.lower().replace("www.", "")
+    log_event("source.fetch.start", domain=source_domain, strategy="direct", url=url)
     try:
-        session = context.get_session() if context else requests.Session()
+        session = _get_fetch_session(url, context=context)
         resp = session.get(url, headers=_random_headers(url), timeout=timeout_seconds)
         if resp.status_code != 200:
             snippet = resp.text[:500] if resp.text else "(empty body)"
@@ -1232,6 +1266,9 @@ def _fetch_soup(
                 f"[{datetime.now()}] HTTP {resp.status_code} for {url}\n"
                 f"  Response preview: {snippet}"
             )
+            if failure_sink is not None:
+                failure_sink["reason"] = "http_error"
+            note_fetch_failure(source_domain, "http_error", "requests")
             return None
         body_lower = resp.text.lower()
         if "captcha" in body_lower or "robot check" in body_lower:
@@ -1253,6 +1290,7 @@ def _fetch_soup(
                     html=resp.text,
                     note="captcha/robot in body",
                 )
+            note_fetch_failure(source_domain, "bot_wall", "requests")
             return None
         soup = BeautifulSoup(resp.content, "html.parser")
         if debug_domain:
@@ -1262,6 +1300,8 @@ def _fetch_soup(
                 f"[{datetime.now()}] Fetched {debug_domain}: "
                 f"HTTP 200, {body_len} chars, title=\"{title[:80]}\""
             )
+        note_fetch_success(source_domain, "requests")
+        log_event("source.fetch.finish", domain=source_domain, strategy="direct", method="requests", url=url)
         return soup
     except requests.exceptions.Timeout:
         logging.error(f"[{datetime.now()}] Timeout fetching {url}")
@@ -1281,14 +1321,17 @@ def _fetch_soup(
                 url=url,
                 note="requests.Timeout",
             )
+        note_fetch_failure(source_domain, "timeout", "requests")
     except requests.exceptions.RequestException as exc:
         logging.error(f"[{datetime.now()}] Request error for {url}: {exc}")
         if failure_sink is not None:
             failure_sink["reason"] = "request_error"
+        note_fetch_failure(source_domain, "request_error", "requests")
     except Exception as exc:
         logging.error(f"[{datetime.now()}] Unexpected error fetching {url}: {exc}")
         if failure_sink is not None:
             failure_sink["reason"] = "unexpected_error"
+        note_fetch_failure(source_domain, "unexpected_error", "requests")
     return None
 
 
@@ -4534,6 +4577,20 @@ def _fetch_search_probe_stage(
         "query": search_query,
     }
     failure_sink: dict[str, str] = {}
+    if stage == "probe_html" and should_bypass_direct(domain):
+        if provider_enabled_for(domain):
+            soup, fetch_method, failure_reason = fetch_via_provider(
+                search_url,
+                domain=domain,
+                page_kind="search",
+            )
+            if context:
+                context.set_fetch_entry(cache_key, FetchCacheEntry(soup, fetch_method, failure_reason))
+            return soup, fetch_method, failure_reason
+        if context:
+            context.mark_domain_failure(domain, "cooldown")
+            context.set_fetch_entry(cache_key, FetchCacheEntry(None, "cooldown", "cooldown"))
+        return None, "cooldown", "cooldown"
     if stage == "probe_html":
         soup = _fetch_soup(
             search_url,
@@ -4544,22 +4601,57 @@ def _fetch_search_probe_stage(
             timeout_seconds=8,
         )
         fetch_method = "requests"
+        if not soup and should_try_provider_after_failure(domain, failure_sink.get("reason")):
+            log_event(
+                "source.fetch.blocked",
+                domain=domain,
+                strategy="direct",
+                reason=failure_sink.get("reason"),
+                page_kind="search",
+            )
+            soup, fetch_method, provider_reason = fetch_via_provider(
+                search_url,
+                domain=domain,
+                page_kind="search",
+            )
+            if soup is not None:
+                failure_sink.pop("reason", None)
+            else:
+                failure_sink["reason"] = provider_reason or failure_sink.get("reason")
     elif stage == "probe_light_js":
-        soup = _fetch_soup_selenium_pooled(
-            search_url,
-            domain=domain,
-            debug_meta={"mode": "probe_light_js", "query": search_query},
-            failure_sink=failure_sink,
-        )
-        fetch_method = "selenium_light"
+        if provider_enabled_for(domain) and is_protected_domain(domain):
+            soup, fetch_method, failure_reason = fetch_via_provider(
+                search_url,
+                domain=domain,
+                page_kind="search",
+            )
+            if failure_reason:
+                failure_sink["reason"] = failure_reason
+        else:
+            soup = _fetch_soup_selenium_pooled(
+                search_url,
+                domain=domain,
+                debug_meta={"mode": "probe_light_js", "query": search_query},
+                failure_sink=failure_sink,
+            )
+            fetch_method = "selenium_light"
     elif stage == "full_selenium":
-        soup = _fetch_soup_selenium_pooled(
-            search_url,
-            domain=domain,
-            debug_meta={"mode": mode, "query": search_query},
-            failure_sink=failure_sink,
-        )
-        fetch_method = "selenium"
+        if provider_enabled_for(domain) and is_protected_domain(domain):
+            soup, fetch_method, failure_reason = fetch_via_provider(
+                search_url,
+                domain=domain,
+                page_kind="search",
+            )
+            if failure_reason:
+                failure_sink["reason"] = failure_reason
+        else:
+            soup = _fetch_soup_selenium_pooled(
+                search_url,
+                domain=domain,
+                debug_meta={"mode": mode, "query": search_query},
+                failure_sink=failure_sink,
+            )
+            fetch_method = "selenium"
     else:
         soup = _fetch_soup(
             search_url,
@@ -4768,16 +4860,59 @@ def _fetch_listing_soup(
 
     requests_failure: dict[str, str] = {}
     selenium_failure: dict[str, str] = {}
-    soup = _fetch_soup(
-        url,
-        debug_domain=source_domain,
-        failure_sink=requests_failure,
-        context=context,
-    )
-    if soup:
+    provider_active = provider_enabled_for(source_domain) and is_protected_domain(source_domain)
+    if should_bypass_direct(source_domain) and provider_enabled_for(source_domain):
+        soup, fetch_method, provider_reason = fetch_via_provider(
+            url,
+            domain=source_domain,
+            page_kind="product",
+        )
+        if soup:
+            if context:
+                context.set_fetch_entry(cache_key, FetchCacheEntry(soup, fetch_method))
+            return soup, fetch_method
+        requests_failure["reason"] = provider_reason or "cooldown"
+    else:
+        soup = _fetch_soup(
+            url,
+            debug_domain=source_domain,
+            failure_sink=requests_failure,
+            context=context,
+        )
+        if soup:
+            if context:
+                context.set_fetch_entry(cache_key, FetchCacheEntry(soup, "requests"))
+            return soup, "requests"
+        if should_try_provider_after_failure(source_domain, requests_failure.get("reason")):
+            log_event(
+                "source.fetch.blocked",
+                domain=source_domain,
+                strategy="direct",
+                reason=requests_failure.get("reason"),
+                page_kind="product",
+            )
+            soup, fetch_method, provider_reason = fetch_via_provider(
+                url,
+                domain=source_domain,
+                page_kind="product",
+            )
+            if soup:
+                if context:
+                    context.set_fetch_entry(cache_key, FetchCacheEntry(soup, fetch_method))
+                return soup, fetch_method
+            requests_failure["reason"] = provider_reason or requests_failure.get("reason")
+    if requests_failure.get("reason") == "cooldown" and not provider_enabled_for(source_domain):
         if context:
-            context.set_fetch_entry(cache_key, FetchCacheEntry(soup, "requests"))
-        return soup, "requests"
+            context.set_fetch_entry(cache_key, FetchCacheEntry(None, "cooldown", "cooldown"))
+            context.mark_domain_failure(source_domain, "cooldown")
+        return None, "cooldown"
+    if provider_active:
+        failure_reason = requests_failure.get("reason") or "provider_unavailable"
+        if context:
+            context.set_fetch_entry(cache_key, FetchCacheEntry(None, "fetch_failed", failure_reason))
+            if failure_reason in {"bot_wall", "timeout", "cooldown"}:
+                context.mark_domain_failure(source_domain, failure_reason)
+        return None, "fetch_failed"
     soup = _fetch_soup_selenium_pooled(
         url,
         domain=source_domain,
@@ -4794,6 +4929,64 @@ def _fetch_listing_soup(
         if failure_reason in {"bot_wall", "timeout"}:
             context.mark_domain_failure(source_domain, failure_reason)
     return None, "fetch_failed"
+
+
+def _fetch_outcome_from_reason(reason: str | None) -> str:
+    if reason in {"bot_wall", "cooldown"}:
+        return "blocked"
+    if reason == "timeout":
+        return "timeout"
+    if reason in {None, "", "ok"}:
+        return "ok"
+    if reason in {"unexpected_error"}:
+        return "error"
+    return "unavailable"
+
+
+def _listing_fetch_status(
+    url: str,
+    *,
+    context: SearchExecutionContext | None = None,
+    fetch_method: str | None = None,
+    failure_reason: str | None = None,
+) -> dict[str, str] | None:
+    canonical_url = canonicalize_listing_url(url) or url
+    if context:
+        cached = context.get_fetch_entry(f"listing:{canonical_url}")
+        if cached is not None:
+            fetch_method = fetch_method or cached.fetch_method
+            failure_reason = failure_reason or cached.failure_reason
+    outcome = _fetch_outcome_from_reason(failure_reason)
+    if outcome == "ok":
+        return None
+    return {
+        "outcome": outcome,
+        "method": fetch_method or "unknown",
+        "reason": failure_reason or "fetch_failed",
+    }
+
+
+def _strict_search_fetch_status(
+    domain: str,
+    *,
+    context: SearchExecutionContext | None = None,
+) -> dict[str, str] | None:
+    failure_reason = None
+    fetch_method = None
+    stats = LAST_DISCOVERY_STATS.get(f"{domain}::strict_search") or {}
+    if stats:
+        failure_reason = stats.get("failure_reason")
+        fetch_method = stats.get("fetch_method")
+    if context and not failure_reason:
+        failure_reason = context.domain_failure_reason(domain)
+    outcome = _fetch_outcome_from_reason(failure_reason)
+    if outcome == "ok" or failure_reason in {None, "", "no_rows", "no_eligible_candidates"}:
+        return None
+    return {
+        "outcome": outcome,
+        "method": fetch_method or "unknown",
+        "reason": failure_reason or "fetch_failed",
+    }
 
 
 def _verification_row(candidate: dict, verification, target_price: float | None) -> dict:
@@ -4913,8 +5106,11 @@ def _revalidate_direct_product_source(
         or ps_row.get("domain")
         or urlparse(url).netloc.lower().replace("www.", "")
     )
-    soup, _fetch_method = _fetch_listing_soup(url, source_domain, context=context)
+    soup, fetch_method = _fetch_listing_soup(url, source_domain, context=context)
     if not soup:
+        fetch_status = _listing_fetch_status(url, context=context, fetch_method=fetch_method)
+        if fetch_status:
+            return {"status": fetch_status["outcome"], "verified": [], "ambiguous": [], "fetch_status": fetch_status}
         return {"status": "quarantined", "verified": [], "ambiguous": []}
 
     condition_hint_text = " ".join(
@@ -5039,7 +5235,13 @@ def discover_product_matches(
         f"{len(verified)} verified, {len(ambiguous)} ambiguous, {rejected} rejected "
         f"for {product_name!r}"
     )
-    return {"verified": verified, "ambiguous": ambiguous}
+    fetch_status = None
+    if not verified and not ambiguous:
+        fetch_status = _strict_search_fetch_status(source["domain"], context=context)
+    payload = {"verified": verified, "ambiguous": ambiguous}
+    if fetch_status:
+        payload["fetch_status"] = fetch_status
+    return payload
 
 
 def revalidate_product_source(
@@ -5069,6 +5271,17 @@ def revalidate_product_source(
             "verified": [_verification_row(current_candidate, verification, ps_row.get("target_price"))],
             "ambiguous": [],
         }
+    current_fetch_status = None
+    current_url = current_candidate.get("product_url")
+    if current_url and verification is None:
+        current_fetch_status = _listing_fetch_status(current_url, context=context)
+        if current_fetch_status:
+            return {
+                "status": current_fetch_status["outcome"],
+                "verified": [],
+                "ambiguous": [],
+                "fetch_status": current_fetch_status,
+            }
     matches = discover_product_matches(
         spec.raw_query,
         source,
@@ -5081,6 +5294,8 @@ def revalidate_product_source(
         matches["ambiguous"].insert(0, _verification_row(current_candidate, verification, ps_row.get("target_price")))
     if matches["ambiguous"]:
         return {"status": "pending_confirmation", **matches}
+    if matches.get("fetch_status"):
+        return {"status": matches["fetch_status"]["outcome"], **matches}
     if verification and verification.health_state == "quarantined":
         return {"status": "quarantined", "verified": [], "ambiguous": []}
     return {"status": "not_found", "verified": [], "ambiguous": []}

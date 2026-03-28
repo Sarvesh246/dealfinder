@@ -42,6 +42,10 @@ Set these in both the web and worker services:
 | `WORKER_LEASE_SECONDS` | Worker lease/heartbeat window, default `90` |
 | `WORKER_HEARTBEAT_SECONDS` | Worker heartbeat cadence, default `20` |
 | `MANUAL_CHECK_POLL_SECONDS` | Manual queue poll cadence, default `10` |
+| `SQLITE_CONNECT_TIMEOUT_SECONDS` | Seconds `sqlite3.connect` waits when the DB is locked, default `30` |
+| `SQLITE_BUSY_TIMEOUT_MS` | Milliseconds SQLite retries busy handlers per connection, default `10000` |
+
+`get_connection()` also enables **WAL** journal mode so the web and worker processes contend less over the same file. If the database lives on a filesystem that misbehaves with WAL (uncommon on Railway volumes), switch storage or ask about running without WAL.
 
 ## Persistent SQLite volume
 

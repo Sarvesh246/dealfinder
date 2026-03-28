@@ -283,6 +283,29 @@
     color: var(--text-primary);
     font-weight: 600;
   }
+  .runtime-stack {
+    display: grid;
+    gap: 10px;
+  }
+  .runtime-stack-item {
+    padding-top: 10px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .runtime-stack-item:first-child {
+    padding-top: 0;
+    border-top: none;
+  }
+  .runtime-stack-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+  .runtime-stack-copy {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+  }
   .runtime-pill {
     display: inline-flex;
     align-items: center;
@@ -408,6 +431,28 @@
           <div class="notify-foot" style="margin-top:12px;color:var(--price-bad)">
             Last worker error: {{ runtime_diagnostics.last_job_error }}
           </div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="runtime-grid" style="margin-top:14px">
+        <div class="runtime-box">
+          <div class="runtime-name">Source Access Health</div>
+          {% if runtime_diagnostics.source_access %}
+          <div class="runtime-stack">
+            {% for item in runtime_diagnostics.source_access %}
+            <div class="runtime-stack-item">
+              <div class="runtime-stack-title">{{ item.domain }}</div>
+              <div class="runtime-stack-copy">
+                {{ item.status | replace('_', ' ') | title }}
+                {% if item.failure_reason %} — {{ item.failure_reason | replace('_', ' ') }}{% endif %}
+                {% if item.last_fetch_method %} via {{ item.last_fetch_method | replace('_', ' ') }}{% endif %}
+                {% if item.blocked_until %}<br>Cooldown until {{ item.blocked_until }}{% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="runtime-copy">No recent protected-store blocks are recorded right now.</div>
           {% endif %}
         </div>
       </div>

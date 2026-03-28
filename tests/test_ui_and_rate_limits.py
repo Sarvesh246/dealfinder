@@ -335,6 +335,72 @@ def test_app_sets_security_headers_and_healthz(tmp_path, monkeypatch):
     assert ready_payload["status"] == "ready"
     assert ready_payload["database_ready"] is True
 
+
+def test_discovery_results_show_partial_coverage_banner(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    search_id = database.create_discovery_search("airpods pro 2", None, 180.0)
+    walmart = next(row for row in database.get_all_sources() if row["domain"] == "walmart.com")
+    amazon = next(row for row in database.get_all_sources() if row["domain"] == "amazon.com")
+    database.add_discovery_source_run(
+        search_id,
+        walmart["id"],
+        outcome="blocked",
+        fetch_strategy="provider_html",
+        failure_reason="bot_wall",
+        duration_ms=1200,
+    )
+    database.add_discovery_source_run(
+        search_id,
+        amazon["id"],
+        outcome="no_results",
+        fetch_strategy="direct",
+        failure_reason=None,
+        duration_ms=450,
+    )
+
+    client = app_module.app.test_client()
+    response = client.get(f"/discover/results/{search_id}")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Partial coverage" in html
+    assert "some stores were temporarily unavailable" in html.lower()
+    assert "Walmart" in html
+
+
+def test_product_page_and_settings_show_source_access_health(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    product_id = database.add_product("Apple AirPods Pro 3", 199.0)
+    database.add_product_source(
+        product_id,
+        1,
+        discovered_url="https://example.com/airpods-pro-3",
+        current_price=199.0,
+        status="deal_found",
+        verification_state="verified",
+        health_state="healthy",
+        last_fetch_outcome="blocked",
+        last_fetch_method="provider_html",
+        last_fetch_reason="bot_wall",
+        last_fetch_at="2026-03-27T10:00:00",
+    )
+    database.record_source_access_failure(
+        "walmart.com",
+        failure_reason="bot_wall",
+        fetch_method="provider_html",
+        cooldown_seconds=60,
+    )
+
+    client = app_module.app.test_client()
+    product_html = client.get(f"/product/{product_id}").get_data(as_text=True)
+    settings_html = client.get("/settings").get_data(as_text=True)
+
+    assert "Last fetch: blocked" in product_html
+    assert "Source Access Health" in settings_html
+    assert "walmart.com" in settings_html
+
     diagnostics = client.get("/diagnostics")
     diagnostics_payload = diagnostics.get_json()
     assert diagnostics.status_code == 200

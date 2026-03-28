@@ -87,3 +87,49 @@ def test_any_drop_sends_alert_only_when_price_decreases(tmp_path, monkeypatch):
     database.update_product_source(1, current_price=94.99)
     scheduler._finalize_checked_products({product_id}, allow_alerts=True)
     assert calls == []
+
+
+def test_blocked_revalidation_preserves_last_verified_price(tmp_path, monkeypatch):
+    database, scheduler = _load_modules(tmp_path, monkeypatch)
+
+    product_id = database.add_product("Apple AirPods Pro 3", 199.0)
+    ps_id = database.add_product_source(
+        product_id,
+        1,
+        discovered_url="https://example.com/airpods-pro-3",
+        current_price=199.0,
+        status="deal_found",
+        verification_state="verified",
+        health_state="healthy",
+    )
+
+    changed = scheduler._persist_revalidation_result(
+        {
+            **dict(database.get_product_source_by_id(ps_id)),
+            "product_id": product_id,
+            "source_id": 1,
+            "product_name": "Apple AirPods Pro 3",
+            "source_name": "Amazon",
+            "target_price": 199.0,
+            "alert_mode": "target_threshold",
+        },
+        {
+            "status": "blocked",
+            "verified": [],
+            "ambiguous": [],
+            "fetch_status": {
+                "outcome": "blocked",
+                "method": "provider_html",
+                "reason": "bot_wall",
+            },
+        },
+        "2026-03-27T12:00:00",
+    )
+
+    source = database.get_product_source_by_id(ps_id)
+    assert changed is False
+    assert source["current_price"] == 199.0
+    assert source["verification_state"] == "verified"
+    assert source["status"] == "deal_found"
+    assert source["last_fetch_outcome"] == "blocked"
+    assert source["last_fetch_method"] == "provider_html"

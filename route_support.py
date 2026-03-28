@@ -184,7 +184,36 @@ def persist_source_matches(
 
     verified = matches.get("verified", [])
     ambiguous = matches.get("ambiguous", [])
+    fetch_status = matches.get("fetch_status")
     now = datetime.now().isoformat()
+
+    if fetch_status:
+        ps_id = ensure_row()
+        if not ps_id:
+            return "error"
+        fetch_update = {
+            "last_fetch_outcome": fetch_status.get("outcome"),
+            "last_fetch_method": fetch_status.get("method"),
+            "last_fetch_reason": fetch_status.get("reason"),
+            "last_fetch_at": now,
+            "last_checked": now,
+            "tracking_mode": tracking_mode,
+            "source_label_override": source_label_override,
+            "source_domain_override": source_domain_override,
+        }
+        if existing_ps:
+            update_product_source(ps_id, **fetch_update)
+        else:
+            update_product_source(
+                ps_id,
+                status="error",
+                verification_state="error",
+                verification_reason=fetch_status.get("reason") or "fetch_unavailable",
+                health_state="healthy",
+                match_label="related",
+                **fetch_update,
+            )
+        return fetch_status.get("outcome", "error")
 
     if verified:
         best = verified[0]
@@ -211,6 +240,10 @@ def persist_source_matches(
             match_label=best.get("match_label", "verified_exact"),
             last_verified=now,
             last_checked=now,
+            last_fetch_outcome="ok",
+            last_fetch_method=None,
+            last_fetch_reason=None,
+            last_fetch_at=now,
             tracking_mode=tracking_mode,
             source_label_override=source_label_override,
             source_domain_override=source_domain_override,
@@ -240,6 +273,10 @@ def persist_source_matches(
             match_label=primary.get("match_label", "verified_related"),
             last_verified=now,
             last_checked=now,
+            last_fetch_outcome="ok",
+            last_fetch_method=None,
+            last_fetch_reason=None,
+            last_fetch_at=now,
             tracking_mode=tracking_mode,
             source_label_override=source_label_override,
             source_domain_override=source_domain_override,
@@ -282,6 +319,10 @@ def persist_source_matches(
         match_label="related",
         last_verified=now,
         last_checked=now,
+        last_fetch_outcome="ok",
+        last_fetch_method=None,
+        last_fetch_reason=None,
+        last_fetch_at=now,
         tracking_mode=tracking_mode,
         source_label_override=source_label_override,
         source_domain_override=source_domain_override,
@@ -290,7 +331,7 @@ def persist_source_matches(
 
 
 def apply_source_matches_for_product(product, sources):
-    outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0}
+    outcomes = {"verified": 0, "pending_confirmation": 0, "not_found": 0, "blocked": 0, "timeout": 0, "unavailable": 0, "error": 0}
     if not sources:
         compute_best_price(product["id"])
         return outcomes

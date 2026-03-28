@@ -394,6 +394,7 @@
         {% endif %}
       </div>
 
+      {% set last_fetch_outcome = ps.last_fetch_outcome | default('', true) %}
       {% if ps.current_price is not none and ps.status not in ['not_found', 'error'] %}
         <div class="source-card-price" style="color:{{ price_color(ps.current_price, product.target_price, product.alert_mode) }}">
           {{ ps.current_price | format_price }}
@@ -402,8 +403,18 @@
         <div class="source-card-none">Needs confirmation before tracking can continue.</div>
       {% elif ps.status == 'quarantined' %}
         <div class="source-card-none">Verification drifted. Re-check or confirm before trusting this source.</div>
+      {% elif last_fetch_outcome in ['blocked', 'timeout', 'unavailable'] and ps.current_price is not none %}
+        <div class="source-card-none">Temporarily unavailable on the last check. Keeping the last verified price.</div>
       {% elif ps.status == 'error' %}
-        <div class="source-card-none">Blocked — try again later.</div>
+        <div class="source-card-none">
+          {% if last_fetch_outcome == 'blocked' %}
+            This store was blocked on the last check.
+          {% elif last_fetch_outcome == 'timeout' %}
+            This store timed out on the last check.
+          {% else %}
+            This source is temporarily unavailable.
+          {% endif %}
+        </div>
       {% else %}
         <div class="source-card-none">No verified price right now.</div>
       {% endif %}
@@ -428,6 +439,11 @@
       <div class="source-card-copy">
         {% if ps.last_checked %}Checked {{ ps.last_checked | relative_time }}{% else %}Not checked yet{% endif %}
         {% if ps.verification_reason %}<br>{{ ps.verification_reason | replace('_', ' ') }}{% endif %}
+        {% if ps.last_fetch_outcome and ps.last_fetch_outcome != 'ok' %}
+          <br>Last fetch: {{ ps.last_fetch_outcome | replace('_', ' ') }}
+          {% if ps.last_fetch_reason %} — {{ ps.last_fetch_reason | replace('_', ' ') }}{% endif %}
+          {% if ps.last_fetch_at %} ({{ ps.last_fetch_at | relative_time }}){% endif %}
+        {% endif %}
       </div>
     </div>
     {% endfor %}

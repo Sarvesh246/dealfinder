@@ -39,6 +39,10 @@ FLASK_DEBUG = _env_flag("FLASK_DEBUG", False)
 PORT = _env_int("PORT", 5000)
 CHECK_CRON_SECRET = os.getenv("CHECK_CRON_SECRET", "").strip()
 
+# SQLite (web + worker share one file): wait under lock instead of failing immediately.
+SQLITE_CONNECT_TIMEOUT_SECONDS = _env_int("SQLITE_CONNECT_TIMEOUT_SECONDS", 30)
+SQLITE_BUSY_TIMEOUT_MS = _env_int("SQLITE_BUSY_TIMEOUT_MS", 10_000)
+
 DISCOVERY_SOURCE_WORKERS = _env_int("DISCOVERY_SOURCE_WORKERS", 4)
 STRICT_SOURCE_WORKERS = _env_int("STRICT_SOURCE_WORKERS", 4)
 DISCOVERY_VERIFY_WORKERS = _env_int("DISCOVERY_VERIFY_WORKERS", 4)
@@ -78,6 +82,22 @@ SCRAPER_DEBUG_DIR = os.getenv(
     "SCRAPER_DEBUG_DIR",
     str(Path(tempfile.gettempdir()) / "pricepulse_scraper_debug"),
 ).strip()
+PROTECTED_FETCH_PROVIDER = os.getenv("PROTECTED_FETCH_PROVIDER", "none").strip().lower()
+PROTECTED_FETCH_DOMAINS = tuple(
+    domain.strip().lower()
+    for domain in os.getenv("PROTECTED_FETCH_DOMAINS", "bestbuy.com,walmart.com").split(",")
+    if domain.strip()
+)
+PROTECTED_FETCH_ONLY_ON_FAILURE = _env_flag("PROTECTED_FETCH_ONLY_ON_FAILURE", True)
+PROTECTED_FETCH_TIMEOUT_SECONDS = _env_int("PROTECTED_FETCH_TIMEOUT_SECONDS", 30)
+SOURCE_BLOCK_COOLDOWN_SECONDS = _env_int("SOURCE_BLOCK_COOLDOWN_SECONDS", 600)
+SOURCE_BLOCK_MAX_BACKOFF_SECONDS = _env_int("SOURCE_BLOCK_MAX_BACKOFF_SECONDS", 3600)
+BRIGHTDATA_UNLOCKER_ENDPOINT = os.getenv(
+    "BRIGHTDATA_UNLOCKER_ENDPOINT",
+    "https://api.brightdata.com/request",
+).strip()
+BRIGHTDATA_API_TOKEN = os.getenv("BRIGHTDATA_API_TOKEN", "").strip()
+BRIGHTDATA_ZONE = os.getenv("BRIGHTDATA_ZONE", "").strip()
 
 WORKER_LEASE_SECONDS = _env_int("WORKER_LEASE_SECONDS", 90)
 WORKER_HEARTBEAT_SECONDS = _env_int("WORKER_HEARTBEAT_SECONDS", 20)

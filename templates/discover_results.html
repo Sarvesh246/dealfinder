@@ -257,6 +257,47 @@
   }
   .category-hint strong { color: var(--text-primary); }
 
+  .coverage-banner {
+    margin: 0 0 18px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,181,71,0.22);
+    background: rgba(255,181,71,0.08);
+    color: var(--text-secondary);
+  }
+  .coverage-banner strong {
+    color: var(--text-primary);
+  }
+  .coverage-banner summary {
+    cursor: pointer;
+    margin-top: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+    list-style: none;
+  }
+  .coverage-banner summary::-webkit-details-marker {
+    display: none;
+  }
+  .coverage-details {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 12px;
+  }
+  .coverage-detail-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .coverage-detail-outcome {
+    color: #fde68a;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-size: 10px;
+  }
+
   .also-at {
     font-size: 11px; color: var(--text-muted); margin-bottom: 10px;
   }
@@ -440,6 +481,24 @@
     </a>
   </div>
 
+  {% if coverage_summary and coverage_summary.has_partial_coverage %}
+  <div class="coverage-banner fade-in">
+    <strong>{{ coverage_summary.message }}</strong>
+    <div>Store coverage is limited right now. Results may be incomplete until the affected stores recover.</div>
+    <details>
+      <summary>View details</summary>
+      <div class="coverage-details">
+        {% for detail in coverage_summary.details %}
+        <div class="coverage-detail-row">
+          <span class="coverage-detail-outcome">{{ detail.outcome | replace('_', ' ') }}</span>
+          <span>{{ detail.stores | join(', ') }}{% if detail.reason %} — {{ detail.reason | replace('_', ' ') }}{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
+  {% endif %}
+
   {% if results %}
 
   {% if is_category_search %}
@@ -601,8 +660,13 @@
         <line x1="8" y1="11" x2="14" y2="11"></line>
       </svg>
     </div>
+    {% if coverage_summary and coverage_summary.has_partial_coverage %}
+    <div class="empty-title">No active deals were found from the stores we could check{% if search.max_price %} under ${{ "%.2f" | format(search.max_price) }}{% endif %} for "{{ search.query }}" right now</div>
+    <p class="empty-hint">Some stores were temporarily unavailable, so coverage may be incomplete. Try again shortly or broaden your search.</p>
+    {% else %}
     <div class="empty-title">No active deals are showing across our supported stores{% if search.max_price %} under ${{ "%.2f" | format(search.max_price) }}{% endif %} for "{{ search.query }}" right now</div>
     <p class="empty-hint">The listings we checked did not show a qualifying sale price at the moment. Try raising your budget or broadening your search.</p>
+    {% endif %}
     <a href="{{ url_for('discover_page') }}" class="btn-primary empty-btn">Try Different Search</a>
   </div>
 

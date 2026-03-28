@@ -51,7 +51,27 @@ _RUN_LOCK = threading.Lock()
 def _persist_revalidation_result(ps, result, now: str) -> bool:
     verified = result.get("verified", [])
     ambiguous = result.get("ambiguous", [])
+    fetch_status = result.get("fetch_status")
     clear_product_source_candidates(ps["product_id"], ps["source_id"])
+    if fetch_status:
+        update_product_source(
+            ps["id"],
+            last_fetch_outcome=fetch_status.get("outcome"),
+            last_fetch_method=fetch_status.get("method"),
+            last_fetch_reason=fetch_status.get("reason"),
+            last_fetch_at=now,
+            last_checked=now,
+        )
+        log_event(
+            "verification.result",
+            product_id=ps["product_id"],
+            product_name=ps["product_name"],
+            source=ps["source_name"],
+            outcome=fetch_status.get("outcome", "unavailable"),
+            reason=fetch_status.get("reason"),
+            fetch_method=fetch_status.get("method"),
+        )
+        return False
     if verified:
         best = verified[0]
         update_product_source(
@@ -74,6 +94,10 @@ def _persist_revalidation_result(ps, result, now: str) -> bool:
             match_label=best.get("match_label", "verified_exact"),
             last_verified=now,
             last_checked=now,
+            last_fetch_outcome="ok",
+            last_fetch_method=None,
+            last_fetch_reason=None,
+            last_fetch_at=now,
         )
         if best.get("price") is not None:
             add_price_history(ps["id"], best["price"])
@@ -105,6 +129,10 @@ def _persist_revalidation_result(ps, result, now: str) -> bool:
             match_label=lead.get("match_label", "verified_related"),
             last_verified=now,
             last_checked=now,
+            last_fetch_outcome="ok",
+            last_fetch_method=None,
+            last_fetch_reason=None,
+            last_fetch_at=now,
         )
         for candidate in ambiguous:
             add_product_source_candidate(
@@ -144,6 +172,10 @@ def _persist_revalidation_result(ps, result, now: str) -> bool:
         health_state="quarantined" if final_status == "quarantined" else "healthy",
         last_verified=now,
         last_checked=now,
+        last_fetch_outcome="ok",
+        last_fetch_method=None,
+        last_fetch_reason=None,
+        last_fetch_at=now,
     )
     log_event(
         "verification.result",

@@ -10,7 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from database import DEFAULT_SOURCES, init_db
-from scraper import SearchExecutionContext, discover_deals_for_queries, discover_product_matches
+from scraper import LAST_DISCOVERY_STATS, SearchExecutionContext, discover_deals_for_queries, discover_product_matches
 
 
 BENCHMARK_CASES = [
@@ -22,6 +22,18 @@ BENCHMARK_CASES = [
     {"kind": "discovery", "query": "standing desk", "domains": ["amazon.com", "walmart.com", "officedepot.com"]},
     {"kind": "strict", "query": "rtx 4070", "domains": ["amazon.com", "bestbuy.com"]},
 ]
+
+
+def _normalized_fetch_outcome(reason: str | None) -> str:
+    if reason in {None, "", "ok"}:
+        return "ok"
+    if reason in {"bot_wall", "cooldown"}:
+        return "blocked"
+    if reason == "timeout":
+        return "timeout"
+    if reason in {"fetch_failed", "http_error", "provider_unavailable", "provider_invalid", "provider_error", "request_error", "selenium_error"}:
+        return "unavailable"
+    return reason
 
 
 def _source(domain: str) -> dict:
@@ -39,16 +51,25 @@ def run_case(case: dict) -> dict:
             verified = len(matches.get("verified", []))
             ambiguous = len(matches.get("ambiguous", []))
             top_name = (matches.get("verified") or matches.get("ambiguous") or [{}])[0].get("name_found")
+            fetch_status = matches.get("fetch_status") or {}
+            stats = dict(LAST_DISCOVERY_STATS.get(f"{domain}::strict_search") or {})
             payload = {
                 "verified": verified,
                 "ambiguous": ambiguous,
                 "top_name": top_name,
+                "fetch_outcome": _normalized_fetch_outcome(fetch_status.get("outcome") or stats.get("failure_reason")),
+                "fetch_method": fetch_status.get("method") or stats.get("fetch_method"),
+                "fetch_reason": fetch_status.get("reason") or stats.get("failure_reason"),
             }
         else:
             rows = discover_deals_for_queries((case["query"],), source, context=context)
+            stats = dict(LAST_DISCOVERY_STATS.get(f"{domain}::discover_deals") or {})
             payload = {
                 "results": len(rows),
                 "top_name": rows[0]["product_name"] if rows else None,
+                "fetch_outcome": _normalized_fetch_outcome(stats.get("failure_reason") if not rows else "ok"),
+                "fetch_method": stats.get("fetch_method"),
+                "fetch_reason": stats.get("failure_reason"),
             }
         results.append(
             {

@@ -9,6 +9,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
+from config import SQLITE_BUSY_TIMEOUT_MS, SQLITE_CONNECT_TIMEOUT_SECONDS
 from product_verifier import parse_product_spec, product_spec_to_fields
 
 _DEFAULT_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_tracker.db")
@@ -336,14 +337,25 @@ def _sync_default_sources(cursor):
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=float(SQLITE_CONNECT_TIMEOUT_SECONDS))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute(f"PRAGMA busy_timeout = {int(SQLITE_BUSY_TIMEOUT_MS)}")
     return conn
 
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0).isoformat()
+
+
+def _parse_iso_datetime(value: str | None):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -497,6 +509,10 @@ def _upgrade_product_sources_schema(cursor) -> None:
             ("tracking_mode", "TEXT DEFAULT 'search_verified'"),
             ("source_label_override", "TEXT"),
             ("source_domain_override", "TEXT"),
+            ("last_fetch_outcome", "TEXT"),
+            ("last_fetch_method", "TEXT"),
+            ("last_fetch_reason", "TEXT"),
+            ("last_fetch_at", "TEXT"),
         ],
     )
     try:
@@ -528,6 +544,42 @@ def _upgrade_product_sources_schema(cursor) -> None:
         )
     except sqlite3.OperationalError:
         return
+
+
+def _upgrade_source_access_schema(cursor) -> None:
+    _ensure_columns(
+        cursor,
+        "source_access_state",
+        [
+            ("status", "TEXT DEFAULT 'healthy'"),
+            ("failure_reason", "TEXT"),
+            ("blocked_until", "TEXT"),
+            ("consecutive_failures", "INTEGER DEFAULT 0"),
+            ("last_success_at", "TEXT"),
+            ("last_attempt_at", "TEXT"),
+            ("last_provider_success_at", "TEXT"),
+            ("last_fetch_method", "TEXT"),
+        ],
+    )
+
+
+def _upgrade_discovery_source_runs_schema(cursor) -> None:
+    _ensure_columns(
+        cursor,
+        "discovery_source_runs",
+        [
+            ("search_id", "INTEGER NOT NULL"),
+            ("source_id", "INTEGER"),
+            ("outcome", "TEXT DEFAULT 'ok'"),
+            ("fetch_strategy", "TEXT"),
+            ("failure_reason", "TEXT"),
+            ("raw_count", "INTEGER DEFAULT 0"),
+            ("eligible_count", "INTEGER DEFAULT 0"),
+            ("returned_count", "INTEGER DEFAULT 0"),
+            ("duration_ms", "INTEGER DEFAULT 0"),
+            ("created_at", "TEXT"),
+        ],
+    )
 
 
 def _upgrade_discovery_results_schema(cursor):
@@ -582,6 +634,18 @@ def _ensure_indexes(cursor) -> None:
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_worker_job_runs_job_name_created_at "
         "ON worker_job_runs(job_name, created_at)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_source_access_state_status_blocked_until "
+        "ON source_access_state(status, blocked_until)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_discovery_source_runs_search_source "
+        "ON discovery_source_runs(search_id, source_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_product_sources_last_fetch_outcome "
+        "ON product_sources(last_fetch_outcome, last_fetch_at)"
     )
 
 
@@ -670,6 +734,10 @@ def init_db():
                 tracking_mode       TEXT    DEFAULT 'search_verified',
                 source_label_override TEXT,
                 source_domain_override TEXT,
+                last_fetch_outcome  TEXT,
+                last_fetch_method   TEXT,
+                last_fetch_reason   TEXT,
+                last_fetch_at       TEXT,
                 FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
                 FOREIGN KEY (source_id)  REFERENCES sources(id)  ON DELETE CASCADE
             )
@@ -754,6 +822,26 @@ def init_db():
         _upgrade_discovery_results_schema(c)
 
         c.execute("""
+            CREATE TABLE IF NOT EXISTS discovery_source_runs (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                search_id      INTEGER NOT NULL,
+                source_id      INTEGER,
+                outcome        TEXT DEFAULT 'ok',
+                fetch_strategy TEXT,
+                failure_reason TEXT,
+                raw_count      INTEGER DEFAULT 0,
+                eligible_count INTEGER DEFAULT 0,
+                returned_count INTEGER DEFAULT 0,
+                duration_ms    INTEGER DEFAULT 0,
+                created_at     TEXT,
+                FOREIGN KEY (search_id) REFERENCES discovery_searches(id) ON DELETE CASCADE,
+                FOREIGN KEY (source_id) REFERENCES sources(id) ON DELETE SET NULL
+            )
+        """)
+
+        _upgrade_discovery_source_runs_schema(c)
+
+        c.execute("""
             CREATE TABLE IF NOT EXISTS product_source_candidates (
                 id                  INTEGER PRIMARY KEY AUTOINCREMENT,
                 product_id          INTEGER NOT NULL,
@@ -822,6 +910,22 @@ def init_db():
                 error         TEXT
             )
         """)
+
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS source_access_state (
+                domain                   TEXT PRIMARY KEY,
+                status                   TEXT DEFAULT 'healthy',
+                failure_reason           TEXT,
+                blocked_until            TEXT,
+                consecutive_failures     INTEGER DEFAULT 0,
+                last_success_at          TEXT,
+                last_attempt_at          TEXT,
+                last_provider_success_at TEXT,
+                last_fetch_method        TEXT
+            )
+        """)
+
+        _upgrade_source_access_schema(c)
 
         c.execute(
             "INSERT OR IGNORE INTO worker_runtime (singleton_id) VALUES (1)"
@@ -1326,7 +1430,11 @@ def add_product_source(product_id, source_id, enabled=1,
                        last_verified=None,
                        tracking_mode="search_verified",
                        source_label_override=None,
-                       source_domain_override=None):
+                       source_domain_override=None,
+                       last_fetch_outcome=None,
+                       last_fetch_method=None,
+                       last_fetch_reason=None,
+                       last_fetch_at=None):
     try:
         conn = get_connection()
         cur = conn.cursor()
@@ -1335,8 +1443,9 @@ def add_product_source(product_id, source_id, enabled=1,
             "(product_id, source_id, enabled, discovered_url, current_price, last_checked, status, "
             "verification_state, verification_reason, health_state, matched_product_name, "
             "fingerprint_brand, fingerprint_family, fingerprint_model, fingerprint_json, "
-            "match_label, last_verified, tracking_mode, source_label_override, source_domain_override) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "match_label, last_verified, tracking_mode, source_label_override, source_domain_override, "
+            "last_fetch_outcome, last_fetch_method, last_fetch_reason, last_fetch_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 product_id, source_id, int(enabled), discovered_url, current_price,
                 datetime.now().isoformat(), status, verification_state,
@@ -1344,6 +1453,7 @@ def add_product_source(product_id, source_id, enabled=1,
                 fingerprint_brand, fingerprint_family, fingerprint_model,
                 fingerprint_json, match_label, last_verified,
                 tracking_mode, source_label_override, source_domain_override,
+                last_fetch_outcome, last_fetch_method, last_fetch_reason, last_fetch_at,
             ),
         )
         conn.commit()
@@ -1418,6 +1528,7 @@ def update_product_source(ps_id, **fields):
         "matched_product_name", "fingerprint_brand", "fingerprint_family",
         "fingerprint_model", "fingerprint_json", "match_label", "last_verified",
         "tracking_mode", "source_label_override", "source_domain_override",
+        "last_fetch_outcome", "last_fetch_method", "last_fetch_reason", "last_fetch_at",
     }
     filtered = {k: v for k, v in fields.items() if k in allowed}
     if not filtered:
@@ -1765,6 +1876,154 @@ def get_best_source_url(product_id):
 
 
 # ---------------------------------------------------------------------------
+# Source access health and cooldowns
+# ---------------------------------------------------------------------------
+
+def get_source_access_state(domain: str):
+    try:
+        conn = get_connection()
+        row = conn.execute(
+            "SELECT * FROM source_access_state WHERE domain = ?",
+            ((domain or "").strip().lower(),),
+        ).fetchone()
+        conn.close()
+        return row
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] get_source_access_state({domain}) error: {exc}")
+        return None
+
+
+def record_source_access_success(
+    domain: str,
+    *,
+    fetch_method: str | None = None,
+    via_provider: bool = False,
+) -> None:
+    domain = (domain or "").strip().lower()
+    if not domain:
+        return
+    now = _utcnow_iso()
+    try:
+        conn = get_connection()
+        conn.execute(
+            """
+            INSERT INTO source_access_state (
+                domain, status, failure_reason, blocked_until, consecutive_failures,
+                last_success_at, last_attempt_at, last_provider_success_at, last_fetch_method
+            ) VALUES (?, 'healthy', NULL, NULL, 0, ?, ?, ?, ?)
+            ON CONFLICT(domain) DO UPDATE SET
+                status = 'healthy',
+                failure_reason = NULL,
+                blocked_until = NULL,
+                consecutive_failures = 0,
+                last_success_at = excluded.last_success_at,
+                last_attempt_at = excluded.last_attempt_at,
+                last_provider_success_at = CASE
+                    WHEN excluded.last_provider_success_at IS NOT NULL THEN excluded.last_provider_success_at
+                    ELSE source_access_state.last_provider_success_at
+                END,
+                last_fetch_method = excluded.last_fetch_method
+            """,
+            (
+                domain,
+                now,
+                now,
+                now if via_provider else None,
+                fetch_method,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] record_source_access_success({domain}) error: {exc}")
+
+
+def record_source_access_failure(
+    domain: str,
+    *,
+    failure_reason: str | None,
+    fetch_method: str | None = None,
+    cooldown_seconds: int = 0,
+) -> None:
+    domain = (domain or "").strip().lower()
+    if not domain:
+        return
+    now = _utcnow_iso()
+    blocked_until = None
+    status = "blocked" if failure_reason in {"bot_wall", "cooldown"} else "degraded"
+    if cooldown_seconds > 0:
+        blocked_until = (
+            datetime.now(timezone.utc).replace(tzinfo=None)
+            + timedelta(seconds=max(1, int(cooldown_seconds)))
+        ).replace(microsecond=0).isoformat()
+        status = "cooldown"
+    try:
+        conn = get_connection()
+        existing = conn.execute(
+            "SELECT consecutive_failures, last_success_at FROM source_access_state WHERE domain = ?",
+            (domain,),
+        ).fetchone()
+        failures = int(existing["consecutive_failures"]) + 1 if existing else 1
+        conn.execute(
+            """
+            INSERT INTO source_access_state (
+                domain, status, failure_reason, blocked_until, consecutive_failures,
+                last_success_at, last_attempt_at, last_fetch_method
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(domain) DO UPDATE SET
+                status = excluded.status,
+                failure_reason = excluded.failure_reason,
+                blocked_until = excluded.blocked_until,
+                consecutive_failures = excluded.consecutive_failures,
+                last_attempt_at = excluded.last_attempt_at,
+                last_fetch_method = excluded.last_fetch_method
+            """,
+            (
+                domain,
+                status,
+                failure_reason,
+                blocked_until,
+                failures,
+                existing["last_success_at"] if existing else None,
+                now,
+                fetch_method,
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] record_source_access_failure({domain}) error: {exc}")
+
+
+def get_source_access_summary(limit: int = 8):
+    try:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        conn = get_connection()
+        rows = conn.execute(
+            """
+            SELECT domain, status, failure_reason, blocked_until, consecutive_failures,
+                   last_success_at, last_attempt_at, last_provider_success_at, last_fetch_method
+            FROM source_access_state
+            ORDER BY
+                CASE
+                    WHEN blocked_until IS NOT NULL AND blocked_until > ? THEN 0
+                    WHEN status = 'blocked' THEN 1
+                    WHEN status = 'degraded' THEN 2
+                    ELSE 3
+                END,
+                last_attempt_at DESC
+            LIMIT ?
+            """,
+            (now.isoformat(), max(1, int(limit))),
+        ).fetchall()
+        conn.close()
+        return rows
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] get_source_access_summary error: {exc}")
+        return []
+
+
+# ---------------------------------------------------------------------------
 # Worker runtime, leases, and manual-check queue
 # ---------------------------------------------------------------------------
 
@@ -2088,6 +2347,7 @@ def get_runtime_diagnostics(stale_after_seconds: int = 120) -> dict[str, object]
         "last_manual_check": None,
         "last_backfill": None,
         "recent_jobs": [],
+        "source_access": [],
     }
     try:
         conn = get_connection()
@@ -2147,6 +2407,7 @@ def get_runtime_diagnostics(stale_after_seconds: int = 120) -> dict[str, object]
             """
         ).fetchall()
         diagnostics["recent_jobs"] = [dict(row) for row in recent]
+        diagnostics["source_access"] = [dict(row) for row in get_source_access_summary(limit=8)]
         conn.close()
         return diagnostics
     except Exception as exc:
@@ -2348,6 +2609,66 @@ def update_discovery_search_count(search_id, count):
         conn.close()
     except Exception as exc:
         logging.error(f"[{datetime.now()}] update_discovery_search_count error: {exc}")
+
+
+def add_discovery_source_run(
+    search_id: int,
+    source_id: int | None,
+    *,
+    outcome: str,
+    fetch_strategy: str | None = None,
+    failure_reason: str | None = None,
+    raw_count: int = 0,
+    eligible_count: int = 0,
+    returned_count: int = 0,
+    duration_ms: int = 0,
+) -> None:
+    try:
+        conn = get_connection()
+        conn.execute(
+            """
+            INSERT INTO discovery_source_runs (
+                search_id, source_id, outcome, fetch_strategy, failure_reason,
+                raw_count, eligible_count, returned_count, duration_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                search_id,
+                source_id,
+                outcome,
+                fetch_strategy,
+                failure_reason,
+                int(raw_count or 0),
+                int(eligible_count or 0),
+                int(returned_count or 0),
+                int(duration_ms or 0),
+                datetime.now().isoformat(),
+            ),
+        )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] add_discovery_source_run error: {exc}")
+
+
+def get_discovery_source_runs(search_id: int):
+    try:
+        conn = get_connection()
+        rows = conn.execute(
+            """
+            SELECT dsr.*, s.name AS source_name, s.domain
+            FROM discovery_source_runs dsr
+            LEFT JOIN sources s ON dsr.source_id = s.id
+            WHERE dsr.search_id = ?
+            ORDER BY s.name COLLATE NOCASE ASC, dsr.id ASC
+            """,
+            (search_id,),
+        ).fetchall()
+        conn.close()
+        return rows
+    except Exception as exc:
+        logging.error(f"[{datetime.now()}] get_discovery_source_runs({search_id}) error: {exc}")
+        return []
 
 
 def get_discovery_search(search_id):

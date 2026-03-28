@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
@@ -13,6 +14,7 @@ from flask import flash, redirect, render_template, request, url_for
 
 from config import DISCOVERY_SOURCE_WORKERS, DISCOVERY_VERIFY_WORKERS, TRACK_RESULT_COOLDOWN_SECONDS
 from database import (
+    add_discovery_source_run,
     add_discovery_result,
     add_product,
     compute_best_price,
@@ -22,6 +24,7 @@ from database import (
     get_discovery_result_by_id,
     get_discovery_results,
     get_discovery_search,
+    get_discovery_source_runs,
     get_parent_categories,
     get_product_by_id,
     get_runtime_diagnostics,
@@ -33,7 +36,7 @@ from database import (
 from hf_utils import get_smart_engine
 from observability import log_event
 from product_verifier import QueryType, parse_product_spec
-from scraper import SearchExecutionContext, discover_deals_for_queries, verify_candidate_listing
+from scraper import LAST_DISCOVERY_STATS, SearchExecutionContext, discover_deals_for_queries, verify_candidate_listing
 from route_runtime import consume_cooldown
 from route_support import (
     apply_source_matches_for_product,
@@ -45,6 +48,69 @@ from route_support import (
 )
 
 from . import main_bp
+
+
+def _coverage_outcome(stats: dict | None, rows: list[dict], domain_failure: str | None = None) -> tuple[str, str | None]:
+    stats = stats or {}
+    failure_reason = domain_failure or ((stats.get("failure_reason") or "").strip() or None)
+    if rows:
+        return "ok", failure_reason
+    if failure_reason in {"bot_wall", "cooldown"}:
+        return "blocked", failure_reason
+    if failure_reason == "timeout":
+        return "timeout", failure_reason
+    if failure_reason in {"provider_unavailable", "provider_invalid", "provider_error", "http_error", "request_error", "selenium_error", "fetch_failed"}:
+        return "unavailable", failure_reason
+    if failure_reason in {"unexpected_error"}:
+        return "error", failure_reason
+    return "no_results", failure_reason
+
+
+def _coverage_strategy(stats: dict | None) -> str:
+    method = (stats or {}).get("fetch_method") or "direct"
+    if method in {"provider_html"}:
+        return "provider_html"
+    if method in {"provider_rendered"}:
+        return "provider_rendered"
+    if method.startswith("selenium"):
+        return "browser"
+    return "direct"
+
+
+def _build_coverage_summary(source_runs: list[dict]) -> dict | None:
+    if not source_runs:
+        return None
+    total = len(source_runs)
+    affected = [run for run in source_runs if run.get("outcome") in {"blocked", "timeout", "unavailable", "error"}]
+    if not affected:
+        return {
+            "total": total,
+            "affected_count": 0,
+            "has_partial_coverage": False,
+            "message": "",
+            "details": [],
+        }
+    grouped: dict[str, list[dict]] = {}
+    for run in affected:
+        grouped.setdefault(run.get("outcome") or "unavailable", []).append(run)
+    detail_rows = []
+    for outcome, items in grouped.items():
+        detail_rows.append(
+            {
+                "outcome": outcome,
+                "stores": [item.get("source_name") for item in items if item.get("source_name")],
+                "reason": next((item.get("failure_reason") for item in items if item.get("failure_reason")), None),
+                "count": len(items),
+            }
+        )
+    detail_rows.sort(key=lambda row: (-row["count"], row["outcome"]))
+    return {
+        "total": total,
+        "affected_count": len(affected),
+        "has_partial_coverage": True,
+        "message": f"Partial coverage: {len(affected)} of {total} stores were temporarily unavailable.",
+        "details": detail_rows,
+    }
 
 
 @main_bp.route("/discover", endpoint="discover_page")
@@ -148,6 +214,7 @@ def discover_search():
 
     def discover_source(source_row):
         source_dict = dict(source_row)
+        started = time.perf_counter()
         deals = discover_deals_for_queries(
             tuple(search_queries),
             source_dict,
@@ -157,6 +224,24 @@ def discover_search():
         for deal in deals:
             deal["source_id"] = source_row["id"]
             deal["source_name"] = source_row["name"]
+        stats = dict(LAST_DISCOVERY_STATS.get(f"{source_dict['domain']}::discover_deals") or {})
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        outcome, failure_reason = _coverage_outcome(
+            stats,
+            deals,
+            context.domain_failure_reason(source_dict["domain"]),
+        )
+        add_discovery_source_run(
+            search_id,
+            source_row["id"],
+            outcome=outcome,
+            fetch_strategy=_coverage_strategy(stats),
+            failure_reason=failure_reason,
+            raw_count=int(stats.get("scraped_count") or 0),
+            eligible_count=int(stats.get("after_dedupe_count") or 0),
+            returned_count=len(deals),
+            duration_ms=duration_ms,
+        )
         return deals
 
     with ThreadPoolExecutor(max_workers=max(1, min(DISCOVERY_SOURCE_WORKERS, len(sources) or 1))) as executor:
@@ -170,6 +255,17 @@ def discover_search():
                 source = sources[idx]
                 logging.error(
                     f"[{datetime.now()}] Discovery error on {source['name']} for query {query!r}: {exc}"
+                )
+                add_discovery_source_run(
+                    search_id,
+                    source["id"],
+                    outcome="error",
+                    fetch_strategy="direct",
+                    failure_reason="worker_error",
+                    raw_count=0,
+                    eligible_count=0,
+                    returned_count=0,
+                    duration_ms=0,
                 )
                 source_rows_by_index[idx] = []
 
@@ -241,9 +337,18 @@ def discover_search():
         )
 
     update_discovery_search_count(search_id, len(all_raw))
+    coverage_summary = _build_coverage_summary(
+        [dict(row) for row in get_discovery_source_runs(search_id)]
+    )
 
     if not all_raw:
-        if scraped_before_rank:
+        if coverage_summary and coverage_summary["has_partial_coverage"]:
+            flash(
+                f'No active deals were found from the stores we could check for "{query}" right now. '
+                "Some stores were temporarily unavailable, so coverage may be incomplete.",
+                "warning",
+            )
+        elif scraped_before_rank:
             flash(
                 f'No active deals across our supported stores matched your current filters for "{query}" right now. '
                 "Try including refurbished items, accessories, similar brands, or a different search term.",
@@ -303,6 +408,16 @@ def discover_results(search_id):
             results[idx]["is_best_in_group"] = idx == best_idx
 
     query_spec = parse_product_spec(search["query"])
+    source_runs = [dict(row) for row in get_discovery_source_runs(search_id)]
+    coverage_summary = _build_coverage_summary(source_runs)
+    if coverage_summary and coverage_summary["has_partial_coverage"]:
+        log_event(
+            "source.coverage.partial",
+            search_id=search_id,
+            query=search["query"],
+            affected_count=coverage_summary["affected_count"],
+            total_sources=coverage_summary["total"],
+        )
     return render_template(
         "discover_results.html",
         search=dict(search),
@@ -310,6 +425,8 @@ def discover_results(search_id):
         ai_enhanced=has_ai_scores,
         query_spec=query_spec,
         is_category_search=(query_spec.query_type == QueryType.CATEGORY.value),
+        coverage_summary=coverage_summary,
+        source_runs=source_runs,
     )
 
 

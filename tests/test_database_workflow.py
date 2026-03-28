@@ -282,3 +282,44 @@ def test_available_sources_respect_feature_flags_and_certification(tmp_path, mon
     assert "officedepot.com" not in enabled_domains
     assert "microcenter.com" not in available_domains
     assert "target.com" in available_domains
+
+
+def test_discovery_source_runs_and_source_access_state_persist(tmp_path, monkeypatch):
+    import database
+
+    db_file = tmp_path / "price_tracker_test.db"
+    monkeypatch.setattr(database, "DB_PATH", str(db_file))
+    importlib.reload(database)
+    monkeypatch.setattr(database, "DB_PATH", str(db_file))
+    database.init_db()
+
+    search_id = database.create_discovery_search("airpods pro 3", None, 200.0)
+    walmart = next(row for row in database.get_all_sources() if row["domain"] == "walmart.com")
+    database.add_discovery_source_run(
+        search_id,
+        walmart["id"],
+        outcome="blocked",
+        fetch_strategy="provider_html",
+        failure_reason="bot_wall",
+        raw_count=0,
+        eligible_count=0,
+        returned_count=0,
+        duration_ms=1250,
+    )
+    runs = database.get_discovery_source_runs(search_id)
+    assert len(runs) == 1
+    assert runs[0]["source_name"] == "Walmart"
+    assert runs[0]["outcome"] == "blocked"
+    assert runs[0]["fetch_strategy"] == "provider_html"
+
+    database.record_source_access_failure(
+        "walmart.com",
+        failure_reason="bot_wall",
+        fetch_method="provider_html",
+        cooldown_seconds=120,
+    )
+    summary = database.get_source_access_summary()
+    assert summary
+    assert summary[0]["domain"] == "walmart.com"
+    assert summary[0]["failure_reason"] == "bot_wall"
+    assert summary[0]["last_fetch_method"] == "provider_html"
