@@ -1,0 +1,284 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e38]:
+      - link "Back to Discovery" [ref=e39] [cursor=pointer]:
+        - /url: /discover
+        - img [ref=e40]
+        - text: Back to Discovery
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e99]:
+              - 'heading "Best Deals: standing desk AI Ranked" [level=1] [ref=e100]':
+                - text: "Best Deals: standing desk"
+                - generic [ref=e101]:
+                  - img [ref=e102]
+                  - text: AI Ranked
+              - paragraph [ref=e106]: 3 of 5 stores checked · 5 current results · Started 1 minute ago
+              - paragraph [ref=e107]:
+                - generic [ref=e108]: New only
+                - generic [ref=e109]: Main products
+                - generic [ref=e110]: Exact brand line
+            - generic [ref=e111]:
+              - generic [ref=e112]:
+                - generic [ref=e113]:
+                  - generic [ref=e114]: Search Progress
+                  - generic [ref=e115]: 3 / 5 stores checked
+                  - generic [ref=e116]: Results update as each store finishes.
+                - generic [ref=e117]: Checking
+              - generic [ref=e120]:
+                - generic [ref=e121]:
+                  - generic [ref=e123]: Amazon
+                  - generic [ref=e124]: done
+                - generic [ref=e125]:
+                  - generic [ref=e127]: Best Buy
+                  - generic [ref=e128]: blocked
+                - generic [ref=e129]:
+                  - generic [ref=e131]: Office Depot
+                  - generic [ref=e132]: done
+                - generic [ref=e133]:
+                  - generic [ref=e135]: Target
+                  - generic [ref=e136]: checking
+                - generic [ref=e137]:
+                  - generic [ref=e139]: Walmart
+                  - generic [ref=e140]: blocked
+            - generic [ref=e141]:
+              - strong [ref=e142]: "Partial coverage: 2 of 5 stores were temporarily unavailable."
+              - generic [ref=e143]: Store coverage is limited right now. Results may be incomplete until the affected stores recover.
+              - group [ref=e144]:
+                - generic "View details" [ref=e145] [cursor=pointer]
+          - link "Search Again" [ref=e87] [cursor=pointer]:
+            - /url: /discover
+            - img [ref=e88]
+            - text: Search Again
+        - generic [ref=e91]:
+          - paragraph [ref=e146]:
+            - strong [ref=e147]: Pick a result to track.
+            - text: Broad category searches stay browse-first until you choose a specific listing.
+          - generic [ref=e148]:
+            - generic [ref=e149]: "Sort by:"
+            - button "Best Deal" [ref=e150] [cursor=pointer]
+            - button "Biggest Discount" [ref=e151] [cursor=pointer]
+            - button "Lowest Price" [ref=e152] [cursor=pointer]
+            - button "Most Relevant" [ref=e153] [cursor=pointer]
+          - generic [ref=e154]:
+            - generic [ref=e155]:
+              - generic [ref=e156]:
+                - img [ref=e157]:
+                  - generic [ref=e160]: "27"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "27"
+                  - generic:
+                    - generic: Discount
+                    - generic: 9pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e161]: "-16.4% OFF"
+              - generic [ref=e162]: Victor® High Rise™ 31"W Mobile Adjustable Standing Desk Workstation, 44"H x 30-3/4"W x 22"D, Black
+              - generic [ref=e163]:
+                - generic [ref=e165]: Office Depot
+                - generic [ref=e166]: Category Primary
+              - generic [ref=e167]:
+                - generic [ref=e168]: $300.99
+                - generic [ref=e169]: $359.99
+              - generic [ref=e170]: You save $59.00
+              - generic [ref=e171]:
+                - generic [ref=e172]: Match
+                - generic [ref=e175]: 57%
+              - generic [ref=e176]:
+                - link "View on Office Depot ↗" [ref=e178] [cursor=pointer]:
+                  - /url: /open/discovery-result/372
+                - button "Track This" [ref=e180] [cursor=pointer]:
+                  - img [ref=e181]
+                  - text: Track This
+            - generic [ref=e182]:
+              - generic [ref=e183]:
+                - img [ref=e184]:
+                  - generic [ref=e187]: "19"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "19"
+                  - generic:
+                    - generic: Discount
+                    - generic: 0pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e188]: VersaDesk® Foundry Bench® 80"W Electric Height Adjustable Corner Standing Desk Workstation, Black/Bamboo
+              - generic [ref=e189]:
+                - generic [ref=e191]: Office Depot
+                - generic [ref=e192]: Category Primary
+              - generic [ref=e194]: $2399.99
+              - paragraph [ref=e195]: Price not verified as a sale — list price wasn’t shown in search results.
+              - generic [ref=e196]:
+                - generic [ref=e197]: Match
+                - generic [ref=e200]: 54%
+              - generic [ref=e201]:
+                - link "View on Office Depot ↗" [ref=e203] [cursor=pointer]:
+                  - /url: /open/discovery-result/374
+                - button "Track This" [ref=e205] [cursor=pointer]:
+                  - img [ref=e206]
+                  - text: Track This
+            - generic [ref=e207]:
+              - generic [ref=e208]:
+                - img [ref=e209]:
+                  - generic [ref=e212]: "23"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "23"
+                  - generic:
+                    - generic: Discount
+                    - generic: 0pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 7pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e213]: Mount-It! MI-7970 Height-Adjustable Mobile Standing Desk Workstation, 55"H x 39-1/2"W x 26"D, Silver
+              - generic [ref=e214]:
+                - generic [ref=e216]: Office Depot
+                - generic [ref=e217]: Related
+              - generic [ref=e219]: $269.99
+              - paragraph [ref=e220]: Price not verified as a sale — list price wasn’t shown in search results.
+              - generic [ref=e221]:
+                - generic [ref=e222]: Match
+                - generic [ref=e225]: 56%
+              - generic [ref=e226]:
+                - link "View on Office Depot ↗" [ref=e228] [cursor=pointer]:
+                  - /url: /open/discovery-result/373
+                - button "Track This" [ref=e230] [cursor=pointer]:
+                  - img [ref=e231]
+                  - text: Track This
+            - generic [ref=e232]:
+              - generic [ref=e233]:
+                - img [ref=e234]:
+                  - generic [ref=e237]: "19"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "19"
+                  - generic:
+                    - generic: Discount
+                    - generic: 0pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 18pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e238]: Mount-It! Mobile Standing Desk Workstation With Retractable Keyboard, 55"H x 32"W x 25-3/4"D, Black
+              - generic [ref=e239]:
+                - generic [ref=e241]: Office Depot
+                - generic [ref=e242]: Related
+              - generic [ref=e244]: $249.99
+              - paragraph [ref=e245]: Price not verified as a sale — list price wasn’t shown in search results.
+              - generic [ref=e246]:
+                - generic [ref=e247]: Match
+                - generic [ref=e250]: 51%
+              - generic [ref=e251]:
+                - link "View on Office Depot ↗" [ref=e253] [cursor=pointer]:
+                  - /url: /open/discovery-result/375
+                - button "Track This" [ref=e255] [cursor=pointer]:
+                  - img [ref=e256]
+                  - text: Track This
+            - generic [ref=e257]:
+              - generic [ref=e258]:
+                - img [ref=e259]:
+                  - generic [ref=e262]: "18"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "18"
+                  - generic:
+                    - generic: Discount
+                    - generic: 0pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 7pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e263]: Mount-It! MI-7970 Height-Adjustable Mobile Standing Desk Workstation, 55"H x 39-1/2"W x 26"D, Black
+              - generic [ref=e264]:
+                - generic [ref=e266]: Office Depot
+                - generic [ref=e267]: Related
+              - generic [ref=e269]: $279.99
+              - paragraph [ref=e270]: Price not verified as a sale — list price wasn’t shown in search results.
+              - generic [ref=e271]:
+                - generic [ref=e272]: Match
+                - generic [ref=e275]: 55%
+              - generic [ref=e276]:
+                - link "View on Office Depot ↗" [ref=e278] [cursor=pointer]:
+                  - /url: /open/discovery-result/376
+                - button "Track This" [ref=e280] [cursor=pointer]:
+                  - img [ref=e281]
+                  - text: Track This

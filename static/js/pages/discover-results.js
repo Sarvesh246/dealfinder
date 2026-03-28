@@ -11,14 +11,32 @@
     var searchStatus = shell.getAttribute("data-search-status") || "completed";
     var pollTimer = null;
     var currentSort = null;
+    var currentSourceFilter = null;
 
     function getResultsGrid() {
       return resultsSlot ? resultsSlot.querySelector("#results-grid") : null;
     }
 
+    function getSortSelect() {
+      return resultsSlot ? resultsSlot.querySelector("[data-results-sort]") : null;
+    }
+
+    function getSourceSelect() {
+      return resultsSlot ? resultsSlot.querySelector("[data-results-source]") : null;
+    }
+
+    function getSourceEmpty() {
+      return resultsSlot ? resultsSlot.querySelector("[data-source-empty]") : null;
+    }
+
     function detectSort() {
-      var active = resultsSlot ? resultsSlot.querySelector(".sort-btn.active[data-sort]") : null;
-      return active ? active.getAttribute("data-sort") : currentSort;
+      var select = getSortSelect();
+      return select ? select.value : currentSort;
+    }
+
+    function detectSourceFilter() {
+      var select = getSourceSelect();
+      return select ? select.value : (currentSourceFilter || "");
     }
 
     function sortCards(key) {
@@ -38,20 +56,69 @@
       cards.forEach(function (card) {
         grid.appendChild(card);
       });
-      if (resultsSlot) {
-        resultsSlot.querySelectorAll(".sort-btn[data-sort]").forEach(function (btn) {
-          btn.classList.toggle("active", btn.getAttribute("data-sort") === key);
-        });
+    }
+
+    function applySourceFilter(sourceId) {
+      var grid = getResultsGrid();
+      if (!grid) return;
+      currentSourceFilter = sourceId || "";
+      var visibleCount = 0;
+      Array.from(grid.children).forEach(function (card) {
+        var matches = !currentSourceFilter || card.dataset.sourceId === currentSourceFilter;
+        card.hidden = !matches;
+        card.classList.toggle("is-hidden-by-filter", !matches);
+        if (matches) visibleCount += 1;
+      });
+      var empty = getSourceEmpty();
+      if (empty) {
+        empty.hidden = visibleCount !== 0;
       }
     }
 
-    function bindSortButtons() {
-      if (!resultsSlot || resultsSlot.dataset.sortBound === "true") return;
-      resultsSlot.dataset.sortBound = "true";
-      resultsSlot.addEventListener("click", function (event) {
-        var button = event.target.closest(".sort-btn[data-sort]");
-        if (!button) return;
-        sortCards(button.getAttribute("data-sort"));
+    function syncControlValues() {
+      var sortSelect = getSortSelect();
+      if (sortSelect && currentSort) {
+        sortSelect.value = currentSort;
+        if (window.PricePulse && typeof window.PricePulse.syncCustomSelect === "function") {
+          window.PricePulse.syncCustomSelect(sortSelect);
+        }
+      }
+      var sourceSelect = getSourceSelect();
+      if (sourceSelect && currentSourceFilter !== null) {
+        sourceSelect.value = currentSourceFilter;
+        if (window.PricePulse && typeof window.PricePulse.syncCustomSelect === "function") {
+          window.PricePulse.syncCustomSelect(sourceSelect);
+        }
+      }
+    }
+
+    function bindControls() {
+      if (!resultsSlot || resultsSlot.dataset.controlsBound === "true") return;
+      resultsSlot.dataset.controlsBound = "true";
+
+      resultsSlot.addEventListener("change", function (event) {
+        var target = event.target;
+        if (!(target instanceof HTMLSelectElement)) return;
+        if (target.matches("[data-results-sort]")) {
+          sortCards(target.value);
+          applySourceFilter(currentSourceFilter !== null ? currentSourceFilter : detectSourceFilter());
+          return;
+        }
+        if (target.matches("[data-results-source]")) {
+          applySourceFilter(target.value);
+        }
+      });
+
+      resultsSlot.addEventListener("submit", function (event) {
+        var form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.matches(".track-form")) return;
+        stopPolling();
+        form.querySelectorAll("button[type='submit']").forEach(function (button) {
+          if (!(button instanceof HTMLButtonElement)) return;
+          button.disabled = true;
+          button.setAttribute("aria-busy", "true");
+          button.classList.add("is-pending");
+        });
       });
     }
 
@@ -66,9 +133,12 @@
         window.PricePulse.initFragment(progressSlot || document);
         window.PricePulse.initFragment(resultsSlot || document);
       }
-      bindSortButtons();
-      var sortKey = currentSort || detectSort();
+      bindControls();
+      syncControlValues();
+      var sortKey = currentSort !== null ? currentSort : detectSort();
       if (sortKey) sortCards(sortKey);
+      var sourceFilter = currentSourceFilter !== null ? currentSourceFilter : detectSourceFilter();
+      applySourceFilter(sourceFilter);
     }
 
     function stopPolling() {
@@ -112,9 +182,13 @@
       }
     }
 
-    bindSortButtons();
+    bindControls();
     currentSort = detectSort();
+    currentSourceFilter = detectSourceFilter();
     if (currentSort) sortCards(currentSort);
+    applySourceFilter(currentSourceFilter);
+
+    window.addEventListener("pagehide", stopPolling, { once: true });
 
     if (searchStatus === "queued" || searchStatus === "running") {
       scheduleNext(300);

@@ -7,13 +7,14 @@ from __future__ import annotations
 import json
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
 from datetime import datetime
 
 from flask import flash, jsonify, redirect, render_template, request, url_for
 
 from config import (
     DISCOVERY_SOURCE_WORKERS,
+    DISCOVERY_SOURCE_TIMEOUT_SECONDS,
     DISCOVERY_STATUS_POLL_MS,
     DISCOVERY_VERIFY_WORKERS,
     TRACK_RESULT_COOLDOWN_SECONDS,
@@ -33,7 +34,7 @@ from database import (
     get_product_by_id,
     get_runtime_diagnostics,
     get_source_by_id,
-    get_available_sources,
+    get_certified_catalog_sources,
     init_db,
     replace_discovery_results,
     seed_discovery_source_runs,
@@ -150,12 +151,15 @@ def _normalize_discovery_results(raw_results) -> tuple[list[dict], bool]:
 
 def _discovery_progress(search: dict, source_runs: list[dict]) -> dict:
     total = int(search.get("sources_total") or len(source_runs) or 0)
-    finished = int(search.get("sources_finished") or 0)
-    if not finished and source_runs:
-        finished = sum(1 for run in source_runs if (run.get("outcome") or "") != "checking")
+    persisted_finished = int(search.get("sources_finished") or 0)
+    derived_finished = 0
+    if source_runs:
+        derived_finished = sum(1 for run in source_runs if (run.get("outcome") or "") != "checking")
+    finished = max(persisted_finished, derived_finished)
     pending = max(0, total - finished)
     status = (search.get("status") or "completed").strip().lower()
     percent = int(round((finished / total) * 100)) if total else (100 if status == "completed" else 0)
+    finalizing = status in {"queued", "running"} and total > 0 and finished >= total
     return {
         "status": status,
         "total": total,
@@ -163,6 +167,7 @@ def _discovery_progress(search: dict, source_runs: list[dict]) -> dict:
         "pending": pending,
         "percent": max(0, min(100, percent)),
         "active": status in {"queued", "running"},
+        "finalizing": finalizing,
         "completed": status == "completed",
         "failed": status == "failed",
     }
@@ -318,6 +323,11 @@ def _run_discovery_search_job(
     seen_urls: set[str] = set()
     latest_rows: list[dict] = []
     ai_enhanced = False
+    render_executor: ThreadPoolExecutor | None = None
+    render_future = None
+    render_generation = 0
+    render_applied_generation = 0
+    queued_render_rows: list[dict] | None = None
 
     def discover_source(source_row):
         source_dict = dict(source_row)
@@ -347,52 +357,174 @@ def _run_discovery_search_job(
             "failure_reason": failure_reason,
         }
 
+    def persist_source_run(payload: dict) -> None:
+        upsert_discovery_source_run(
+            search_id,
+            payload["source"]["id"],
+            outcome=payload["outcome"],
+            fetch_strategy=_coverage_strategy(payload["stats"]),
+            failure_reason=payload["failure_reason"],
+            raw_count=int(payload["stats"].get("scraped_count") or 0),
+            eligible_count=int(payload["stats"].get("after_dedupe_count") or 0),
+            returned_count=len(payload["deals"]),
+            duration_ms=payload["duration_ms"],
+        )
+
+    def render_snapshot(generation: int, rows_snapshot: list[dict]) -> tuple[int, list[dict], bool]:
+        processed_rows, enhanced = _process_discovery_rows(
+            query=query,
+            sources=sources,
+            rows=rows_snapshot,
+            condition_filter=filter_condition,
+            product_filter=filter_product_type,
+            brand_filter=filter_brand,
+            context=context,
+        )
+        return generation, processed_rows, enhanced
+
+    def submit_render(rows_snapshot: list[dict]) -> None:
+        nonlocal render_executor, render_future, render_generation
+
+        if render_executor is None:
+            render_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pricepulse-discovery-render")
+
+        render_generation += 1
+        render_future = render_executor.submit(render_snapshot, render_generation, rows_snapshot)
+
+    def apply_ready_render(*, block: bool = False) -> None:
+        nonlocal render_future, render_applied_generation, latest_rows, ai_enhanced
+        nonlocal queued_render_rows
+
+        if render_future is None:
+            return
+        if not block and not render_future.done():
+            return
+
+        try:
+            generation, processed_rows, enhanced = render_future.result()
+        except Exception as exc:
+            logging.exception(f"[{datetime.now()}] Discovery render failed for search_id={search_id}: {exc}")
+            render_future = None
+            if queued_render_rows:
+                snapshot = list(queued_render_rows)
+                queued_render_rows = None
+                submit_render(snapshot)
+                apply_ready_render(block=block)
+            return
+
+        render_future = None
+        if generation >= render_applied_generation:
+            render_applied_generation = generation
+            latest_rows = processed_rows
+            ai_enhanced = enhanced
+            replace_discovery_results(search_id, latest_rows)
+            update_discovery_search_state(search_id, result_count=len(latest_rows))
+
+        if queued_render_rows:
+            snapshot = list(queued_render_rows)
+            queued_render_rows = None
+            submit_render(snapshot)
+            apply_ready_render(block=block)
+
+    def ingest_payload_rows(payload: dict) -> None:
+        nonlocal queued_render_rows
+
+        added_new_rows = False
+        for deal in payload["deals"]:
+            url = (deal.get("product_url") or "").strip()
+            if not url or url in seen_urls:
+                continue
+            seen_urls.add(url)
+            cumulative_rows.append(deal)
+            added_new_rows = True
+
+        if not added_new_rows:
+            return
+
+        snapshot = list(cumulative_rows)
+        if render_future is None:
+            submit_render(snapshot)
+        else:
+            queued_render_rows = snapshot
+
     try:
-        with ThreadPoolExecutor(max_workers=max(1, min(DISCOVERY_SOURCE_WORKERS, len(sources) or 1))) as executor:
-            futures = {executor.submit(discover_source, source): idx for idx, source in enumerate(sources)}
+        executor = ThreadPoolExecutor(max_workers=max(1, min(DISCOVERY_SOURCE_WORKERS, len(sources) or 1)))
+        try:
+            futures = {
+                executor.submit(discover_source, source): {
+                    "idx": idx,
+                    "source": source,
+                    "started": time.perf_counter(),
+                }
+                for idx, source in enumerate(sources)
+            }
             finished = 0
-            for future in as_completed(futures):
-                idx = futures[future]
-                source = sources[idx]
-                try:
-                    payload = future.result()
-                except Exception as exc:
-                    logging.error(
-                        f"[{datetime.now()}] Discovery error on {source['name']} for query {query!r}: {exc}"
+            pending = set(futures)
+            while pending:
+                apply_ready_render()
+                done, pending = wait(pending, timeout=0.5, return_when=FIRST_COMPLETED)
+
+                now = time.perf_counter()
+                timed_out = []
+                for future in list(pending):
+                    meta = futures[future]
+                    if now - meta["started"] >= DISCOVERY_SOURCE_TIMEOUT_SECONDS:
+                        timed_out.append(future)
+
+                for future in done:
+                    meta = futures[future]
+                    source = meta["source"]
+                    try:
+                        payload = future.result()
+                    except Exception as exc:
+                        logging.error(
+                            f"[{datetime.now()}] Discovery error on {source['name']} for query {query!r}: {exc}"
+                        )
+                        payload = {
+                            "source": source,
+                            "deals": [],
+                            "stats": {},
+                            "duration_ms": 0,
+                            "outcome": "error",
+                            "failure_reason": "worker_error",
+                        }
+                    persist_source_run(payload)
+                    finished += 1
+                    update_discovery_search_state(search_id, sources_finished=finished)
+                    ingest_payload_rows(payload)
+
+                for future in timed_out:
+                    meta = futures[future]
+                    source = meta["source"]
+                    pending.discard(future)
+                    future.cancel()
+                    elapsed_ms = int((now - meta["started"]) * 1000)
+                    logging.warning(
+                        f"[{datetime.now()}] Discovery timeout on {source['name']} for query {query!r} after {elapsed_ms}ms"
                     )
-                    payload = {
-                        "source": source,
-                        "deals": [],
-                        "stats": {},
-                        "duration_ms": 0,
-                        "outcome": "error",
-                        "failure_reason": "worker_error",
-                    }
+                    persist_source_run(
+                        {
+                            "source": source,
+                            "deals": [],
+                            "stats": {
+                                "fetch_method": "direct",
+                                "failure_reason": "timeout",
+                            },
+                            "duration_ms": elapsed_ms,
+                            "outcome": "timeout",
+                            "failure_reason": "timeout",
+                        }
+                    )
+                    finished += 1
+                    update_discovery_search_state(search_id, sources_finished=finished)
 
-                upsert_discovery_source_run(
-                    search_id,
-                    payload["source"]["id"],
-                    outcome=payload["outcome"],
-                    fetch_strategy=_coverage_strategy(payload["stats"]),
-                    failure_reason=payload["failure_reason"],
-                    raw_count=int(payload["stats"].get("scraped_count") or 0),
-                    eligible_count=int(payload["stats"].get("after_dedupe_count") or 0),
-                    returned_count=len(payload["deals"]),
-                    duration_ms=payload["duration_ms"],
-                )
-                finished += 1
-                update_discovery_search_state(search_id, sources_finished=finished)
+            apply_ready_render(block=True)
+            if finished == len(sources):
+                persisted_result_count = len(get_discovery_results(search_id))
+                render_is_current = render_applied_generation >= render_generation
+                final_result_count = len(latest_rows) or persisted_result_count
 
-                added_new_rows = False
-                for deal in payload["deals"]:
-                    url = (deal.get("product_url") or "").strip()
-                    if not url or url in seen_urls:
-                        continue
-                    seen_urls.add(url)
-                    cumulative_rows.append(deal)
-                    added_new_rows = True
-
-                if added_new_rows or finished == len(sources):
+                if cumulative_rows and not (render_is_current and final_result_count):
                     latest_rows, ai_enhanced = _process_discovery_rows(
                         query=query,
                         sources=sources,
@@ -402,8 +534,19 @@ def _run_discovery_search_job(
                         brand_filter=filter_brand,
                         context=context,
                     )
+                    final_result_count = len(latest_rows)
+                elif not cumulative_rows:
+                    latest_rows = []
+                    ai_enhanced = False
+                    final_result_count = 0
+
+                if latest_rows:
                     replace_discovery_results(search_id, latest_rows)
-                    update_discovery_search_state(search_id, result_count=len(latest_rows))
+                update_discovery_search_state(search_id, result_count=final_result_count)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+            if render_executor is not None:
+                render_executor.shutdown(wait=False, cancel_futures=True)
 
         completed_at = datetime.now().isoformat()
         update_discovery_search_state(
@@ -445,14 +588,14 @@ def _run_discovery_search_job(
 def discover_page():
     tree = get_categories_tree()
     parents = get_parent_categories()
-    sources = get_available_sources()
+    sources = get_certified_catalog_sources()
     if not sources:
         logging.warning(
             f"[{datetime.now()}] discover_page: no sources in DB — re-running init_db"
         )
         try:
             init_db()
-            sources = get_available_sources()
+            sources = get_certified_catalog_sources()
         except Exception as exc:
             logging.error(f"[{datetime.now()}] discover init_db retry failed: {exc}")
     return render_template(
@@ -501,12 +644,21 @@ def discover_search():
 
     search_all = request.form.get("search_all_sources") == "1"
     posted_source_ids = request.form.getlist("source_ids")
-    sources = sources_from_posted_ids(search_all, posted_source_ids)
+    sources = sources_from_posted_ids(search_all, posted_source_ids, query_or_spec=query_spec)
     if not sources:
-        flash(
-            "Select at least one store to search, or turn on All registered stores.",
-            "error",
-        )
+        selected_sources = sources_from_posted_ids(search_all, posted_source_ids)
+        if selected_sources:
+            skipped = [source["name"] for source in selected_sources]
+            flash(
+                "The selected stores do not support this product type at our current quality bar: "
+                + ", ".join(skipped),
+                "error",
+            )
+        else:
+            flash(
+                "Select at least one store to search, or turn on All registered stores.",
+                "error",
+            )
         return redirect(url_for("discover_page"))
 
     filter_condition = request.form.get("filter_condition", "new_only")

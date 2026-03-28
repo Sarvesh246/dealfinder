@@ -119,3 +119,82 @@ def test_local_worker_autostart_only_applies_to_local_runtime(tmp_path, monkeypa
         env={"RAILWAY_ENVIRONMENT": "production"},
         flask_debug=False,
     ) is False
+
+
+def test_protected_fetch_auto_enables_brightdata_and_scopes_to_bestbuy(monkeypatch):
+    import config as config_module
+    import scraper.protected_fetch as protected_fetch
+
+    with monkeypatch.context() as m:
+        m.setenv("BRIGHTDATA_API_TOKEN", "token-123")
+        m.setenv("BRIGHTDATA_ZONE", "zone-123")
+        m.delenv("PROTECTED_FETCH_PROVIDER", raising=False)
+        m.delenv("PROTECTED_FETCH_PROVIDER_DOMAINS", raising=False)
+
+        importlib.reload(config_module)
+        importlib.reload(protected_fetch)
+
+        assert config_module.PROTECTED_FETCH_PROVIDER == "brightdata"
+        assert config_module.PROTECTED_FETCH_PROVIDER_DOMAINS == ("bestbuy.com",)
+        assert protected_fetch.provider_enabled_for("bestbuy.com") is True
+        assert protected_fetch.provider_enabled_for("walmart.com") is False
+
+    importlib.reload(config_module)
+    importlib.reload(protected_fetch)
+
+
+def test_brightdata_provider_parses_json_html_envelope(monkeypatch):
+    import config as config_module
+    import scraper.protected_fetch as protected_fetch
+
+    html_body = (
+        '<html><body><ul>'
+        '<li class="sku-item">Best Buy Row</li>'
+        f'<div>{"x" * 3000}</div>'
+        '</ul></body></html>'
+    )
+
+    class _Response:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+
+        def __init__(self):
+            self.text = ""
+
+        def json(self):
+            return {
+                "status_code": 200,
+                "body": html_body,
+            }
+
+    captured: dict[str, object] = {}
+
+    def _fake_post(url, *, headers=None, json=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return _Response()
+
+    with monkeypatch.context() as m:
+        m.setenv("BRIGHTDATA_API_TOKEN", "token-123")
+        m.setenv("BRIGHTDATA_ZONE", "zone-123")
+        m.delenv("PROTECTED_FETCH_PROVIDER", raising=False)
+
+        importlib.reload(config_module)
+        importlib.reload(protected_fetch)
+        m.setattr(protected_fetch.requests, "post", _fake_post)
+
+        provider = protected_fetch.BrightDataUnlockerProvider()
+        soup, failure_reason = provider.fetch_html(
+            "https://www.bestbuy.com/site/searchpage.jsp?st=airpods",
+            domain="bestbuy.com",
+            page_kind="search",
+            expect_selectors=("li.sku-item",),
+        )
+
+        assert failure_reason is None
+        assert soup is not None
+        assert soup.select_one("li.sku-item") is not None
+        assert captured["json"]["method"] == "GET"
+        assert captured["json"]["format"] == "raw"

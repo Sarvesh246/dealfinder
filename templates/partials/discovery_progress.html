@@ -16,7 +16,11 @@
     {% if search.max_price %}Under ${{ "%.2f" | format(search.max_price) }} · {% endif %}
     {% if progress.active %}
       {{ progress.finished }} of {{ progress.total }} stores checked
-      {% if results %} · {{ results | length }} current result{{ '' if results|length == 1 else 's' }}{% endif %}
+      {% if progress.finalizing %}
+        · Finalizing results
+      {% elif results %}
+        · {{ results | length }} current result{{ '' if results|length == 1 else 's' }}
+      {% endif %}
       · Started {{ search.started_at | default(search.searched_at, true) | relative_time }}
     {% elif progress.failed %}
       Search stopped before all stores completed · {{ results | length }} result{{ '' if results|length == 1 else 's' }} available
@@ -44,7 +48,9 @@
         {{ progress.finished }} / {{ progress.total }} stores checked
       </div>
       <div class="disco-progress-note">
-        {% if progress.active %}
+        {% if progress.finalizing %}
+          Finishing result ranking and dedupe.
+        {% elif progress.active %}
           Results update as each store finishes.
         {% elif progress.failed %}
           Search failed before every store returned.
@@ -54,7 +60,7 @@
       </div>
     </div>
     <div class="disco-progress-state state-{{ progress.status }}">
-      {% if progress.active %}Checking{% elif progress.failed %}Needs retry{% else %}Ready{% endif %}
+      {% if progress.finalizing %}Finalizing{% elif progress.active %}Checking{% elif progress.failed %}Needs retry{% else %}Ready{% endif %}
     </div>
   </div>
   <div class="disco-progress-track" aria-hidden="true">

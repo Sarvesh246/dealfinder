@@ -7,10 +7,15 @@
   .disco-back:hover { color: var(--text-primary); }
 
   .disco-header {
-    display: flex; align-items: flex-start; justify-content: space-between;
-    gap: 16px; margin-bottom: 28px; flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 28px;
   }
-  .disco-header-left { flex: 1; min-width: 0; }
+  .disco-header-left {
+    display: contents;
+  }
 
   .disco-title {
     font-family: 'Space Grotesk', sans-serif; font-size: 24px;
@@ -60,6 +65,8 @@
     border: 1px solid var(--glass-border);
     transition: all 180ms ease; text-decoration: none;
     white-space: nowrap; flex-shrink: 0;
+    justify-self: end;
+    align-self: start;
   }
   .disco-btn-ghost:hover {
     background: var(--glass-hover); color: var(--text-primary);
@@ -67,31 +74,83 @@
   }
 
   /* ── Sort controls ─────────────────────────────────────────────────── */
-  .sort-bar {
-    display: flex; align-items: center; justify-content: flex-end;
-    gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+  .results-toolbar {
+    display: flex; align-items: flex-end; justify-content: flex-end;
+    gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .results-control {
+    display: grid;
+    gap: 6px;
+    min-width: 180px;
   }
   .sort-label {
-    font-size: 12px; color: var(--text-muted); margin-right: 2px;
+    font-size: 12px; color: var(--text-muted);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
   }
-  .sort-btn {
-    font-size: 12px; font-weight: 500; padding: 6px 14px;
-    border-radius: 999px; cursor: pointer; border: 1px solid var(--glass-border);
-    background: var(--glass-bg); color: var(--text-secondary);
-    transition: all 180ms ease; font-family: inherit;
+  .results-select-wrap {
+    position: relative;
   }
-  .sort-btn:hover {
-    background: var(--glass-hover); color: var(--text-primary);
+  .results-select-wrap::after {
+    content: "▾";
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    pointer-events: none;
+    font-size: 12px;
   }
-  .sort-btn.active {
-    background: rgba(124,92,252,0.15); border-color: rgba(124,92,252,0.4);
+  .results-select {
+    width: 100%;
+    appearance: none;
+    -webkit-appearance: none;
+    color-scheme: dark;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
     color: var(--text-primary);
+    font: inherit;
+    font-size: 13px;
+    padding: 11px 38px 11px 14px;
+    transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  }
+  .results-select:hover {
+    background: var(--glass-hover);
+    border-color: rgba(255,255,255,0.16);
+  }
+  .results-select:focus-visible {
+    outline: none;
+    border-color: rgba(124,92,252,0.55);
+    box-shadow: 0 0 0 4px rgba(124,92,252,0.14);
+  }
+  .results-select option,
+  .results-select optgroup {
+    background-color: #17202c;
+    color: #f5f7ff;
+  }
+  .results-select option:checked,
+  .results-select option:hover,
+  .results-select option:focus {
+    background-color: #313943;
+    color: #ffffff;
   }
 
   /* ── Results grid ──────────────────────────────────────────────────── */
   .results-grid {
     display: grid; grid-template-columns: repeat(2, 1fr);
     gap: 16px;
+  }
+
+  .result-card.is-hidden-by-filter {
+    display: none !important;
+  }
+
+  .results-filter-empty {
+    margin-top: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-align: center;
   }
 
   .result-card {
@@ -251,11 +310,15 @@
   .category-hint strong { color: var(--text-primary); }
 
   .coverage-banner {
-    margin: 0 0 18px;
+    margin: 12px 0 18px;
     padding: 14px 16px;
     border-radius: 16px;
     border: 1px solid rgba(255,181,71,0.22);
-    background: rgba(255,181,71,0.08);
+    background:
+      linear-gradient(180deg, rgba(255,181,71,0.07), rgba(255,181,71,0.03)),
+      rgba(20, 23, 19, 0.44);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
     color: var(--text-secondary);
   }
   .coverage-banner strong {
@@ -396,6 +459,12 @@
     opacity: 0.9; box-shadow: 0 4px 16px rgba(124,92,252,0.35);
   }
   .track-btn:active { transform: scale(0.96); }
+  .track-btn.is-pending,
+  .track-btn:disabled {
+    opacity: 0.72;
+    cursor: progress;
+    box-shadow: none;
+  }
 
   /* ── Empty state ───────────────────────────────────────────────────── */
   .empty-state {
@@ -418,8 +487,14 @@
   /* ── Responsive ────────────────────────────────────────────────────── */
   @media (max-width: 768px) {
     .results-grid { grid-template-columns: 1fr; }
-    .disco-header { flex-direction: column; }
-    .sort-bar { justify-content: flex-start; }
+    .disco-header {
+      grid-template-columns: 1fr;
+    }
+    .results-toolbar { justify-content: flex-start; }
+    .results-control { min-width: min(100%, 220px); }
+    .disco-btn-ghost {
+      justify-self: flex-start;
+    }
   }
 
   .discovery-live-shell {
@@ -434,6 +509,8 @@
   .disco-progress-headline {
     display: grid;
     gap: 0;
+    grid-column: 1;
+    min-width: 0;
   }
 
   .disco-progress-shell {
@@ -443,6 +520,14 @@
     gap: 14px;
     overflow: hidden;
     position: relative;
+    grid-column: 1 / -1;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018)),
+      rgba(14, 20, 31, 0.46);
+  }
+
+  .coverage-banner {
+    grid-column: 1 / -1;
   }
 
   .disco-progress-shell::before {

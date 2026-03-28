@@ -1,0 +1,618 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e38]:
+      - status [ref=e39]:
+        - alert [ref=e40]:
+          - img [ref=e42]
+          - generic [ref=e44]: That result is still too broad to track directly. Choose a more specific listing.
+          - button "Dismiss message" [ref=e45] [cursor=pointer]:
+            - img [ref=e46]
+      - link "Back to Discovery" [ref=e49] [cursor=pointer]:
+        - /url: /discover
+        - img [ref=e50]
+        - text: Back to Discovery
+      - generic [ref=e52]:
+        - generic [ref=e53]:
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - 'heading "Best Deals: gaming mouse AI Ranked" [level=1] [ref=e56]':
+                - text: "Best Deals: gaming mouse"
+                - generic [ref=e57]:
+                  - img [ref=e58]
+                  - text: AI Ranked
+              - paragraph [ref=e62]: 13 results found · 8 minutes ago
+              - paragraph [ref=e63]:
+                - generic [ref=e64]: New only
+                - generic [ref=e65]: Main products
+                - generic [ref=e66]: Exact brand line
+            - generic [ref=e67]:
+              - generic [ref=e68]:
+                - generic [ref=e69]:
+                  - generic [ref=e70]: Search Progress
+                  - generic [ref=e71]: 4 / 4 stores checked
+                  - generic [ref=e72]: Search complete.
+                - generic [ref=e73]: Ready
+              - generic [ref=e76]:
+                - generic [ref=e77]:
+                  - generic [ref=e79]: Amazon
+                  - generic [ref=e80]: done
+                - generic [ref=e81]:
+                  - generic [ref=e83]: Best Buy
+                  - generic [ref=e84]: blocked
+                - generic [ref=e85]:
+                  - generic [ref=e87]: Target
+                  - generic [ref=e88]: done
+                - generic [ref=e89]:
+                  - generic [ref=e91]: Walmart
+                  - generic [ref=e92]: blocked
+            - generic [ref=e93]:
+              - strong [ref=e94]: "Partial coverage: 2 of 4 stores were temporarily unavailable."
+              - generic [ref=e95]: Store coverage is limited right now. Results may be incomplete until the affected stores recover.
+              - group [ref=e96]:
+                - generic "View details" [ref=e97] [cursor=pointer]
+          - link "Search Again" [ref=e98] [cursor=pointer]:
+            - /url: /discover
+            - img [ref=e99]
+            - text: Search Again
+        - generic [ref=e102]:
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - generic [ref=e105]: Sort by
+              - generic [ref=e106]:
+                - combobox:
+                  - option "Best Deal" [selected]
+                  - option "Biggest Discount"
+                  - option "Lowest Price"
+                  - option "Most Relevant"
+                - button "Sort by Best Deal" [ref=e108] [cursor=pointer]:
+                  - generic [ref=e109]: Best Deal
+                  - img [ref=e111]
+            - generic [ref=e113]:
+              - generic [ref=e114]: Source
+              - generic [ref=e115]:
+                - combobox:
+                  - option "All selected sources" [selected]
+                  - option "Amazon"
+                  - option "Best Buy"
+                  - option "Target"
+                  - option "Walmart"
+                - button "Source All selected sources" [ref=e117] [cursor=pointer]:
+                  - generic [ref=e118]: All selected sources
+                  - img [ref=e120]
+          - generic [ref=e122]:
+            - generic [ref=e123]:
+              - generic [ref=e124]:
+                - img [ref=e125]:
+                  - generic [ref=e128]: "41"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "41"
+                  - generic:
+                    - generic: Discount
+                    - generic: 28pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e129]: "-49.3% OFF"
+              - generic [ref=e130]: Logitech G502 Hero High Performance Wired Gaming Mouse, Hero 25K Sensor, 25,600 DPI, RGB, Adjustable Weights, 11 Programmable Buttons, On-Board Memory, PC/Mac - Black
+              - generic [ref=e131]:
+                - generic [ref=e133]: Amazon
+                - generic [ref=e134]: Category Primary
+              - generic [ref=e135]:
+                - generic [ref=e136]: $35.49
+                - generic [ref=e137]: $69.99
+              - generic [ref=e138]: You save $34.50
+              - generic [ref=e139]:
+                - generic [ref=e140]: Match
+                - generic [ref=e143]: 61%
+              - generic [ref=e144]:
+                - link "View on Amazon ↗" [ref=e146] [cursor=pointer]:
+                  - /url: /open/discovery-result/1101
+                - button "Track This" [ref=e148] [cursor=pointer]:
+                  - img [ref=e149]
+                  - text: Track This
+            - generic [ref=e150]:
+              - generic [ref=e151]:
+                - img [ref=e152]:
+                  - generic [ref=e155]: "35"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "35"
+                  - generic:
+                    - generic: Discount
+                    - generic: 17pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 24pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e156]: "-30.0% OFF"
+              - generic [ref=e157]: "Razer DeathAdder Essential Gaming Mouse: 6400 DPI Optical Sensor - 5 Programmable Buttons - Mechanical Switches - Rubber Side Grips - Classic Black"
+              - generic [ref=e158]:
+                - generic [ref=e160]: Amazon
+                - generic [ref=e161]: Category Primary
+              - generic [ref=e162]:
+                - generic [ref=e163]: $20.98
+                - generic [ref=e164]: $29.99
+              - generic [ref=e165]: You save $9.01
+              - generic [ref=e166]:
+                - generic [ref=e167]: Match
+                - generic [ref=e170]: 71%
+              - generic [ref=e171]:
+                - link "View on Amazon ↗" [ref=e173] [cursor=pointer]:
+                  - /url: /open/discovery-result/1102
+                - button "Track This" [ref=e175] [cursor=pointer]:
+                  - img [ref=e176]
+                  - text: Track This
+            - generic [ref=e177]:
+              - generic [ref=e178]:
+                - img [ref=e179]:
+                  - generic [ref=e182]: "35"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "35"
+                  - generic:
+                    - generic: Discount
+                    - generic: 17pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e183]: "-30.0% OFF"
+              - generic [ref=e184]: Razer Basilisk V3 X HyperSpeed Gaming Mouse - Optical - Wireless - Bluetooth/Radio Frequency - 2.40 GHz - Black - USB - 18000 dpi - 7 Button(s) - 7 Programmable Button(s) - Right-handed - 1 x AA Batte
+              - generic [ref=e185]:
+                - generic [ref=e187]: Amazon
+                - generic [ref=e188]: Category Primary
+              - generic [ref=e189]:
+                - generic [ref=e190]: $48.99
+                - generic [ref=e191]: $69.99
+              - generic [ref=e192]: You save $21.00
+              - generic [ref=e193]:
+                - generic [ref=e194]: Match
+                - generic [ref=e197]: 62%
+              - generic [ref=e198]:
+                - link "View on Amazon ↗" [ref=e200] [cursor=pointer]:
+                  - /url: /open/discovery-result/1103
+                - button "Track This" [ref=e202] [cursor=pointer]:
+                  - img [ref=e203]
+                  - text: Track This
+            - generic [ref=e204]:
+              - generic [ref=e205]:
+                - img [ref=e206]:
+                  - generic [ref=e209]: "35"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "35"
+                  - generic:
+                    - generic: Discount
+                    - generic: 19pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e210]: "-34.0% OFF"
+              - generic [ref=e211]: PHILIPS Wired Gaming Mouse, Adjustable DPI Sensitivity, Programmable Buttons RGB Lighting, for Windows/Mac
+              - generic [ref=e212]:
+                - generic [ref=e214]: Target
+                - generic [ref=e215]: Category Primary
+              - generic [ref=e216]:
+                - generic [ref=e217]: $16.49
+                - generic [ref=e218]: $24.99
+              - generic [ref=e219]: You save $8.50
+              - generic [ref=e220]:
+                - generic [ref=e221]: Match
+                - generic [ref=e224]: 63%
+              - generic [ref=e225]:
+                - link "View on Target ↗" [ref=e227] [cursor=pointer]:
+                  - /url: /open/discovery-result/1104
+                - button "Track This" [ref=e229] [cursor=pointer]:
+                  - img [ref=e230]
+                  - text: Track This
+            - generic [ref=e231]:
+              - generic [ref=e232]:
+                - img [ref=e233]:
+                  - generic [ref=e236]: "33"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "33"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 23pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e237]: "-25.0% OFF"
+              - generic [ref=e238]: "Logitech G305 Lightspeed Wireless Optical Gaming Mouse: USB-A Connection, 6 Buttons"
+              - generic [ref=e239]:
+                - generic [ref=e241]: Target
+                - generic [ref=e242]: Category Primary
+              - generic [ref=e243]:
+                - generic [ref=e244]: $26.99
+                - generic [ref=e245]: $35.99
+              - generic [ref=e246]: You save $9.00
+              - generic [ref=e247]:
+                - generic [ref=e248]: Match
+                - generic [ref=e251]: 66%
+              - generic [ref=e252]:
+                - link "View on Target ↗" [ref=e254] [cursor=pointer]:
+                  - /url: /open/discovery-result/1105
+                - button "Track This" [ref=e256] [cursor=pointer]:
+                  - img [ref=e257]
+                  - text: Track This
+            - generic [ref=e258]:
+              - generic [ref=e259]:
+                - img [ref=e260]:
+                  - generic [ref=e263]: "32"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "32"
+                  - generic:
+                    - generic: Discount
+                    - generic: 16pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e264]: "-28.8% OFF"
+              - generic [ref=e265]: Redragon M612 Predator RGB Gaming Mouse, 8000 DPI Wired Optical Mouse with 11 Programmable Buttons & 5 Backlit Modes, Software Supports DIY Keybinds Rapid Fire Button
+              - generic [ref=e266]:
+                - generic [ref=e268]: Amazon
+                - generic [ref=e269]: Category Primary
+              - generic [ref=e270]:
+                - generic [ref=e271]: $14.23
+                - generic [ref=e272]: $19.99
+              - generic [ref=e273]: You save $5.76
+              - generic [ref=e274]:
+                - generic [ref=e275]: Match
+                - generic [ref=e278]: 63%
+              - generic [ref=e279]:
+                - link "View on Amazon ↗" [ref=e281] [cursor=pointer]:
+                  - /url: /open/discovery-result/1106
+                - button "Track This" [ref=e283] [cursor=pointer]:
+                  - img [ref=e284]
+                  - text: Track This
+            - generic [ref=e285]:
+              - generic [ref=e286]:
+                - img [ref=e287]:
+                  - generic [ref=e290]: "31"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "31"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 16pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e291]: "-24.6% OFF"
+              - generic [ref=e292]: "Logitech M196 Bluetooth Mouse - Pink: Bluetooth, Home Use"
+              - generic [ref=e293]:
+                - generic [ref=e295]: Target
+                - generic [ref=e296]: Category Primary
+              - generic [ref=e297]:
+                - generic [ref=e298]: $9.79
+                - generic [ref=e299]: $12.99
+              - generic [ref=e300]: You save $3.20
+              - generic [ref=e301]:
+                - generic [ref=e302]: Match
+                - generic [ref=e305]: 47%
+              - generic [ref=e306]:
+                - link "View on Target ↗" [ref=e308] [cursor=pointer]:
+                  - /url: /open/discovery-result/1107
+                - button "Track This" [ref=e310] [cursor=pointer]:
+                  - img [ref=e311]
+                  - text: Track This
+            - generic [ref=e312]:
+              - generic [ref=e313]:
+                - img [ref=e314]:
+                  - generic [ref=e317]: "31"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "31"
+                  - generic:
+                    - generic: Discount
+                    - generic: 12pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e318]: "-22.2% OFF"
+              - generic [ref=e319]: "Logitech G309 LIGHTSPEED Wireless Gaming Mouse, LIGHTFORCE Hybrid Switches, HERO 25K Sensor, PC & Mac - Black: USB-C, Bluetooth, 6 Buttons"
+              - generic [ref=e320]:
+                - generic [ref=e322]: Target
+                - generic [ref=e323]: Category Primary
+              - generic [ref=e324]:
+                - generic [ref=e325]: $69.99
+                - generic [ref=e326]: $89.99
+              - generic [ref=e327]: You save $20.00
+              - generic [ref=e328]:
+                - generic [ref=e329]: Match
+                - generic [ref=e332]: 57%
+              - generic [ref=e333]:
+                - link "View on Target ↗" [ref=e335] [cursor=pointer]:
+                  - /url: /open/discovery-result/1108
+                - button "Track This" [ref=e337] [cursor=pointer]:
+                  - img [ref=e338]
+                  - text: Track This
+            - generic [ref=e339]:
+              - generic [ref=e340]:
+                - img [ref=e341]:
+                  - generic [ref=e344]: "29"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "29"
+                  - generic:
+                    - generic: Discount
+                    - generic: 11pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 24pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e345]: "-20.9% OFF"
+              - generic [ref=e346]: BENGOO Gaming Mouse Wired, Ergonomic Gamer Laptop PC Optical Computer Mice with RGB Backlit, 4 Adjustable DPI Up to 3600, 6 Programmable Buttons for Windows 7/8/10/XP Vista Linux -Black
+              - generic [ref=e347]:
+                - generic [ref=e349]: Amazon
+                - generic [ref=e350]: Category Primary
+              - generic [ref=e351]:
+                - generic [ref=e352]: $9.49
+                - generic [ref=e353]: $11.99
+              - generic [ref=e354]: You save $2.50
+              - generic [ref=e355]:
+                - generic [ref=e356]: Match
+                - generic [ref=e359]: 68%
+              - generic [ref=e360]:
+                - link "View on Amazon ↗" [ref=e362] [cursor=pointer]:
+                  - /url: /open/discovery-result/1109
+                - button "Track This" [ref=e364] [cursor=pointer]:
+                  - img [ref=e365]
+                  - text: Track This
+            - generic [ref=e366]:
+              - generic [ref=e367]:
+                - img [ref=e368]:
+                  - generic [ref=e371]: "28"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "28"
+                  - generic:
+                    - generic: Discount
+                    - generic: 11pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 18pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e372]: "-20.0% OFF"
+              - generic [ref=e373]: "HyperX Pulsefire Haste 2 Core Wireless Gaming Mouse for PC - White: macOS, Xbox Compatible"
+              - generic [ref=e374]:
+                - generic [ref=e376]: Target
+                - generic [ref=e377]: Category Primary
+              - generic [ref=e378]:
+                - generic [ref=e379]: $39.99
+                - generic [ref=e380]: $49.99
+              - generic [ref=e381]: You save $10.00
+              - generic [ref=e382]:
+                - generic [ref=e383]: Match
+                - generic [ref=e386]: 52%
+              - generic [ref=e387]:
+                - link "View on Target ↗" [ref=e389] [cursor=pointer]:
+                  - /url: /open/discovery-result/1110
+                - button "Track This" [ref=e391] [cursor=pointer]:
+                  - img [ref=e392]
+                  - text: Track This
+            - generic [ref=e393]:
+              - generic [ref=e394]:
+                - img [ref=e395]:
+                  - generic [ref=e398]: "27"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "27"
+                  - generic:
+                    - generic: Discount
+                    - generic: 7pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 18pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e399]: "-13.0% OFF"
+              - generic [ref=e400]: "Logitech Wireless Keyboard and Mouse: USB-A Full Size, Mechanical Switch, Business Use"
+              - generic [ref=e401]:
+                - generic [ref=e403]: Target
+                - generic [ref=e404]: Category Primary
+              - generic [ref=e405]:
+                - generic [ref=e406]: $19.99
+                - generic [ref=e407]: $22.99
+              - generic [ref=e408]: You save $3.00
+              - generic [ref=e409]:
+                - generic [ref=e410]: Match
+                - generic [ref=e413]: 51%
+              - generic [ref=e414]:
+                - link "View on Target ↗" [ref=e416] [cursor=pointer]:
+                  - /url: /open/discovery-result/1111
+                - button "Track This" [ref=e418] [cursor=pointer]:
+                  - img [ref=e419]
+                  - text: Track This
+            - generic [ref=e420]:
+              - generic [ref=e421]:
+                - img [ref=e422]:
+                  - generic [ref=e425]: "24"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "24"
+                  - generic:
+                    - generic: Discount
+                    - generic: 3pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 18pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e426]: "-6.6% OFF"
+              - generic [ref=e427]: "Logitech G502 HERO Wired Gaming Mouse: USB Connection for Windows & macOS Compatibility"
+              - generic [ref=e428]:
+                - generic [ref=e430]: Target
+                - generic [ref=e431]: Category Primary
+              - generic [ref=e432]:
+                - generic [ref=e433]: $35.49
+                - generic [ref=e434]: $37.99
+              - generic [ref=e435]: You save $2.50
+              - generic [ref=e436]:
+                - generic [ref=e437]: Match
+                - generic [ref=e440]: 52%
+              - generic [ref=e441]:
+                - link "View on Target ↗" [ref=e443] [cursor=pointer]:
+                  - /url: /open/discovery-result/1112
+                - button "Track This" [ref=e445] [cursor=pointer]:
+                  - img [ref=e446]
+                  - text: Track This
+            - generic [ref=e447]:
+              - generic [ref=e448]:
+                - img [ref=e449]:
+                  - generic [ref=e452]: "22"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "22"
+                  - generic:
+                    - generic: Discount
+                    - generic: 2pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e453]: "-5.0% OFF"
+              - generic [ref=e454]: Redragon M908 Impact RGB LED MMO Gaming Mouse with 12 Side Buttons, Optical Wired Ergonomic Mouse with Max 12,400DPI, High Precision, 18 Programmable Macro Shortcuts, Comfort Grip
+              - generic [ref=e455]:
+                - generic [ref=e457]: Amazon
+                - generic [ref=e458]: Related
+              - generic [ref=e459]:
+                - generic [ref=e460]: $25.64
+                - generic [ref=e461]: $26.99
+              - generic [ref=e462]: You save $1.35
+              - generic [ref=e463]:
+                - generic [ref=e464]: Match
+                - generic [ref=e467]: 60%
+              - generic [ref=e468]:
+                - link "View on Amazon ↗" [ref=e470] [cursor=pointer]:
+                  - /url: /open/discovery-result/1113
+                - button "Track This" [ref=e472] [cursor=pointer]:
+                  - img [ref=e473]
+                  - text: Track This

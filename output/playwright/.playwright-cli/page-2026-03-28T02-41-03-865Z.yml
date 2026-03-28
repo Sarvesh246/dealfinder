@@ -1,0 +1,492 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e38]:
+      - link "Back to Discovery" [ref=e39] [cursor=pointer]:
+        - /url: /discover
+        - img [ref=e40]
+        - text: Back to Discovery
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e99]:
+              - 'heading "Best Deals: standing desk AI Ranked" [level=1] [ref=e100]':
+                - text: "Best Deals: standing desk"
+                - generic [ref=e101]:
+                  - img [ref=e102]
+                  - text: AI Ranked
+              - paragraph [ref=e106]: 4 of 5 stores checked · 10 current results · Started 1 minute ago
+              - paragraph [ref=e107]:
+                - generic [ref=e108]: New only
+                - generic [ref=e109]: Main products
+                - generic [ref=e110]: Exact brand line
+            - generic [ref=e111]:
+              - generic [ref=e112]:
+                - generic [ref=e113]:
+                  - generic [ref=e114]: Search Progress
+                  - generic [ref=e115]: 4 / 5 stores checked
+                  - generic [ref=e116]: Results update as each store finishes.
+                - generic [ref=e117]: Checking
+              - generic [ref=e120]:
+                - generic [ref=e121]:
+                  - generic [ref=e123]: Amazon
+                  - generic [ref=e124]: done
+                - generic [ref=e125]:
+                  - generic [ref=e127]: Best Buy
+                  - generic [ref=e128]: blocked
+                - generic [ref=e129]:
+                  - generic [ref=e131]: Office Depot
+                  - generic [ref=e132]: done
+                - generic [ref=e133]:
+                  - generic [ref=e135]: Target
+                  - generic [ref=e136]: checking
+                - generic [ref=e137]:
+                  - generic [ref=e139]: Walmart
+                  - generic [ref=e140]: blocked
+            - generic [ref=e141]:
+              - strong [ref=e142]: "Partial coverage: 2 of 5 stores were temporarily unavailable."
+              - generic [ref=e143]: Store coverage is limited right now. Results may be incomplete until the affected stores recover.
+              - group [ref=e144]:
+                - generic "View details" [ref=e145] [cursor=pointer]
+          - link "Search Again" [ref=e87] [cursor=pointer]:
+            - /url: /discover
+            - img [ref=e88]
+            - text: Search Again
+        - generic [ref=e91]:
+          - paragraph [ref=e146]:
+            - strong [ref=e147]: Pick a result to track.
+            - text: Broad category searches stay browse-first until you choose a specific listing.
+          - generic [ref=e148]:
+            - generic [ref=e149]: "Sort by:"
+            - button "Best Deal" [ref=e150] [cursor=pointer]
+            - button "Biggest Discount" [ref=e151] [cursor=pointer]
+            - button "Lowest Price" [ref=e152] [cursor=pointer]
+            - button "Most Relevant" [ref=e153] [cursor=pointer]
+          - generic [ref=e154]:
+            - generic [ref=e155]:
+              - generic [ref=e156]:
+                - img [ref=e157]:
+                  - generic [ref=e160]: "33"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "33"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 19pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 15pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e161]: "-7.2% OFF"
+              - generic [ref=e162]: Stratus 60W x 30D Electric Height Adjustable Standing Desk, Natural Elm, Standard Delivery
+              - generic [ref=e163]:
+                - generic [ref=e165]: Office Depot
+                - generic [ref=e166]: Category Primary
+              - generic [ref=e167]:
+                - strong [ref=e168]: "Also at:"
+                - text: Office Depot, Office Depot, Office Depot, Office Depot, Office Depot, Office Depot
+              - generic [ref=e169]:
+                - generic [ref=e170]: $807.05
+                - generic [ref=e171]: $869.99
+              - generic [ref=e172]: You save $62.94
+              - generic [ref=e173]:
+                - generic [ref=e174]: Match
+                - generic [ref=e177]: 54%
+              - generic [ref=e178]:
+                - link "View on Office Depot ↗" [ref=e180] [cursor=pointer]:
+                  - /url: /open/discovery-result/269
+                - button "Track This" [ref=e182] [cursor=pointer]:
+                  - img [ref=e183]
+                  - text: Track This
+            - generic [ref=e184]:
+              - generic [ref=e185]:
+                - img [ref=e186]:
+                  - generic [ref=e189]: "29"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "29"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 15pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e190]: "-7.2% OFF"
+              - generic [ref=e191]: Stratus 60W x 30D Electric Height Adjustable Standing Desk with Storage, Platinum Gray, Standard Delivery
+              - generic [ref=e192]:
+                - generic [ref=e194]: Office Depot
+                - generic [ref=e195]: Category Primary
+              - generic [ref=e196]:
+                - generic [ref=e197]: $1178.11
+                - generic [ref=e198]: $1269.99
+              - generic [ref=e199]: You save $91.88
+              - generic [ref=e200]:
+                - generic [ref=e201]: Match
+                - generic [ref=e204]: 61%
+              - generic [ref=e205]:
+                - link "View on Office Depot ↗" [ref=e207] [cursor=pointer]:
+                  - /url: /open/discovery-result/270
+                - button "Track This" [ref=e209] [cursor=pointer]:
+                  - img [ref=e210]
+                  - text: Track This
+            - generic [ref=e211]:
+              - generic [ref=e212]:
+                - img [ref=e213]:
+                  - generic [ref=e216]: "29"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "29"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 15pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e217]: "-7.2% OFF"
+              - generic [ref=e218]: Stratus 72W x 30D Electric Height Adjustable Standing Desk with Modesty Panel, Platinum Gray, Standard Delivery
+              - generic [ref=e219]:
+                - generic [ref=e221]: Office Depot
+                - generic [ref=e222]: Category Primary
+              - generic [ref=e223]:
+                - generic [ref=e224]: $955.49
+                - generic [ref=e225]: $1029.99
+              - generic [ref=e226]: You save $74.50
+              - generic [ref=e227]:
+                - generic [ref=e228]: Match
+                - generic [ref=e231]: 61%
+              - generic [ref=e232]:
+                - link "View on Office Depot ↗" [ref=e234] [cursor=pointer]:
+                  - /url: /open/discovery-result/271
+                - button "Track This" [ref=e236] [cursor=pointer]:
+                  - img [ref=e237]
+                  - text: Track This
+            - generic [ref=e238]:
+              - generic [ref=e239]:
+                - img [ref=e240]:
+                  - generic [ref=e243]: "29"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "29"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 15pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e244]: "-7.2% OFF"
+              - generic [ref=e245]: Stratus 72W x 30D Electric Height Adjustable Standing Desk with Storage, Platinum Gray, Standard Delivery
+              - generic [ref=e246]:
+                - generic [ref=e248]: Office Depot
+                - generic [ref=e249]: Category Primary
+              - generic [ref=e250]:
+                - generic [ref=e251]: $1205.94
+                - generic [ref=e252]: $1299.99
+              - generic [ref=e253]: You save $94.05
+              - generic [ref=e254]:
+                - generic [ref=e255]: Match
+                - generic [ref=e258]: 61%
+              - generic [ref=e259]:
+                - link "View on Office Depot ↗" [ref=e261] [cursor=pointer]:
+                  - /url: /open/discovery-result/272
+                - button "Track This" [ref=e263] [cursor=pointer]:
+                  - img [ref=e264]
+                  - text: Track This
+            - generic [ref=e265]:
+              - generic [ref=e266]:
+                - img [ref=e267]:
+                  - generic [ref=e270]: "29"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "29"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 15pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e271]: "-7.2% OFF"
+              - generic [ref=e272]: Stratus 60W x 30D Electric Height Adjustable Standing Desk with Modesty Panel, Natural Elm, Standard Delivery
+              - generic [ref=e273]:
+                - generic [ref=e275]: Office Depot
+                - generic [ref=e276]: Category Primary
+              - generic [ref=e277]:
+                - generic [ref=e278]: $918.36
+                - generic [ref=e279]: $989.99
+              - generic [ref=e280]: You save $71.63
+              - generic [ref=e281]:
+                - generic [ref=e282]: Match
+                - generic [ref=e285]: 59%
+              - generic [ref=e286]:
+                - link "View on Office Depot ↗" [ref=e288] [cursor=pointer]:
+                  - /url: /open/discovery-result/273
+                - button "Track This" [ref=e290] [cursor=pointer]:
+                  - img [ref=e291]
+                  - text: Track This
+            - generic [ref=e292]:
+              - generic [ref=e293]:
+                - img [ref=e294]:
+                  - generic [ref=e297]: "29"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "29"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 15pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e298]: "-7.2% OFF"
+              - generic [ref=e299]: Stratus 60W x 30D Electric Height Adjustable Standing Desk with Storage, Natural Elm, Standard Delivery
+              - generic [ref=e300]:
+                - generic [ref=e302]: Office Depot
+                - generic [ref=e303]: Category Primary
+              - generic [ref=e304]:
+                - generic [ref=e305]: $1178.11
+                - generic [ref=e306]: $1269.99
+              - generic [ref=e307]: You save $91.88
+              - generic [ref=e308]:
+                - generic [ref=e309]: Match
+                - generic [ref=e312]: 59%
+              - generic [ref=e313]:
+                - link "View on Office Depot ↗" [ref=e315] [cursor=pointer]:
+                  - /url: /open/discovery-result/274
+                - button "Track This" [ref=e317] [cursor=pointer]:
+                  - img [ref=e318]
+                  - text: Track This
+            - generic [ref=e319]:
+              - generic [ref=e320]:
+                - img [ref=e321]:
+                  - generic [ref=e324]: "28"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "28"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 15pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e325]: "-7.2% OFF"
+              - generic [ref=e326]: Stratus 60W x 30D Electric Height Adjustable Standing Desk, Platinum Gray, Standard Delivery
+              - generic [ref=e327]:
+                - generic [ref=e329]: Office Depot
+                - generic [ref=e330]: Category Primary
+              - generic [ref=e331]:
+                - generic [ref=e332]: $807.05
+                - generic [ref=e333]: $869.99
+              - generic [ref=e334]: You save $62.94
+              - generic [ref=e335]:
+                - generic [ref=e336]: Match
+                - generic [ref=e339]: 58%
+              - generic [ref=e340]:
+                - link "View on Office Depot ↗" [ref=e342] [cursor=pointer]:
+                  - /url: /open/discovery-result/275
+                - button "Track This" [ref=e344] [cursor=pointer]:
+                  - img [ref=e345]
+                  - text: Track This
+            - generic [ref=e346]:
+              - generic [ref=e347]:
+                - img [ref=e348]:
+                  - generic [ref=e351]: "27"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "27"
+                  - generic:
+                    - generic: Discount
+                    - generic: 9pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e352]: "-15.8% OFF"
+              - generic [ref=e353]: Realspace® 48"W Essential Electric Height Adjustable Standing Desk, Black
+              - generic [ref=e354]:
+                - generic [ref=e356]: Office Depot
+                - generic [ref=e357]: Category Primary
+              - generic [ref=e358]:
+                - generic [ref=e359]: $159.99
+                - generic [ref=e360]: $189.99
+              - generic [ref=e361]: You save $30.00
+              - generic [ref=e362]:
+                - generic [ref=e363]: Match
+                - generic [ref=e366]: 65%
+              - generic [ref=e367]:
+                - link "View on Office Depot ↗" [ref=e369] [cursor=pointer]:
+                  - /url: /open/discovery-result/276
+                - button "Track This" [ref=e371] [cursor=pointer]:
+                  - img [ref=e372]
+                  - text: Track This
+            - generic [ref=e373]:
+              - generic [ref=e374]:
+                - img [ref=e375]:
+                  - generic [ref=e378]: "27"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "27"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 20pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 7pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e379]: "-8.3% OFF"
+              - generic [ref=e380]: Bestier 58"W Electric Adjustable Height Standing Desk With Monitor Riser, Carbon Fiber Black
+              - generic [ref=e381]:
+                - generic [ref=e383]: Office Depot
+                - generic [ref=e384]: Related
+              - generic [ref=e385]:
+                - strong [ref=e386]: "Also at:"
+                - text: Office Depot
+              - generic [ref=e387]:
+                - generic [ref=e388]: $329.99
+                - generic [ref=e389]: $359.99
+              - generic [ref=e390]: You save $30.00
+              - generic [ref=e391]:
+                - generic [ref=e392]: Match
+                - generic [ref=e395]: 59%
+              - generic [ref=e396]:
+                - link "View on Office Depot ↗" [ref=e398] [cursor=pointer]:
+                  - /url: /open/discovery-result/277
+                - button "Track This" [ref=e400] [cursor=pointer]:
+                  - img [ref=e401]
+                  - text: Track This
+            - generic [ref=e402]:
+              - generic [ref=e403]:
+                - img [ref=e404]:
+                  - generic [ref=e407]: "22"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "22"
+                  - generic:
+                    - generic: Discount
+                    - generic: 4pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 7pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e408]: "-8.3% OFF"
+              - generic [ref=e409]: Bestier 59"W Electric Adjustable Height Standing Desk With Monitor Riser, Rustic Brown
+              - generic [ref=e410]:
+                - generic [ref=e412]: Office Depot
+                - generic [ref=e413]: Related
+              - generic [ref=e414]:
+                - generic [ref=e415]: $329.99
+                - generic [ref=e416]: $359.99
+              - generic [ref=e417]: You save $30.00
+              - generic [ref=e418]:
+                - generic [ref=e419]: Match
+                - generic [ref=e422]: 61%
+              - generic [ref=e423]:
+                - link "View on Office Depot ↗" [ref=e425] [cursor=pointer]:
+                  - /url: /open/discovery-result/278
+                - button "Track This" [ref=e427] [cursor=pointer]:
+                  - img [ref=e428]
+                  - text: Track This

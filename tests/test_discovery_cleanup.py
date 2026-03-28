@@ -1,4 +1,5 @@
 from discovery_filters import enrich_result_metadata, passes_eligibility, resolve_family_and_intent
+from hf_utils import SmartEngine
 from product_identity import detect_condition
 from scraper import clean_listing_title
 
@@ -66,3 +67,30 @@ def test_apple_watch_primary_title_is_not_misclassified_as_accessory():
         query_for_intent=query,
         min_confidence=0.0,
     )
+
+
+def test_deduplicate_results_keeps_also_at_unique_across_sources_only():
+    engine = SmartEngine()
+    rows = [
+        {
+            "product_name": "Realspace 48W Essential Electric Height Adjustable Standing Desk",
+            "current_price": 159.99,
+            "source_name": "Office Depot",
+        },
+        {
+            "product_name": "Realspace 48W Essential Electric Height Adjustable Standing Desk Black",
+            "current_price": 189.99,
+            "source_name": "Office Depot",
+        },
+        {
+            "product_name": "Realspace 48W Essential Electric Height Adjustable Standing Desk",
+            "current_price": 169.99,
+            "source_name": "Amazon",
+        },
+    ]
+
+    deduped = engine.deduplicate_results(rows, threshold=0.72)
+
+    best = next(row for row in deduped if row.get("is_best_in_group"))
+    assert best["source_name"] == "Office Depot"
+    assert best["also_available_at"] == ["Amazon"]

@@ -49,6 +49,7 @@ DISCOVERY_VERIFY_WORKERS = _env_int("DISCOVERY_VERIFY_WORKERS", 4)
 STRICT_VERIFY_WORKERS = _env_int("STRICT_VERIFY_WORKERS", 3)
 DISCOVERY_INTERACTIVE_WORKERS = _env_int("DISCOVERY_INTERACTIVE_WORKERS", 2)
 DISCOVERY_STATUS_POLL_MS = _env_int("DISCOVERY_STATUS_POLL_MS", 1200)
+DISCOVERY_SOURCE_TIMEOUT_SECONDS = _env_int("DISCOVERY_SOURCE_TIMEOUT_SECONDS", 45)
 CHECK_COOLDOWN_SECONDS = _env_int("CHECK_COOLDOWN_SECONDS", 60)
 TRACK_RESULT_COOLDOWN_SECONDS = _env_int("TRACK_RESULT_COOLDOWN_SECONDS", 5)
 
@@ -84,22 +85,31 @@ SCRAPER_DEBUG_DIR = os.getenv(
     "SCRAPER_DEBUG_DIR",
     str(Path(tempfile.gettempdir()) / "pricepulse_scraper_debug"),
 ).strip()
-PROTECTED_FETCH_PROVIDER = os.getenv("PROTECTED_FETCH_PROVIDER", "none").strip().lower()
-PROTECTED_FETCH_DOMAINS = tuple(
-    domain.strip().lower()
-    for domain in os.getenv("PROTECTED_FETCH_DOMAINS", "bestbuy.com,walmart.com").split(",")
-    if domain.strip()
-)
-PROTECTED_FETCH_ONLY_ON_FAILURE = _env_flag("PROTECTED_FETCH_ONLY_ON_FAILURE", True)
-PROTECTED_FETCH_TIMEOUT_SECONDS = _env_int("PROTECTED_FETCH_TIMEOUT_SECONDS", 30)
-SOURCE_BLOCK_COOLDOWN_SECONDS = _env_int("SOURCE_BLOCK_COOLDOWN_SECONDS", 600)
-SOURCE_BLOCK_MAX_BACKOFF_SECONDS = _env_int("SOURCE_BLOCK_MAX_BACKOFF_SECONDS", 3600)
 BRIGHTDATA_UNLOCKER_ENDPOINT = os.getenv(
     "BRIGHTDATA_UNLOCKER_ENDPOINT",
     "https://api.brightdata.com/request",
 ).strip()
 BRIGHTDATA_API_TOKEN = os.getenv("BRIGHTDATA_API_TOKEN", "").strip()
 BRIGHTDATA_ZONE = os.getenv("BRIGHTDATA_ZONE", "").strip()
+_protected_fetch_provider_raw = os.getenv("PROTECTED_FETCH_PROVIDER", "auto").strip().lower()
+if _protected_fetch_provider_raw in {"", "auto"}:
+    PROTECTED_FETCH_PROVIDER = "brightdata" if (BRIGHTDATA_API_TOKEN and BRIGHTDATA_ZONE) else "none"
+else:
+    PROTECTED_FETCH_PROVIDER = _protected_fetch_provider_raw
+PROTECTED_FETCH_DOMAINS = tuple(
+    domain.strip().lower()
+    for domain in os.getenv("PROTECTED_FETCH_DOMAINS", "bestbuy.com,walmart.com").split(",")
+    if domain.strip()
+)
+PROTECTED_FETCH_PROVIDER_DOMAINS = tuple(
+    domain.strip().lower()
+    for domain in os.getenv("PROTECTED_FETCH_PROVIDER_DOMAINS", "bestbuy.com").split(",")
+    if domain.strip()
+)
+PROTECTED_FETCH_ONLY_ON_FAILURE = _env_flag("PROTECTED_FETCH_ONLY_ON_FAILURE", True)
+PROTECTED_FETCH_TIMEOUT_SECONDS = _env_int("PROTECTED_FETCH_TIMEOUT_SECONDS", 30)
+SOURCE_BLOCK_COOLDOWN_SECONDS = _env_int("SOURCE_BLOCK_COOLDOWN_SECONDS", 600)
+SOURCE_BLOCK_MAX_BACKOFF_SECONDS = _env_int("SOURCE_BLOCK_MAX_BACKOFF_SECONDS", 3600)
 
 WORKER_LEASE_SECONDS = _env_int("WORKER_LEASE_SECONDS", 90)
 WORKER_HEARTBEAT_SECONDS = _env_int("WORKER_HEARTBEAT_SECONDS", 20)

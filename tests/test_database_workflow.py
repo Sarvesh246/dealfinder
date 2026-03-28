@@ -237,7 +237,7 @@ def test_init_db_creates_read_path_indexes(tmp_path, monkeypatch):
     assert "idx_products_current_price" in product_indexes
 
 
-def test_source_catalog_marks_certified_sources_and_blocks_uncertified_enable(tmp_path, monkeypatch):
+def test_source_catalog_contains_only_certified_visible_sources(tmp_path, monkeypatch):
     import database
 
     db_file = tmp_path / "price_tracker_test.db"
@@ -248,21 +248,15 @@ def test_source_catalog_marks_certified_sources_and_blocks_uncertified_enable(tm
 
     sources = {row["domain"]: row for row in database.get_all_sources()}
 
+    assert sources
+    assert all(int(row["certified"]) == 1 for row in sources.values())
     assert int(sources["target.com"]["certified"]) == 1
     assert int(sources["officedepot.com"]["certified"]) == 1
-    assert int(sources["microcenter.com"]["certified"]) == 0
     assert sources["officedepot.com"]["rollout_wave"] == "wave1"
-
-    microcenter_id = sources["microcenter.com"]["id"]
-    database.update_source_enabled(microcenter_id, 1)
-    microcenter = database.get_source_by_id(microcenter_id)
-
-    assert int(microcenter["enabled"]) == 0
-
-    enabled_domains = {row["domain"] for row in database.get_enabled_sources()}
-    assert "officedepot.com" in enabled_domains
-    assert "target.com" in enabled_domains
-    assert "microcenter.com" not in enabled_domains
+    assert "microcenter.com" not in sources
+    assert "costco.com" not in sources
+    assert "bhphotovideo.com" not in sources
+    assert "ebay.com" not in sources
 
 
 def test_available_sources_respect_feature_flags_and_certification(tmp_path, monkeypatch):
@@ -276,11 +270,15 @@ def test_available_sources_respect_feature_flags_and_certification(tmp_path, mon
     database.init_db()
 
     available_domains = {row["domain"] for row in database.get_available_sources()}
+    certified_catalog_domains = {row["domain"] for row in database.get_certified_catalog_sources()}
     enabled_domains = {row["domain"] for row in database.get_enabled_sources()}
+    visible_domains = {row["domain"] for row in database.get_all_sources()}
 
     assert "officedepot.com" not in available_domains
+    assert "officedepot.com" in certified_catalog_domains
     assert "officedepot.com" not in enabled_domains
-    assert "microcenter.com" not in available_domains
+    assert "microcenter.com" not in visible_domains
+    assert "costco.com" not in visible_domains
     assert "target.com" in available_domains
 
 

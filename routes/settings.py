@@ -14,11 +14,23 @@ from . import main_bp
 
 @main_bp.route("/settings", endpoint="settings_page")
 def settings_page():
+    sources = get_all_sources()
+    runtime_diagnostics = get_runtime_diagnostics()
+    visible_domains = {
+        str(source["domain"]).strip().lower()
+        for source in sources
+        if source["domain"]
+    }
+    runtime_diagnostics["source_access"] = [
+        item
+        for item in runtime_diagnostics.get("source_access", [])
+        if str(item.get("domain") or "").strip().lower() in visible_domains
+    ]
     return render_template(
         "settings.html",
-        sources=get_all_sources(),
+        sources=sources,
         notification_status=get_notification_status(),
-        runtime_diagnostics=get_runtime_diagnostics(),
+        runtime_diagnostics=runtime_diagnostics,
         last_checked_time=get_last_checked_time(),
     )
 

@@ -1,0 +1,95 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e40]:
+      - link "Back to Dashboard" [ref=e41] [cursor=pointer]:
+        - /url: /
+        - img [ref=e42]
+        - text: Back to Dashboard
+      - heading "Track a Product" [level=1] [ref=e44]
+      - paragraph [ref=e45]: Search stores for the best matching deal, or paste a product page link to track that exact listing directly.
+      - tablist "Tracking mode" [ref=e46]:
+        - tab "Search Stores Track across multiple stores with strict identity checks." [selected] [ref=e47] [cursor=pointer]:
+          - strong [ref=e48]: Search Stores
+          - generic [ref=e49]: Track across multiple stores with strict identity checks.
+        - tab "Paste Link Track one exact product page and alert on a target or any new low." [ref=e50] [cursor=pointer]:
+          - strong [ref=e51]: Paste Link
+          - generic [ref=e52]: Track one exact product page and alert on a target or any new low.
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - generic [ref=e57]: Product Name *
+          - textbox "Product Name *" [ref=e58]:
+            - /placeholder: e.g. Sony WH-1000XM5 Headphones
+          - generic [ref=e59]: Be specific for best results. Brand, product line, and model tokens help the verifier stay strict.
+        - generic [ref=e60]:
+          - generic [ref=e61]: Notify Price *
+          - generic [ref=e62]:
+            - generic: $
+            - spinbutton "Notify Price *" [ref=e63]
+          - generic [ref=e64]: You’ll be alerted when a verified source drops to or below this price.
+        - generic [ref=e65]:
+          - generic [ref=e66]: Sources to Search
+          - generic [ref=e67]:
+            - generic [ref=e68]:
+              - checkbox "All sources" [ref=e69]
+              - generic [ref=e72] [cursor=pointer]: All sources
+            - checkbox "Amazon" [checked] [ref=e73]
+            - generic [ref=e76] [cursor=pointer]: Amazon
+            - checkbox "Best Buy" [checked] [ref=e77]
+            - generic [ref=e80] [cursor=pointer]: Best Buy
+            - checkbox "Newegg" [ref=e81]
+            - generic [ref=e84] [cursor=pointer]: Newegg
+            - checkbox "Walmart" [checked] [ref=e85]
+            - generic [ref=e88] [cursor=pointer]: Walmart
+            - checkbox "Target" [checked] [ref=e89]
+            - generic [ref=e92] [cursor=pointer]: Target
+            - checkbox "Office Depot" [ref=e93]
+            - generic [ref=e96] [cursor=pointer]: Office Depot
+          - generic [ref=e97]:
+            - strong [ref=e98]: All sources
+            - text: checks every certified live store in the registry, including ones hidden from the default filter set.
+        - generic [ref=e99]: Broad category searches stay browse-first. If your query is still too broad, PricePulse will send you to Discovery so you can pick a concrete listing before tracking it.
+        - button "Search and Track" [ref=e100] [cursor=pointer]:
+          - img [ref=e101]
+          - text: Search and Track

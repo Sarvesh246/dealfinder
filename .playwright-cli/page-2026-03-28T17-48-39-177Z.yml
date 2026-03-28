@@ -1,0 +1,101 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e38]:
+      - link "Back to Dashboard" [ref=e39] [cursor=pointer]:
+        - /url: /
+        - img [ref=e40]
+        - text: Back to Dashboard
+      - generic [ref=e42]:
+        - heading "airpods pro 3" [level=1] [ref=e43]
+        - generic [ref=e44]:
+          - text: "Target:"
+          - generic [ref=e45]: $199.99
+          - generic [ref=e46]: ·
+          - generic [ref=e47]: Search tracker
+          - generic [ref=e48]: ·
+          - generic [ref=e49]: Added 16 hours ago
+      - generic [ref=e50]:
+        - link "Edit Sources" [ref=e51] [cursor=pointer]:
+          - /url: /product/20/sources
+        - button "Re-discover All" [ref=e53] [cursor=pointer]
+        - button "Delete Product" [ref=e55] [cursor=pointer]
+      - generic [ref=e56]:
+        - generic [ref=e57]:
+          - generic [ref=e58]: Status
+          - generic [ref=e59]: Deal found
+        - generic [ref=e60]:
+          - generic [ref=e61]: Current Best
+          - generic [ref=e62]: $199.99
+        - generic [ref=e63]:
+          - generic [ref=e64]: Verified Sources
+          - generic [ref=e65]: 1 / 1
+        - generic [ref=e66]:
+          - generic [ref=e67]: Price Range
+          - generic [ref=e68]: $199.99 – $199.99
+      - generic [ref=e69]: Sources
+      - generic [ref=e71]:
+        - generic [ref=e72]:
+          - generic [ref=e74]: Amazon
+          - generic [ref=e75]: deal found
+        - generic [ref=e76]: $199.99
+        - link "https://www.amazon.com/Apple-Cancellation-Translation-Headphones-High-Fidelity/dp/B0FQFB8FMG" [ref=e78] [cursor=pointer]:
+          - /url: /open/source/51
+        - generic [ref=e79]:
+          - text: Checked 16 hours ago
+          - text: exact model verified
+      - generic [ref=e80]: Price History
+      - table [ref=e82]:
+        - rowgroup [ref=e83]:
+          - row "Date Source Price vs Target" [ref=e84]:
+            - columnheader "Date" [ref=e85]
+            - columnheader "Source" [ref=e86]
+            - columnheader "Price" [ref=e87]
+            - columnheader "vs Target" [ref=e88]
+        - rowgroup [ref=e89]:
+          - row "2026-03-27 20:17:00 Amazon $199.99 ↓ $0.00 below" [ref=e90]:
+            - cell "2026-03-27 20:17:00" [ref=e91]
+            - cell "Amazon" [ref=e92]
+            - cell "$199.99" [ref=e93]
+            - cell "↓ $0.00 below" [ref=e94]

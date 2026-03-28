@@ -17,7 +17,7 @@ from database import (
     add_product_source_candidate,
     clear_product_source_candidates,
     compute_best_price,
-    get_available_sources,
+    get_certified_catalog_sources,
     get_product_source_by_id,
     update_product_source,
 )
@@ -29,6 +29,7 @@ from scraper import (
     inspect_direct_link,
     verify_candidate_listing,
 )
+from source_capabilities import filter_supported_sources
 from template_utils import canonical_external_url
 
 
@@ -445,10 +446,14 @@ def apply_source_matches_for_product(product, sources):
     return outcomes
 
 
-def sources_from_posted_ids(search_all: bool, posted_ids: list[str]) -> list:
-    available_sources = {int(row["id"]): row for row in get_available_sources()}
+def sources_from_posted_ids(search_all: bool, posted_ids: list[str], *, query_or_spec=None) -> list:
+    available_sources = {int(row["id"]): row for row in get_certified_catalog_sources()}
     if search_all:
-        return list(available_sources.values())
+        selected = list(available_sources.values())
+        if query_or_spec is None:
+            return selected
+        supported, _ = filter_supported_sources(selected, query_or_spec)
+        return supported
     seen: set[int] = set()
     out = []
     for raw in posted_ids:
@@ -462,6 +467,10 @@ def sources_from_posted_ids(search_all: bool, posted_ids: list[str]) -> list:
         row = available_sources.get(sid)
         if row:
             out.append(row)
+    if query_or_spec is None:
+        return out
+    supported, _ = filter_supported_sources(out, query_or_spec)
+    return supported
     return out
 
 

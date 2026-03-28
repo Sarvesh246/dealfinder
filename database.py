@@ -123,28 +123,6 @@ DEFAULT_SOURCES = [
         "certification_notes": "Core certified",
     },
     {
-        "name": "eBay",
-        "domain": "ebay.com",
-        "search_url_template": "https://www.ebay.com/sch/i.html?_nkw={query}&LH_BIN=1",
-        "enabled": 0,
-        "logo_color": "#E53238",
-        "certified": 0,
-        "rollout_wave": "later",
-        "feature_flag": "ENABLE_SOURCE_EBAY",
-        "certification_notes": "Marketplace source intentionally excluded from strict rollout",
-    },
-    {
-        "name": "B&H Photo",
-        "domain": "bhphotovideo.com",
-        "search_url_template": "https://www.bhphotovideo.com/c/search?Ntt={query}",
-        "enabled": 0,
-        "logo_color": "#000000",
-        "certified": 0,
-        "rollout_wave": "wave0",
-        "feature_flag": "ENABLE_SOURCE_BHPHOTOVIDEO",
-        "certification_notes": "Pending certification in this environment",
-    },
-    {
         "name": "Target",
         "domain": "target.com",
         "search_url_template": "https://www.target.com/s?searchTerm={query}",
@@ -156,41 +134,6 @@ DEFAULT_SOURCES = [
         "certification_notes": "Certified first-wave broad retail source",
     },
     {
-        "name": "Costco",
-        "domain": "costco.com",
-        "search_url_template":
-            "https://www.costco.com/CatalogSearch?dept=All&keyword={query}",
-        "enabled": 0,
-        "logo_color": "#E31837",
-        "certified": 0,
-        "rollout_wave": "wave0",
-        "feature_flag": "ENABLE_SOURCE_COSTCO",
-        "certification_notes": "Pending certification in this environment",
-    },
-    {
-        "name": "The Home Depot",
-        "domain": "homedepot.com",
-        "search_url_template": "https://www.homedepot.com/s/{query}",
-        "enabled": 0,
-        "logo_color": "#F96302",
-        "certified": 0,
-        "rollout_wave": "wave0",
-        "feature_flag": "ENABLE_SOURCE_HOMEDEPOT",
-        "certification_notes": "Pending certification in this environment",
-    },
-    {
-        "name": "Lowe's",
-        "domain": "lowes.com",
-        "search_url_template":
-            "https://www.lowes.com/search?searchTerm={query}",
-        "enabled": 0,
-        "logo_color": "#004990",
-        "certified": 0,
-        "rollout_wave": "wave0",
-        "feature_flag": "ENABLE_SOURCE_LOWES",
-        "certification_notes": "Pending certification in this environment",
-    },
-    {
         "name": "Office Depot",
         "domain": "officedepot.com",
         "search_url_template": "https://www.officedepot.com/a/search/?q={query}",
@@ -199,51 +142,7 @@ DEFAULT_SOURCES = [
         "certified": 1,
         "rollout_wave": "wave1",
         "feature_flag": "ENABLE_SOURCE_OFFICEDEPOT",
-        "certification_notes": "Certified for office, furniture, printer, monitor, and networking queries",
-    },
-    {
-        "name": "Micro Center",
-        "domain": "microcenter.com",
-        "search_url_template": "https://www.microcenter.com/search/search_results.aspx?Ntt={query}",
-        "enabled": 0,
-        "logo_color": "#E01A22",
-        "certified": 0,
-        "rollout_wave": "wave2",
-        "feature_flag": "ENABLE_SOURCE_MICROCENTER",
-        "certification_notes": "Protected-store phase; blocked in current environment",
-    },
-    {
-        "name": "Macy's",
-        "domain": "macys.com",
-        "search_url_template": "https://www.macys.com/shop/featured/{query}",
-        "enabled": 0,
-        "logo_color": "#111111",
-        "certified": 0,
-        "rollout_wave": "wave2",
-        "feature_flag": "ENABLE_SOURCE_MACYS",
-        "certification_notes": "Protected-store phase; access denied in current environment",
-    },
-    {
-        "name": "Sam's Club",
-        "domain": "samsclub.com",
-        "search_url_template": "https://www.samsclub.com/s/{query}",
-        "enabled": 0,
-        "logo_color": "#005DAA",
-        "certified": 0,
-        "rollout_wave": "wave2",
-        "feature_flag": "ENABLE_SOURCE_SAMSCLUB",
-        "certification_notes": "Protected-store phase; anti-bot gating observed",
-    },
-    {
-        "name": "GameStop",
-        "domain": "gamestop.com",
-        "search_url_template": "https://www.gamestop.com/search/?q={query}",
-        "enabled": 0,
-        "logo_color": "#E2231A",
-        "certified": 0,
-        "rollout_wave": "wave2",
-        "feature_flag": "ENABLE_SOURCE_GAMESTOP",
-        "certification_notes": "Protected-store phase; anti-bot gating observed",
+        "certification_notes": "Certified for office, furniture, printer, monitor, networking, and core office-peripheral queries",
     },
     {
         "name": "Direct Link",
@@ -257,6 +156,17 @@ DEFAULT_SOURCES = [
         "certification_notes": "Internal direct-link source",
     },
 ]
+
+_CATALOG_SOURCE_DOMAINS = tuple(source["domain"] for source in DEFAULT_SOURCES)
+_VISIBLE_SOURCE_DOMAINS = tuple(
+    domain for domain in _CATALOG_SOURCE_DOMAINS if domain != GENERIC_DIRECT_SOURCE_DOMAIN
+)
+
+
+def _catalog_filter_clause(*, include_generic: bool = False) -> tuple[str, tuple[str, ...]]:
+    domains = _CATALOG_SOURCE_DOMAINS if include_generic else _VISIBLE_SOURCE_DOMAINS
+    placeholders = ", ".join("?" for _ in domains)
+    return f"domain IN ({placeholders})", domains
 
 
 def _flag_is_enabled(value: str | None, default: bool) -> bool:
@@ -334,6 +244,19 @@ def _sync_default_sources(cursor):
             ),
         )
         logging.info(f"[{datetime.now()}] Registered new catalog source: {s['name']} ({s['domain']})")
+    visible_clause, visible_params = _catalog_filter_clause(include_generic=False)
+    cursor.execute(
+        f"UPDATE sources SET enabled = 0, certified = 0 WHERE domain <> ? AND NOT ({visible_clause})",
+        (GENERIC_DIRECT_SOURCE_DOMAIN, *visible_params),
+    )
+    cursor.execute(
+        f"""
+        DELETE FROM sources
+        WHERE domain <> ? AND NOT ({visible_clause})
+          AND id NOT IN (SELECT DISTINCT source_id FROM product_sources)
+        """,
+        (GENERIC_DIRECT_SOURCE_DOMAIN, *visible_params),
+    )
 
 
 def get_connection():
@@ -1310,9 +1233,10 @@ def set_alert_sent(product_id, value):
 def get_all_sources():
     try:
         conn = get_connection()
+        clause, params = _catalog_filter_clause(include_generic=False)
         rows = conn.execute(
-            "SELECT * FROM sources WHERE domain <> ? ORDER BY certified DESC, id",
-            (GENERIC_DIRECT_SOURCE_DOMAIN,),
+            f"SELECT * FROM sources WHERE {clause} ORDER BY certified DESC, id",
+            params,
         ).fetchall()
         conn.close()
         return rows
@@ -1321,12 +1245,23 @@ def get_all_sources():
         return []
 
 
+def get_certified_catalog_sources():
+    """Certified catalog retailers for UI chips and default-source toggles.
+
+    Matches the certified block on Settings. Feature-flag rollout still affects
+    defaults and :func:`get_available_sources`; this list is the full certified
+    registry users can pick from on Discover and Add.
+    """
+    return [row for row in get_all_sources() if int(row["certified"]) == 1]
+
+
 def get_available_sources():
     try:
         conn = get_connection()
+        clause, params = _catalog_filter_clause(include_generic=False)
         rows = conn.execute(
-            "SELECT * FROM sources WHERE certified = 1 AND domain <> ? ORDER BY id",
-            (GENERIC_DIRECT_SOURCE_DOMAIN,),
+            f"SELECT * FROM sources WHERE certified = 1 AND {clause} ORDER BY id",
+            params,
         ).fetchall()
         conn.close()
         return [row for row in rows if _source_runtime_allowed(row)]
@@ -1349,9 +1284,10 @@ def get_source_by_id(source_id):
 def get_enabled_sources():
     try:
         conn = get_connection()
+        clause, params = _catalog_filter_clause(include_generic=False)
         rows = conn.execute(
-            "SELECT * FROM sources WHERE enabled = 1 AND certified = 1 AND domain <> ? ORDER BY id",
-            (GENERIC_DIRECT_SOURCE_DOMAIN,),
+            f"SELECT * FROM sources WHERE enabled = 1 AND certified = 1 AND {clause} ORDER BY id",
+            params,
         ).fetchall()
         conn.close()
         return [row for row in rows if _source_runtime_allowed(row)]
@@ -1381,10 +1317,13 @@ def update_source_enabled(source_id, enabled):
 
 def get_source_by_domain(domain: str):
     try:
+        normalized = domain.lower().replace("www.", "")
+        if normalized not in _CATALOG_SOURCE_DOMAINS:
+            return None
         conn = get_connection()
         row = conn.execute(
             "SELECT * FROM sources WHERE domain = ? LIMIT 1",
-            (domain.lower().replace("www.", ""),),
+            (normalized,),
         ).fetchone()
         conn.close()
         return row
@@ -1417,9 +1356,10 @@ def find_source_for_url(url: str):
         if not domain:
             return None
         conn = get_connection()
+        clause, params = _catalog_filter_clause(include_generic=False)
         rows = conn.execute(
-            "SELECT * FROM sources WHERE domain <> ? ORDER BY LENGTH(domain) DESC, id ASC",
-            (GENERIC_DIRECT_SOURCE_DOMAIN,),
+            f"SELECT * FROM sources WHERE {clause} ORDER BY LENGTH(domain) DESC, id ASC",
+            params,
         ).fetchall()
         conn.close()
         for row in rows:

@@ -1,5 +1,6 @@
 import importlib
 import sys
+import time
 from pathlib import Path
 
 from flask import render_template
@@ -242,9 +243,21 @@ def test_non_bestbuy_source_redirect_stays_direct(tmp_path, monkeypatch):
     assert response.headers["Location"] == "https://www.amazon.com/dp/B0001"
 
 
-def test_settings_template_marks_pending_sources_disabled(tmp_path, monkeypatch):
+def test_settings_template_shows_only_certified_sources(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
-    microcenter = next(row for row in database.get_all_sources() if row["domain"] == "microcenter.com")
+
+    database.record_source_access_failure(
+        "amazon.com",
+        failure_reason="timeout",
+        fetch_method="direct",
+        cooldown_seconds=60,
+    )
+    database.record_source_access_failure(
+        "microcenter.com",
+        failure_reason="timeout",
+        fetch_method="direct",
+        cooldown_seconds=60,
+    )
 
     client = app_module.app.test_client()
     response = client.get("/settings")
@@ -253,13 +266,13 @@ def test_settings_template_marks_pending_sources_disabled(tmp_path, monkeypatch)
     assert response.status_code == 200
     assert "Office Depot" in html
     assert "Certified" in html
-    assert "Micro Center" in html
-    assert "Pending" in html
-    # Pending sources are not form controls (no checkbox); saves cannot toggle them.
-    assert f'name="source_ids" value="{microcenter["id"]}"' not in html
+    assert "Micro Center" not in html
+    assert "Pending certification" not in html
+    assert "amazon.com" in html
+    assert "microcenter.com" not in html
 
 
-def test_add_and_discover_only_show_live_available_sources(tmp_path, monkeypatch):
+def test_add_and_discover_show_certified_catalog_sources(tmp_path, monkeypatch):
     database, app_module = _load_test_app(tmp_path, monkeypatch)
 
     client = app_module.app.test_client()
@@ -270,6 +283,41 @@ def test_add_and_discover_only_show_live_available_sources(tmp_path, monkeypatch
     assert "Office Depot" in discover_html
     assert "Micro Center" not in add_html
     assert "Micro Center" not in discover_html
+    assert 'id="filter-product-type"' in discover_html
+    assert 'data-pp-select="field"' in discover_html
+    assert 'id="filter-brand"' in discover_html
+
+
+def test_add_route_rejects_only_out_of_scope_scoped_sources(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    officedepot = next(row for row in database.get_all_sources() if row["domain"] == "officedepot.com")
+
+    client = app_module.app.test_client()
+    response = client.post(
+        "/add",
+        data={
+            "name": "Dyson V8 Cordless Vacuum",
+            "target_price": "250",
+            "source_ids": [str(officedepot["id"])],
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/add")
+    assert database.get_all_products() == []
+
+
+def test_product_sources_page_filters_scoped_sources_by_product_family(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    product_id = database.add_product("Dyson V8 Cordless Vacuum", 300.0)
+    client = app_module.app.test_client()
+    response = client.get(f"/product/{product_id}/sources")
+    html = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert "Office Depot" not in html
+    assert "Amazon" in html
 
 
 def test_manual_check_route_has_ip_cooldown(tmp_path, monkeypatch):
@@ -304,6 +352,52 @@ def test_manual_check_route_has_ip_cooldown(tmp_path, monkeypatch):
     assert "Please wait a minute before starting another one." in second.get_data(as_text=True)
     assert 'aria-live="polite"' in second.get_data(as_text=True)
     assert 'class="flash-dismiss"' in second.get_data(as_text=True)
+
+
+def test_discovery_progress_partial_render_uses_finalizing_state(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    from routes import discovery as discovery_routes
+
+    search_id = database.create_discovery_search(
+        "gaming mouse",
+        None,
+        40.0,
+        status="running",
+        sources_total=4,
+        sources_finished=4,
+    )
+    assert search_id is not None
+    search = dict(database.get_discovery_search(search_id))
+    progress = discovery_routes._discovery_progress(search, [])
+
+    with app_module.app.test_request_context(f"/discover/results/{search_id}"):
+        html = render_template(
+            "partials/discovery_progress.html",
+            search=search,
+            results=[],
+            ai_enhanced=False,
+            source_runs=[],
+            coverage_summary=None,
+            progress=progress,
+    )
+
+    assert "Finalizing results" in html
+    assert "Finishing result ranking and dedupe." in html
+    assert "Finalizing" in html
+
+    with app_module.app.test_request_context(f"/discover/results/{search_id}"):
+        body_html = render_template(
+            "partials/discovery_results_body.html",
+            search=search,
+            results=[],
+            ai_enhanced=False,
+            source_runs=[],
+            coverage_summary=None,
+            progress=progress,
+            empty_state={"title": "", "hint": ""},
+        )
+
+    assert "Finalizing verified results" in body_html
 
 
 def test_app_sets_security_headers_and_healthz(tmp_path, monkeypatch):
@@ -370,6 +464,7 @@ def test_discovery_results_render_progressively_and_status_endpoint_updates(tmp_
 
     walmart = next(row for row in database.get_all_sources() if row["domain"] == "walmart.com")
     amazon = next(row for row in database.get_all_sources() if row["domain"] == "amazon.com")
+    target = next(row for row in database.get_all_sources() if row["domain"] == "target.com")
 
     search_id = database.create_discovery_search(
         "standing desk",
@@ -421,6 +516,14 @@ def test_discovery_results_render_progressively_and_status_endpoint_updates(tmp_
     assert 'data-discovery-shell' in html
     assert "1 / 2 stores checked" in html
     assert "checking" in html.lower()
+    assert 'data-results-sort' in html
+    assert 'data-results-source' in html
+    assert 'data-pp-select="toolbar"' in html
+    assert 'All selected sources' in html
+    assert f'<option value="{amazon["id"]}">Amazon</option>' in html
+    assert f'<option value="{walmart["id"]}">Walmart</option>' in html
+    assert f'<option value="{target["id"]}">Target</option>' not in html
+    assert "Pick a result to track." not in html
 
     status = client.get(f"/discover/status/{search_id}")
     payload = status.get_json()
@@ -429,6 +532,172 @@ def test_discovery_results_render_progressively_and_status_endpoint_updates(tmp_
     assert payload["progress"]["finished"] == 1
     assert "Standing Desk Pro" in payload["results_html"]
     assert "Walmart" in payload["progress_html"]
+    assert 'data-results-sort' in payload["results_html"]
+    assert 'data-results-source' in payload["results_html"]
+    assert 'data-pp-select="toolbar"' in payload["results_html"]
+
+
+def test_discovery_progress_uses_completed_source_runs_when_counter_lags(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+
+    walmart = next(row for row in database.get_all_sources() if row["domain"] == "walmart.com")
+    amazon = next(row for row in database.get_all_sources() if row["domain"] == "amazon.com")
+
+    search_id = database.create_discovery_search(
+        "standing desk",
+        None,
+        400.0,
+        status="running",
+        sources_total=2,
+        sources_finished=1,
+    )
+    database.add_discovery_source_run(
+        search_id,
+        amazon["id"],
+        outcome="ok",
+        fetch_strategy="direct",
+        raw_count=3,
+        eligible_count=2,
+        returned_count=1,
+        duration_ms=640,
+    )
+    database.add_discovery_source_run(
+        search_id,
+        walmart["id"],
+        outcome="blocked",
+        fetch_strategy="direct",
+        failure_reason="cooldown",
+        duration_ms=10,
+    )
+
+    client = app_module.app.test_client()
+    payload = client.get(f"/discover/status/{search_id}").get_json()
+
+    assert payload["status"] == "running"
+    assert payload["progress"]["finished"] == 2
+    assert payload["progress"]["pending"] == 0
+
+
+def test_discovery_job_times_out_stuck_source_and_completes_search(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    from routes import discovery as discovery_routes
+
+    amazon = next(row for row in database.get_all_sources() if row["domain"] == "amazon.com")
+    search_id = database.create_discovery_search("standing desk", None, 400.0)
+
+    def fake_discover(_queries, _source, max_price=None, context=None):
+        time.sleep(0.8)
+        return []
+
+    monkeypatch.setattr(discovery_routes, "discover_deals_for_queries", fake_discover)
+    monkeypatch.setattr(discovery_routes, "DISCOVERY_SOURCE_TIMEOUT_SECONDS", 0.05)
+
+    discovery_routes._run_discovery_search_job(
+        search_id=search_id,
+        query="standing desk",
+        search_queries=("standing desk",),
+        sources=[amazon],
+        max_price=400.0,
+        filter_condition="new_only",
+        filter_product_type="primary_only",
+        filter_brand="exact",
+    )
+
+    search = dict(database.get_discovery_search(search_id))
+    runs = [dict(row) for row in database.get_discovery_source_runs(search_id)]
+
+    assert search["status"] == "completed"
+    assert search["sources_finished"] == 1
+    assert runs[0]["outcome"] == "timeout"
+    assert runs[0]["failure_reason"] == "timeout"
+
+
+def test_discovery_job_keeps_timeout_handling_responsive_while_rendering(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    from routes import discovery as discovery_routes
+
+    amazon = next(row for row in database.get_all_sources() if row["domain"] == "amazon.com")
+    target = next(row for row in database.get_all_sources() if row["domain"] == "target.com")
+    search_id = database.create_discovery_search("standing desk", None, 400.0)
+
+    def fake_discover(_queries, source, max_price=None, context=None):
+        if source["domain"] == "amazon.com":
+            return [
+                {
+                    "product_name": "Standing Desk 48 inch",
+                    "product_url": "https://example.com/standing-desk-48",
+                    "current_price": 219.99,
+                }
+            ]
+        time.sleep(1.2)
+        return []
+
+    def slow_process(**kwargs):
+        time.sleep(0.8)
+        return kwargs["rows"], False
+
+    monkeypatch.setattr(discovery_routes, "discover_deals_for_queries", fake_discover)
+    monkeypatch.setattr(discovery_routes, "_process_discovery_rows", slow_process)
+    monkeypatch.setattr(discovery_routes, "DISCOVERY_SOURCE_TIMEOUT_SECONDS", 0.05)
+
+    discovery_routes._run_discovery_search_job(
+        search_id=search_id,
+        query="standing desk",
+        search_queries=("standing desk",),
+        sources=[amazon, target],
+        max_price=400.0,
+        filter_condition="new_only",
+        filter_product_type="primary_only",
+        filter_brand="exact",
+    )
+
+    search = dict(database.get_discovery_search(search_id))
+    runs = [dict(row) for row in database.get_discovery_source_runs(search_id)]
+    outcomes = {row["source_id"]: row["outcome"] for row in runs}
+
+    assert search["status"] == "completed"
+    assert search["sources_finished"] == 2
+    assert search["result_count"] == 1
+    assert outcomes[amazon["id"]] == "ok"
+    assert outcomes[target["id"]] == "timeout"
+
+
+def test_discovery_job_finalizes_results_even_if_async_render_has_not_updated_state_yet(tmp_path, monkeypatch):
+    database, app_module = _load_test_app(tmp_path, monkeypatch)
+    from routes import discovery as discovery_routes
+
+    amazon = next(row for row in database.get_all_sources() if row["domain"] == "amazon.com")
+    search_id = database.create_discovery_search("standing desk", None, 400.0)
+    def fake_discover(_queries, _source, max_price=None, context=None):
+        return [
+            {
+                "product_name": "Standing Desk 48 inch",
+                "product_url": "https://example.com/standing-desk-48",
+                "current_price": 219.99,
+            }
+        ]
+
+    def fake_process(**kwargs):
+        return kwargs["rows"], False
+
+    monkeypatch.setattr(discovery_routes, "discover_deals_for_queries", fake_discover)
+    monkeypatch.setattr(discovery_routes, "_process_discovery_rows", fake_process)
+
+    discovery_routes._run_discovery_search_job(
+        search_id=search_id,
+        query="standing desk",
+        search_queries=("standing desk",),
+        sources=[amazon],
+        max_price=400.0,
+        filter_condition="new_only",
+        filter_product_type="primary_only",
+        filter_brand="exact",
+    )
+
+    search = dict(database.get_discovery_search(search_id))
+
+    assert search["status"] == "completed"
+    assert search["result_count"] == 1
 
 
 def test_product_page_and_settings_show_source_access_health(tmp_path, monkeypatch):

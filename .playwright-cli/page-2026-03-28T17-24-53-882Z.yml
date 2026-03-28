@@ -1,0 +1,188 @@
+- generic [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e38]:
+      - generic [ref=e39]:
+        - heading "Find the Best Deal On Anything" [level=1] [ref=e40]
+        - paragraph [ref=e41]: Type any product, brand, or category — we'll find the best prices across the internet
+        - generic [ref=e42]:
+          - img [ref=e43]
+          - text: AI-enhanced search — results ranked by relevance, deduped across stores
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - generic:
+              - img
+            - textbox "Search anything… e.g. lawn mower, air fryer" [ref=e49]
+          - group "Listing condition Choose how strict the results should be before we rank and compare prices." [ref=e50]:
+            - generic [ref=e51]:
+              - generic [ref=e53]: Listing condition
+              - generic [ref=e55]: Choose how strict the results should be before we rank and compare prices.
+            - generic [ref=e56]:
+              - generic [ref=e57] [cursor=pointer]:
+                - radio "Strictest New only Hide renewed, refurbished, open-box, and most used listings when the scraper can detect that in the title or product URL." [checked]
+                - generic [ref=e59]:
+                  - generic [ref=e60]: Strictest
+                  - generic [ref=e61]: New only
+                  - generic [ref=e62]: Hide renewed, refurbished, open-box, and most used listings when the scraper can detect that in the title or product URL.
+              - generic [ref=e64] [cursor=pointer]:
+                - radio "Balanced Include renewed & refurbished Show renewed, refurbished, and open-box listings, but still hide plain used items unless you choose Any condition."
+                - generic [ref=e66]:
+                  - generic [ref=e67]: Balanced
+                  - generic [ref=e68]: Include renewed & refurbished
+                  - generic [ref=e69]:
+                    - text: Show renewed, refurbished, and open-box listings, but still hide plain used items unless you choose
+                    - emphasis [ref=e70]: Any condition
+                    - text: .
+              - generic [ref=e72] [cursor=pointer]:
+                - radio "Broadest Any condition Don’t remove listings for condition. This includes used, renewed, refurbished, and open-box results."
+                - generic [ref=e74]:
+                  - generic [ref=e75]: Broadest
+                  - generic [ref=e76]: Any condition
+                  - generic [ref=e77]: Don’t remove listings for condition. This includes used, renewed, refurbished, and open-box results.
+          - generic [ref=e79]:
+            - generic [ref=e80]:
+              - generic [ref=e81]: Product type
+              - combobox "Product type Main products only Main products only":
+                - option "Main products only" [selected]
+                - option "Include accessories"
+              - generic [ref=e82]:
+                - button "Main products only" [expanded] [active] [ref=e83] [cursor=pointer]:
+                  - generic [ref=e84]: Main products only
+                  - img [ref=e86]
+                - listbox [ref=e88]:
+                  - option "Main products only" [selected] [ref=e89] [cursor=pointer]
+                  - option "Include accessories" [ref=e90] [cursor=pointer]
+            - generic [ref=e91]:
+              - generic [ref=e92]: Brand match
+              - combobox "Brand match Exact line (e.g. real AirPods) Exact line (e.g. real AirPods)":
+                - option "Exact line (e.g. real AirPods)" [selected]
+                - option "Include similar brands"
+              - generic [ref=e93]:
+                - button "Exact line (e.g. real AirPods)" [ref=e94] [cursor=pointer]:
+                  - generic [ref=e95]: Exact line (e.g. real AirPods)
+                  - img [ref=e97]
+                - listbox [ref=e99]:
+                  - option "Exact line (e.g. real AirPods)" [selected] [ref=e100] [cursor=pointer]
+                  - option "Include similar brands" [ref=e101] [cursor=pointer]
+          - paragraph [ref=e102]:
+            - strong [ref=e103]: "Tip:"
+            - text: Run a
+            - emphasis [ref=e104]: new
+            - text: search after changing filters. Old result pages were built with the settings from that earlier run.
+          - generic [ref=e105]:
+            - generic [ref=e106]: Stores to include
+            - generic [ref=e107]:
+              - generic [ref=e108]:
+                - checkbox "All registered stores" [ref=e109]
+                - generic [ref=e112] [cursor=pointer]: All registered stores
+              - checkbox "Amazon" [checked] [ref=e113]
+              - generic [ref=e116] [cursor=pointer]: Amazon
+              - checkbox "Best Buy" [checked] [ref=e117]
+              - generic [ref=e120] [cursor=pointer]: Best Buy
+              - checkbox "Newegg" [ref=e121]
+              - generic [ref=e124] [cursor=pointer]: Newegg
+              - checkbox "Walmart" [checked] [ref=e125]
+              - generic [ref=e128] [cursor=pointer]: Walmart
+              - checkbox "Target" [checked] [ref=e129]
+              - generic [ref=e132] [cursor=pointer]: Target
+              - checkbox "Office Depot" [ref=e133]
+              - generic [ref=e136] [cursor=pointer]: Office Depot
+            - generic [ref=e137]:
+              - text: Matches your defaults from Settings; change here for this search only.
+              - strong [ref=e138]: All registered stores
+              - text: queries every certified live store in the list, including ones off by default.
+          - generic [ref=e139]:
+            - generic [ref=e140]:
+              - generic: $
+              - spinbutton [ref=e141]
+            - button "Find Deals" [ref=e142] [cursor=pointer]:
+              - img [ref=e143]
+              - text: Find Deals
+        - generic [ref=e147]:
+          - generic [ref=e148]: "Popular:"
+          - generic [ref=e149] [cursor=pointer]:
+            - generic [ref=e150]: ⌨️
+            - text: Keyboards
+          - generic [ref=e151] [cursor=pointer]:
+            - generic [ref=e152]: 🖥️
+            - text: Monitors
+          - generic [ref=e153] [cursor=pointer]:
+            - generic [ref=e154]: 🎧
+            - text: Headphones
+          - generic [ref=e155] [cursor=pointer]:
+            - generic [ref=e156]: 🖱️
+            - text: Mice
+          - generic [ref=e157] [cursor=pointer]:
+            - generic [ref=e158]: 💻
+            - text: Laptops
+          - generic [ref=e159] [cursor=pointer]:
+            - generic [ref=e160]: 📱
+            - text: Phones
+          - generic [ref=e161] [cursor=pointer]:
+            - generic [ref=e162]: 🎮
+            - text: Controllers
+          - generic [ref=e163] [cursor=pointer]:
+            - generic [ref=e164]: 📷
+            - text: Cameras
+          - generic [ref=e165] [cursor=pointer]:
+            - generic [ref=e166]: 🏠
+            - text: Smart Home
+          - generic [ref=e167] [cursor=pointer]:
+            - generic [ref=e168]: 🧹
+            - text: Appliances
+          - generic [ref=e169] [cursor=pointer]:
+            - generic [ref=e170]: 🌿
+            - text: Outdoor & Garden
+          - generic [ref=e171] [cursor=pointer]:
+            - generic [ref=e172]: 🪑
+            - text: Furniture
+          - generic [ref=e173] [cursor=pointer]:
+            - generic [ref=e174]: 🏋️
+            - text: Fitness
+          - generic [ref=e175] [cursor=pointer]:
+            - generic [ref=e176]: 🎒
+            - text: Backpacks
+      - button "Browse by Category ▾" [ref=e178] [cursor=pointer]:
+        - text: Browse by Category
+        - generic [ref=e179]: ▾

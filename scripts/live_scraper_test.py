@@ -1,7 +1,8 @@
 """Live scraper diagnostics: discover_deals + discover_product per source, with stats.
 
-Run from project root:  python scripts/live_scraper_test.py
+Run from project root: python scripts/live_scraper_test.py
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,42 +35,18 @@ SOURCES = {
         "domain": "target.com",
         "search_url_template": "https://www.target.com/s?searchTerm={query}",
     },
-    "costco.com": {
-        "domain": "costco.com",
-        "search_url_template":
-            "https://www.costco.com/CatalogSearch?dept=All&keyword={query}",
-    },
-    "homedepot.com": {
-        "domain": "homedepot.com",
-        "search_url_template": "https://www.homedepot.com/s/{query}",
-    },
-    "lowes.com": {
-        "domain": "lowes.com",
-        "search_url_template":
-            "https://www.lowes.com/search?searchTerm={query}",
-    },
-    "ebay.com": {
-        "domain": "ebay.com",
-        "search_url_template":
-            "https://www.ebay.com/sch/i.html?_nkw={query}&LH_BIN=1",
-    },
-    "bhphotovideo.com": {
-        "domain": "bhphotovideo.com",
-        "search_url_template": "https://www.bhphotovideo.com/c/search?Ntt={query}",
+    "officedepot.com": {
+        "domain": "officedepot.com",
+        "search_url_template": "https://www.officedepot.com/a/search/?q={query}",
     },
 }
 
-# Phase-1 general retailers first (Costco → Home Depot → Lowe’s → eBay), then others.
 SOURCE_ORDER = (
     "amazon.com",
     "walmart.com",
     "bestbuy.com",
     "target.com",
-    "costco.com",
-    "homedepot.com",
-    "lowes.com",
-    "ebay.com",
-    "bhphotovideo.com",
+    "officedepot.com",
 )
 
 
@@ -98,9 +75,7 @@ def _print_row(st: dict) -> None:
 
 def run_discover_deals_all(q: str, max_price: float, max_results: int) -> None:
     _print_stats_banner("discover_deals (per source)")
-    print(
-        f"  query={q!r}  max_price={max_price}  max_results={max_results}\n"
-    )
+    print(f"  query={q!r}  max_price={max_price}  max_results={max_results}\n")
     for key in SOURCE_ORDER:
         src = SOURCES[key]
         scraper.discover_deals(q, src, max_price=max_price, max_results=max_results)

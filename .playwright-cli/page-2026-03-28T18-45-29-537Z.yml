@@ -1,0 +1,191 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - link "Back to Dashboard" [ref=e42] [cursor=pointer]:
+          - /url: /
+          - img [ref=e43]
+          - text: Back to Dashboard
+        - heading "Settings" [level=1] [ref=e45]
+        - paragraph [ref=e46]: Choose which stores are available by default and confirm that your global Discord and Gmail alerts are ready before you start tracking products.
+      - generic [ref=e47]:
+        - generic [ref=e48]: Notification Channels
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - generic [ref=e51]:
+              - generic [ref=e52]: Discord Webhook
+              - generic [ref=e53]: Configured
+            - generic [ref=e54]: Used for instant price-drop pings. This covers both target alerts and the new any-drop direct-link trackers.
+            - button "Send Discord Test" [ref=e57] [cursor=pointer]
+          - generic [ref=e58]:
+            - generic [ref=e59]:
+              - generic [ref=e60]: Gmail Alerts
+              - generic [ref=e61]: Configured
+            - generic [ref=e62]: Emails send to sarveshvjagtap@gmail.com.
+            - button "Send Gmail Test" [ref=e65] [cursor=pointer]
+        - generic [ref=e66]:
+          - text: Want to test the whole pipeline at once?
+          - button "Send Full Test Alert" [ref=e68] [cursor=pointer]
+      - generic [ref=e69]:
+        - generic [ref=e70]: Worker & Diagnostics
+        - generic [ref=e71]:
+          - generic [ref=e72]:
+            - generic [ref=e73]: Background Worker
+            - generic [ref=e74]:
+              - generic [ref=e75]: The worker owns scheduled checks, startup backfill, and manual Check Now requests.
+              - generic [ref=e76]: Online
+            - generic [ref=e77]:
+              - generic [ref=e78]:
+                - generic [ref=e79]: Worker ID
+                - strong [ref=e80]: Legion5:3736
+              - generic [ref=e81]:
+                - generic [ref=e82]: Heartbeat
+                - strong [ref=e83]: 2026-03-28T18:45:18
+              - generic [ref=e84]:
+                - generic [ref=e85]: Queue depth
+                - strong [ref=e86]: "0"
+              - generic [ref=e87]:
+                - generic [ref=e88]: Current job
+                - strong [ref=e89]: Idle
+          - generic [ref=e90]:
+            - generic [ref=e91]: Recent Check Health
+            - generic [ref=e92]:
+              - generic [ref=e93]:
+                - generic [ref=e94]: Last periodic check
+                - strong [ref=e95]: Not run yet
+              - generic [ref=e96]:
+                - generic [ref=e97]: Last manual check
+                - strong [ref=e98]: 2026-03-28T01:15:38
+              - generic [ref=e99]:
+                - generic [ref=e100]: Last startup backfill
+                - strong [ref=e101]: 2026-03-28T17:27:03
+              - generic [ref=e102]:
+                - generic [ref=e103]: Latest price history
+                - strong [ref=e104]: 2026-03-27T20:17:00.545673
+        - generic [ref=e106]:
+          - generic [ref=e107]: Source Access Health
+          - generic [ref=e108]:
+            - generic [ref=e109]:
+              - generic [ref=e110]: target.com
+              - generic [ref=e111]:
+                - text: Cooldown — bot wall via requests
+                - text: Cooldown until 2026-03-28T18:42:26
+            - generic [ref=e112]:
+              - generic [ref=e113]: amazon.com
+              - generic [ref=e114]: Healthy via requests
+            - generic [ref=e115]:
+              - generic [ref=e116]: bestbuy.com
+              - generic [ref=e117]:
+                - text: Cooldown — timeout via requests
+                - text: Cooldown until 2026-03-28T17:49:20
+            - generic [ref=e118]:
+              - generic [ref=e119]: walmart.com
+              - generic [ref=e120]:
+                - text: Cooldown — bot wall via requests
+                - text: Cooldown until 2026-03-28T17:49:12
+            - generic [ref=e121]:
+              - generic [ref=e122]: officedepot.com
+              - generic [ref=e123]: Healthy via requests
+            - generic [ref=e124]:
+              - generic [ref=e125]: newegg.com
+              - generic [ref=e126]:
+                - text: Cooldown — bot wall via requests
+                - text: Cooldown until 2026-03-28T06:11:03
+        - generic [ref=e127]:
+          - text: JSON diagnostics are also available at
+          - code [ref=e128]: /healthz
+          - text: ","
+          - code [ref=e129]: /readyz
+          - text: ", and"
+          - code [ref=e130]: /diagnostics
+          - text: .
+      - generic [ref=e131]:
+        - generic [ref=e132]: Default Sources
+        - paragraph [ref=e133]: Enable stores for new searches. Use the filter and bulk actions to manage many sources without a long list.
+        - generic [ref=e134]:
+          - generic [ref=e135]:
+            - generic [ref=e136]:
+              - generic [ref=e137]: Filter stores
+              - img [ref=e138]
+              - searchbox "Filter stores" [ref=e141]
+            - group "Bulk toggle certified stores" [ref=e142]:
+              - button "Enable all certified" [ref=e143] [cursor=pointer]
+              - button "Disable all certified" [ref=e144] [cursor=pointer]
+          - generic [ref=e145]:
+            - generic [ref=e146]:
+              - generic [ref=e147]: Certified
+              - generic [ref=e148]: 6 stores
+            - generic [ref=e149]:
+              - generic "Core certified" [ref=e150] [cursor=pointer]:
+                - generic [ref=e152]:
+                  - generic [ref=e153]: Amazon
+                  - generic [ref=e154]: amazon.com
+                - checkbox "Amazon amazon.com" [checked] [ref=e157]
+              - generic "Core certified" [ref=e160] [cursor=pointer]:
+                - generic [ref=e162]:
+                  - generic [ref=e163]: Best Buy
+                  - generic [ref=e164]: bestbuy.com
+                - checkbox "Best Buy bestbuy.com" [checked] [ref=e167]
+              - generic "Core certified" [ref=e170] [cursor=pointer]:
+                - generic [ref=e172]:
+                  - generic [ref=e173]: Newegg
+                  - generic [ref=e174]: newegg.com
+                - checkbox "Newegg newegg.com" [ref=e177]
+              - generic "Core certified" [ref=e180] [cursor=pointer]:
+                - generic [ref=e182]:
+                  - generic [ref=e183]: Walmart
+                  - generic [ref=e184]: walmart.com
+                - checkbox "Walmart walmart.com" [checked] [ref=e187]
+              - generic "Certified first-wave broad retail source" [ref=e190] [cursor=pointer]:
+                - generic [ref=e192]:
+                  - generic [ref=e193]: Target
+                  - generic [ref=e194]: target.com
+                - checkbox "Target target.com" [checked] [ref=e197]
+              - generic "Certified for office, furniture, printer, monitor, networking, and core office-peripheral queries" [ref=e200] [cursor=pointer]:
+                - generic [ref=e202]:
+                  - generic [ref=e203]: Office Depot
+                  - generic [ref=e204]: officedepot.com
+                - checkbox "Office Depot officedepot.com" [ref=e207]
+          - button "Save Source Settings" [ref=e210] [cursor=pointer]

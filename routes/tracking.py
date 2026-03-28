@@ -27,7 +27,7 @@ from database import (
     ensure_generic_direct_source,
     enqueue_manual_check_request,
     find_source_for_url,
-    get_available_sources,
+    get_certified_catalog_sources,
     get_discovery_result_by_id,
     get_discovery_search,
     get_product_by_id,
@@ -61,6 +61,7 @@ from scraper import (
     inspect_direct_link,
     revalidate_product_source,
 )
+from source_capabilities import filter_supported_sources
 from template_utils import external_domain
 
 from . import main_bp
@@ -137,7 +138,7 @@ def add_page():
     response = make_response(
         render_template(
             "add.html",
-            sources=get_available_sources(),
+            sources=get_certified_catalog_sources(),
             active_mode=request.args.get("mode", "search").strip() or "search",
             link_prefill_url=request.args.get("product_url", "").strip(),
             link_prefill_target=request.args.get("target_price", "").strip(),
@@ -152,7 +153,7 @@ def add_product_route():
     name = request.form.get("name", "").strip()
     target_str = request.form.get("target_price", "").strip()
     search_all = request.form.get("search_all_sources") == "1"
-    source_ids = [str(source["id"]) for source in get_available_sources()] if search_all else request.form.getlist("source_ids")
+    source_ids = [str(source["id"]) for source in get_certified_catalog_sources()] if search_all else request.form.getlist("source_ids")
 
     if not name:
         flash("A product name is required.", "error")
@@ -183,13 +184,26 @@ def add_product_route():
             redirect_args["source_ids"] = source_ids
         return redirect(url_for("discover_page", **redirect_args))
 
+    selected_sources = sources_from_posted_ids(search_all, source_ids, query_or_spec=spec)
+    if not selected_sources:
+        raw_selected = sources_from_posted_ids(search_all, source_ids)
+        if raw_selected:
+            skipped = ", ".join(source["name"] for source in raw_selected)
+            flash(
+                "The selected stores do not support this product type at our current quality bar: "
+                + skipped,
+                "error",
+            )
+        else:
+            flash("Select at least one source to search, or choose All sources.", "error")
+        return redirect(url_for("add_page"))
+
     product_id = add_product(name, target_price)
     if not product_id:
         flash("Could not save the product — please try again.", "error")
         return redirect(url_for("add_page"))
 
     product = dict(get_product_by_id(product_id))
-    selected_sources = sources_from_posted_ids(search_all, source_ids)
     outcomes = apply_source_matches_for_product(product, selected_sources)
     total = len(selected_sources)
     verified = outcomes["verified"]
@@ -418,10 +432,14 @@ def product_sources_page(product_id):
 
     current_ps = get_product_sources(product_id)
     active_ids = {ps["source_id"] for ps in current_ps}
+    compatible_sources, _ = filter_supported_sources(
+        get_certified_catalog_sources(),
+        product["raw_query"] or product["name"],
+    )
     return render_template(
         "sources.html",
         product=dict(product),
-        all_sources=get_available_sources(),
+        all_sources=compatible_sources,
         active_ids=active_ids,
     )
 
@@ -433,7 +451,11 @@ def product_sources_save(product_id):
         flash("Product not found.", "error")
         return redirect(url_for("index"))
 
-    available_source_map = {int(row["id"]): row for row in get_available_sources()}
+    compatible_sources, _ = filter_supported_sources(
+        get_certified_catalog_sources(),
+        product["raw_query"] or product["name"],
+    )
+    available_source_map = {int(row["id"]): row for row in compatible_sources}
     new_source_ids = set()
     for sid in request.form.getlist("source_ids"):
         try:

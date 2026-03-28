@@ -1,0 +1,95 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e38]:
+      - link "Back to Discovery" [ref=e39] [cursor=pointer]:
+        - /url: /discover
+        - img [ref=e40]
+        - text: Back to Discovery
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e45]:
+              - 'heading "Best Deals: standing desk" [level=1] [ref=e46]'
+              - paragraph [ref=e47]: 2 of 5 stores checked · Started Just now
+              - paragraph [ref=e48]:
+                - generic [ref=e49]: New only
+                - generic [ref=e50]: Main products
+                - generic [ref=e51]: Exact brand line
+            - generic [ref=e52]:
+              - generic [ref=e53]:
+                - generic [ref=e54]:
+                  - generic [ref=e55]: Search Progress
+                  - generic [ref=e56]: 2 / 5 stores checked
+                  - generic [ref=e57]: Results update as each store finishes.
+                - generic [ref=e58]: Checking
+              - generic [ref=e61]:
+                - generic [ref=e62]:
+                  - generic [ref=e64]: Amazon
+                  - generic [ref=e65]: checking
+                - generic [ref=e66]:
+                  - generic [ref=e68]: Best Buy
+                  - generic [ref=e69]: blocked
+                - generic [ref=e70]:
+                  - generic [ref=e72]: Office Depot
+                  - generic [ref=e73]: checking
+                - generic [ref=e74]:
+                  - generic [ref=e76]: Target
+                  - generic [ref=e77]: checking
+                - generic [ref=e78]:
+                  - generic [ref=e80]: Walmart
+                  - generic [ref=e81]: blocked
+            - generic [ref=e82]:
+              - strong [ref=e83]: "Partial coverage: 2 of 5 stores were temporarily unavailable."
+              - generic [ref=e84]: Store coverage is limited right now. Results may be incomplete until the affected stores recover.
+              - group [ref=e85]:
+                - generic "View details" [ref=e86] [cursor=pointer]
+          - link "Search Again" [ref=e87] [cursor=pointer]:
+            - /url: /discover
+            - img [ref=e88]
+            - text: Search Again
+        - generic [ref=e92]:
+          - img [ref=e94]
+          - generic [ref=e97]: Checking stores for live deals
+          - paragraph [ref=e98]: The page updates as each source finishes, so you don’t have to wait for the full search to complete.

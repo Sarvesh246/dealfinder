@@ -1,15 +1,28 @@
 {% if results %}
 
-  {% if is_category_search %}
-  <p class="category-hint"><strong>Pick a result to track.</strong> Broad category searches stay browse-first until you choose a specific listing.</p>
-  {% endif %}
-
-  <div class="sort-bar" data-sort-root>
-    <span class="sort-label">Sort by:</span>
-    <button class="sort-btn{% if ai_enhanced %} active{% endif %}" data-sort="dealscore" type="button">Best Deal</button>
-    <button class="sort-btn{% if not ai_enhanced %} active{% endif %}" data-sort="discount" type="button">Biggest Discount</button>
-    <button class="sort-btn" data-sort="price" type="button">Lowest Price</button>
-    <button class="sort-btn" data-sort="relevance" type="button">Most Relevant</button>
+  <div class="results-toolbar" data-sort-root>
+    <div class="results-control">
+      <label class="sort-label" for="results-sort-select">Sort by</label>
+      <div class="results-select-wrap">
+        <select id="results-sort-select" class="results-select" data-results-sort data-pp-select="toolbar">
+          <option value="dealscore"{% if ai_enhanced %} selected{% endif %}>Best Deal</option>
+          <option value="discount"{% if not ai_enhanced %} selected{% endif %}>Biggest Discount</option>
+          <option value="price">Lowest Price</option>
+          <option value="relevance">Most Relevant</option>
+        </select>
+      </div>
+    </div>
+    <div class="results-control">
+      <label class="sort-label" for="results-source-select">Source</label>
+      <div class="results-select-wrap">
+        <select id="results-source-select" class="results-select" data-results-source data-pp-select="toolbar">
+          <option value="">All selected sources</option>
+          {% for run in source_runs %}
+          <option value="{{ run.source_id }}">{{ run.source_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
   </div>
 
   <div class="results-grid" id="results-grid">
@@ -20,6 +33,7 @@
          data-discount="{{ r.discount_percent }}"
          data-price="{{ r.current_price }}"
          data-relevance="{{ r.relevance_score | default(0) }}"
+         data-source-id="{{ r.source_id }}"
          data-verify-rank="{% if r.verification_label == 'verified_exact' %}0{% elif r.verification_label == 'verified_named' %}1{% elif r.verification_label == 'category_primary' %}2{% elif r.verification_label == 'verified_related' %}3{% else %}4{% endif %}"
          data-time="{{ r.discovered_at }}">
 
@@ -100,7 +114,7 @@
       {% if sale_confirmed and r.original_price %}
       <div class="result-savings">You save ${{ "%.2f" | format(r.original_price - r.current_price) }}</div>
       {% elif not sale_confirmed %}
-      <p class="price-unverified">Price not verified as a sale — list price wasn’t shown in search results.</p>
+      <p class="price-unverified">Price not verified as a sale — list price was not shown in search results.</p>
       {% else %}
       <div style="margin-bottom:14px"></div>
       {% endif %}
@@ -145,6 +159,7 @@
     </div>
     {% endfor %}
   </div>
+  <div class="results-filter-empty" data-source-empty hidden>No results from that source in this search.</div>
 
 {% elif progress.active %}
 
@@ -155,8 +170,13 @@
         <path d="M12 8v4l3 2"></path>
       </svg>
     </div>
+    {% if progress.finalizing %}
+    <div class="empty-title">Finalizing verified results</div>
+    <p class="empty-hint">All selected stores have responded. PricePulse is finishing ranking, dedupe, and verification before showing the final result set.</p>
+    {% else %}
     <div class="empty-title">Checking stores for live deals</div>
-    <p class="empty-hint">The page updates as each source finishes, so you don’t have to wait for the full search to complete.</p>
+    <p class="empty-hint">The page updates as each source finishes, so you do not have to wait for the full search to complete.</p>
+    {% endif %}
   </div>
 
 {% elif progress.failed %}
@@ -169,7 +189,7 @@
         <line x1="12" y1="16" x2="12.01" y2="16"></line>
       </svg>
     </div>
-    <div class="empty-title">This search didn’t finish cleanly</div>
+    <div class="empty-title">This search did not finish cleanly</div>
     <p class="empty-hint">Try the search again. Any completed store results are still shown above if they were verified.</p>
     <a href="{{ url_for('discover_page') }}" class="btn-primary empty-btn">Try Different Search</a>
   </div>

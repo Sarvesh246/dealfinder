@@ -16,6 +16,7 @@ from config import (
     BRIGHTDATA_UNLOCKER_ENDPOINT,
     BRIGHTDATA_ZONE,
     PROTECTED_FETCH_DOMAINS,
+    PROTECTED_FETCH_PROVIDER_DOMAINS,
     PROTECTED_FETCH_ONLY_ON_FAILURE,
     PROTECTED_FETCH_PROVIDER,
     PROTECTED_FETCH_TIMEOUT_SECONDS,
@@ -189,6 +190,41 @@ class BrightDataUnlockerProvider:
     def available(self) -> bool:
         return bool(BRIGHTDATA_API_TOKEN and BRIGHTDATA_ZONE and BRIGHTDATA_UNLOCKER_ENDPOINT)
 
+    @staticmethod
+    def _extract_html_response(resp: requests.Response) -> tuple[str | None, str | None]:
+        content_type = (resp.headers.get("content-type") or "").lower()
+        raw_text = resp.text or ""
+        payload: dict[str, object] | None = None
+
+        if "application/json" in content_type or raw_text.lstrip().startswith("{"):
+            try:
+                parsed = resp.json()
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, dict):
+                payload = parsed
+
+        if payload is not None:
+            upstream_status = int(payload.get("status_code") or resp.status_code or 0)
+            if upstream_status == 202:
+                return None, "timeout"
+            if upstream_status in {401, 403, 407, 429}:
+                return None, "bot_wall"
+            if upstream_status >= 500:
+                return None, "provider_error"
+            body = payload.get("body")
+            if not isinstance(body, str) or not body.strip():
+                return None, "provider_error"
+            return body, None
+
+        if resp.status_code == 202:
+            return None, "timeout"
+        if resp.status_code in {401, 403, 407, 429}:
+            return None, "bot_wall"
+        if resp.status_code != 200 or not raw_text.strip():
+            return None, "provider_error"
+        return raw_text, None
+
     def fetch_html(
         self,
         url: str,
@@ -207,6 +243,7 @@ class BrightDataUnlockerProvider:
             "zone": BRIGHTDATA_ZONE,
             "url": url,
             "format": "raw",
+            "method": "GET",
         }
         if expect_selectors:
             payload["headers"] = {
@@ -219,14 +256,17 @@ class BrightDataUnlockerProvider:
                 json=payload,
                 timeout=PROTECTED_FETCH_TIMEOUT_SECONDS,
             )
-            if resp.status_code != 200 or not resp.text:
+            html, failure_reason = self._extract_html_response(resp)
+            if failure_reason:
+                return None, failure_reason
+            if not html:
                 return None, "provider_error"
-            body_lower = resp.text.lower()
+            body_lower = html.lower()
             if "captcha" in body_lower or "robot check" in body_lower:
                 return None, "bot_wall"
-            soup = BeautifulSoup(resp.text, "html.parser")
+            soup = BeautifulSoup(html, "html.parser")
             strategy = get_store_access_strategy(domain)
-            if not _integrity_ok(strategy, page_kind, resp.text, soup):
+            if not _integrity_ok(strategy, page_kind, html, soup):
                 return None, "provider_invalid"
             return soup, None
         except requests.exceptions.Timeout:
@@ -245,7 +285,12 @@ def _provider() -> ProtectedFetchProvider | None:
 
 
 def provider_enabled_for(domain: str | None) -> bool:
-    return is_protected_domain(domain) and _provider() is not None
+    normalized = (domain or "").strip().lower().replace("www.", "")
+    return (
+        normalized in PROTECTED_FETCH_PROVIDER_DOMAINS
+        and is_protected_domain(normalized)
+        and _provider() is not None
+    )
 
 
 def should_try_provider_after_failure(domain: str | None, failure_reason: str | None) -> bool:

@@ -1,0 +1,524 @@
+- generic [active] [ref=e1]:
+  - navigation "Main navigation" [ref=e2]:
+    - generic [ref=e3]:
+      - link "PricePulse Tracker is running" [ref=e4] [cursor=pointer]:
+        - /url: /
+        - img [ref=e6]
+        - generic [ref=e9]: PricePulse
+        - generic "Tracker is running" [ref=e10]
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - link "Dashboard" [ref=e13] [cursor=pointer]:
+            - /url: /
+          - link "Find a Deal" [ref=e14] [cursor=pointer]:
+            - /url: /discover
+          - link "Track Product" [ref=e15] [cursor=pointer]:
+            - /url: /add
+          - link "Settings" [ref=e16] [cursor=pointer]:
+            - /url: /settings
+        - link "Check Now" [ref=e17] [cursor=pointer]:
+          - /url: /check
+          - img [ref=e18]
+          - text: Check Now
+  - complementary [ref=e21]:
+    - generic [ref=e22]: Navigate
+    - link [ref=e23] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e24]: Dashboard
+      - generic [ref=e25]: Overview
+    - link [ref=e26] [cursor=pointer]:
+      - /url: /discover
+      - generic [ref=e27]: Find a Deal
+      - generic [ref=e28]: Discover
+    - link [ref=e29] [cursor=pointer]:
+      - /url: /add
+      - generic [ref=e30]: Track Product
+      - generic [ref=e31]: Add watch
+    - link [ref=e32] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e33]: Settings
+      - generic [ref=e34]: Sources
+    - link [ref=e35] [cursor=pointer]:
+      - /url: /check
+      - text: Check Now
+  - main [ref=e37]:
+    - generic [ref=e38]:
+      - link "Back to Discovery" [ref=e39] [cursor=pointer]:
+        - /url: /discover
+        - img [ref=e40]
+        - text: Back to Discovery
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - generic [ref=e44]:
+            - generic [ref=e95]:
+              - 'heading "Best Deals: wireless mouse AI Ranked" [level=1] [ref=e96]':
+                - text: "Best Deals: wireless mouse"
+                - generic [ref=e97]:
+                  - img [ref=e98]
+                  - text: AI Ranked
+              - paragraph [ref=e102]: 11 results found · Just now
+              - paragraph [ref=e103]:
+                - generic [ref=e104]: New only
+                - generic [ref=e105]: Main products
+                - generic [ref=e106]: Exact brand line
+            - generic [ref=e107]:
+              - generic [ref=e108]:
+                - generic [ref=e109]:
+                  - generic [ref=e110]: Search Progress
+                  - generic [ref=e111]: 4 / 4 stores checked
+                  - generic [ref=e112]: Search complete.
+                - generic [ref=e113]: Ready
+              - generic [ref=e116]:
+                - generic [ref=e117]:
+                  - generic [ref=e119]: Amazon
+                  - generic [ref=e120]: done
+                - generic [ref=e121]:
+                  - generic [ref=e123]: Best Buy
+                  - generic [ref=e124]: blocked
+                - generic [ref=e125]:
+                  - generic [ref=e127]: Target
+                  - generic [ref=e128]: done
+                - generic [ref=e129]:
+                  - generic [ref=e131]: Walmart
+                  - generic [ref=e132]: blocked
+            - generic [ref=e133]:
+              - strong [ref=e134]: "Partial coverage: 2 of 4 stores were temporarily unavailable."
+              - generic [ref=e135]: Store coverage is limited right now. Results may be incomplete until the affected stores recover.
+              - group [ref=e136]:
+                - generic "View details" [ref=e137] [cursor=pointer]
+          - link "Search Again" [ref=e83] [cursor=pointer]:
+            - /url: /discover
+            - img [ref=e84]
+            - text: Search Again
+        - generic [ref=e87]:
+          - paragraph [ref=e138]:
+            - strong [ref=e139]: Pick a result to track.
+            - text: Broad category searches stay browse-first until you choose a specific listing.
+          - generic [ref=e140]:
+            - generic [ref=e141]: "Sort by:"
+            - button "Best Deal" [ref=e142] [cursor=pointer]
+            - button "Biggest Discount" [ref=e143] [cursor=pointer]
+            - button "Lowest Price" [ref=e144] [cursor=pointer]
+            - button "Most Relevant" [ref=e145] [cursor=pointer]
+          - generic [ref=e146]:
+            - generic [ref=e147]:
+              - generic [ref=e148]:
+                - img [ref=e149]:
+                  - generic [ref=e152]: "40"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "40"
+                  - generic:
+                    - generic: Discount
+                    - generic: 24pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e153]: "-42.0% OFF"
+              - generic [ref=e154]: "Logitech Mouse (M317) - Forest Floral: Wireless USB-A, 1000 dpi, Soft-Touch Grips"
+              - generic [ref=e155]:
+                - generic [ref=e157]: Target
+                - generic [ref=e158]: Category Primary
+              - generic [ref=e159]:
+                - generic [ref=e160]: $11.59
+                - generic [ref=e161]: $19.99
+              - generic [ref=e162]: You save $8.40
+              - generic [ref=e163]:
+                - generic [ref=e164]: Match
+                - generic [ref=e167]: 63%
+              - generic [ref=e168]:
+                - link "View on Target ↗" [ref=e170] [cursor=pointer]:
+                  - /url: /open/discovery-result/258
+                - button "Track This" [ref=e172] [cursor=pointer]:
+                  - img [ref=e173]
+                  - text: Track This
+            - generic [ref=e174]:
+              - generic [ref=e175]:
+                - img [ref=e176]:
+                  - generic [ref=e179]: "39"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "39"
+                  - generic:
+                    - generic: Discount
+                    - generic: 22pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e180]: "-40.0% OFF"
+              - generic [ref=e181]: Logitech Wireless Mouse M185 Gray
+              - generic [ref=e182]:
+                - generic [ref=e184]: Target
+                - generic [ref=e185]: Category Primary
+              - generic [ref=e186]:
+                - generic [ref=e187]: $14.99
+                - generic [ref=e188]: $24.99
+              - generic [ref=e189]: You save $10.00
+              - generic [ref=e190]:
+                - generic [ref=e191]: Match
+                - generic [ref=e194]: 65%
+              - generic [ref=e195]:
+                - link "View on Target ↗" [ref=e197] [cursor=pointer]:
+                  - /url: /open/discovery-result/259
+                - button "Track This" [ref=e199] [cursor=pointer]:
+                  - img [ref=e200]
+                  - text: Track This
+            - generic [ref=e201]:
+              - generic [ref=e202]:
+                - img [ref=e203]:
+                  - generic [ref=e206]: "36"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "36"
+                  - generic:
+                    - generic: Discount
+                    - generic: 19pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e207]: "-33.3% OFF"
+              - generic [ref=e208]: "Logitech Signature M550 Wireless Mice - Graphite: USB-A Connection, Bluetooth Compatible"
+              - generic [ref=e209]:
+                - generic [ref=e211]: Target
+                - generic [ref=e212]: Category Primary
+              - generic [ref=e213]:
+                - generic [ref=e214]: $19.99
+                - generic [ref=e215]: $29.99
+              - generic [ref=e216]: You save $10.00
+              - generic [ref=e217]:
+                - generic [ref=e218]: Match
+                - generic [ref=e221]: 62%
+              - generic [ref=e222]:
+                - link "View on Target ↗" [ref=e224] [cursor=pointer]:
+                  - /url: /open/discovery-result/261
+                - button "Track This" [ref=e226] [cursor=pointer]:
+                  - img [ref=e227]
+                  - text: Track This
+            - generic [ref=e228]:
+              - generic [ref=e229]:
+                - img [ref=e230]:
+                  - generic [ref=e233]: "36"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "36"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 7pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e234]: "-25.0% OFF"
+              - generic [ref=e235]: "Logitech M317 Mouse - Blue Aurora: Wireless, USB-A Connection, Soft-Touch Grips"
+              - generic [ref=e236]:
+                - generic [ref=e238]: Target
+                - generic [ref=e239]: Category Primary
+              - generic [ref=e240]:
+                - strong [ref=e241]: "Also at:"
+                - text: Target
+              - generic [ref=e242]:
+                - generic [ref=e243]: $14.99
+                - generic [ref=e244]: $19.99
+              - generic [ref=e245]: You save $5.00
+              - generic [ref=e246]:
+                - generic [ref=e247]: Match
+                - generic [ref=e250]: 64%
+              - generic [ref=e251]:
+                - link "View on Target ↗" [ref=e253] [cursor=pointer]:
+                  - /url: /open/discovery-result/260
+                - button "Track This" [ref=e255] [cursor=pointer]:
+                  - img [ref=e256]
+                  - text: Track This
+            - generic [ref=e257]:
+              - generic [ref=e258]:
+                - img [ref=e259]:
+                  - generic [ref=e262]: "36"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "36"
+                  - generic:
+                    - generic: Discount
+                    - generic: 19pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 21pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e263]: "-33.3% OFF"
+              - generic [ref=e264]: Logitech Signature M550 Wireless Mouse - Large
+              - generic [ref=e265]:
+                - generic [ref=e267]: Target
+                - generic [ref=e268]: Category Primary
+              - generic [ref=e269]:
+                - generic [ref=e270]: $19.99
+                - generic [ref=e271]: $29.99
+              - generic [ref=e272]: You save $10.00
+              - generic [ref=e273]:
+                - generic [ref=e274]: Match
+                - generic [ref=e277]: 61%
+              - generic [ref=e278]:
+                - link "View on Target ↗" [ref=e280] [cursor=pointer]:
+                  - /url: /open/discovery-result/262
+                - button "Track This" [ref=e282] [cursor=pointer]:
+                  - img [ref=e283]
+                  - text: Track This
+            - generic [ref=e284]:
+              - generic [ref=e285]:
+                - img [ref=e286]:
+                  - generic [ref=e289]: "33"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "33"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e290]: "-25.0% OFF"
+              - generic [ref=e291]: "Logitech G305 Lightspeed Wireless Optical Gaming Mouse: USB-A Connection, 6 Buttons"
+              - generic [ref=e292]:
+                - generic [ref=e294]: Target
+                - generic [ref=e295]: Category Primary
+              - generic [ref=e296]:
+                - generic [ref=e297]: $26.99
+                - generic [ref=e298]: $35.99
+              - generic [ref=e299]: You save $9.00
+              - generic [ref=e300]:
+                - generic [ref=e301]: Match
+                - generic [ref=e304]: 65%
+              - generic [ref=e305]:
+                - link "View on Target ↗" [ref=e307] [cursor=pointer]:
+                  - /url: /open/discovery-result/263
+                - button "Track This" [ref=e309] [cursor=pointer]:
+                  - img [ref=e310]
+                  - text: Track This
+            - generic [ref=e311]:
+              - generic [ref=e312]:
+                - img [ref=e313]:
+                  - generic [ref=e316]: "33"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "33"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 22pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e317]: "-24.6% OFF"
+              - generic [ref=e318]: "Logitech M196 Bluetooth Mouse - Pink: Bluetooth, Home Use"
+              - generic [ref=e319]:
+                - generic [ref=e321]: Target
+                - generic [ref=e322]: Category Primary
+              - generic [ref=e323]:
+                - generic [ref=e324]: $9.79
+                - generic [ref=e325]: $12.99
+              - generic [ref=e326]: You save $3.20
+              - generic [ref=e327]:
+                - generic [ref=e328]: Match
+                - generic [ref=e331]: 62%
+              - generic [ref=e332]:
+                - link "View on Target ↗" [ref=e334] [cursor=pointer]:
+                  - /url: /open/discovery-result/264
+                - button "Track This" [ref=e336] [cursor=pointer]:
+                  - img [ref=e337]
+                  - text: Track This
+            - generic [ref=e338]:
+              - generic [ref=e339]:
+                - img [ref=e340]:
+                  - generic [ref=e343]: "32"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "32"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 23pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 7pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 4pts
+              - generic [ref=e344]: "-25.0% OFF"
+              - generic [ref=e345]: "Logitech M317 Mouse - Silver: Wireless USB-A, Near Field Communication, Soft-Touch Grips"
+              - generic [ref=e346]:
+                - generic [ref=e348]: Target
+                - generic [ref=e349]: Category Primary
+              - generic [ref=e350]:
+                - generic [ref=e351]: $14.99
+                - generic [ref=e352]: $19.99
+              - generic [ref=e353]: You save $5.00
+              - generic [ref=e354]:
+                - generic [ref=e355]: Match
+                - generic [ref=e358]: 68%
+              - generic [ref=e359]:
+                - link "View on Target ↗" [ref=e361] [cursor=pointer]:
+                  - /url: /open/discovery-result/265
+                - button "Track This" [ref=e363] [cursor=pointer]:
+                  - img [ref=e364]
+                  - text: Track This
+            - generic [ref=e365]:
+              - generic [ref=e366]:
+                - img [ref=e367]:
+                  - generic [ref=e370]: "32"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "32"
+                  - generic:
+                    - generic: Discount
+                    - generic: 14pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 17pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e371]: "-25.0% OFF"
+              - generic [ref=e372]: Logitech M317C Mouse - Cotton Candy
+              - generic [ref=e373]:
+                - generic [ref=e375]: Target
+                - generic [ref=e376]: Category Primary
+              - generic [ref=e377]:
+                - generic [ref=e378]: $14.99
+                - generic [ref=e379]: $19.99
+              - generic [ref=e380]: You save $5.00
+              - generic [ref=e381]:
+                - generic [ref=e382]: Match
+                - generic [ref=e385]: 49%
+              - generic [ref=e386]:
+                - link "View on Target ↗" [ref=e388] [cursor=pointer]:
+                  - /url: /open/discovery-result/266
+                - button "Track This" [ref=e390] [cursor=pointer]:
+                  - img [ref=e391]
+                  - text: Track This
+            - generic [ref=e392]:
+              - generic [ref=e393]:
+                - img [ref=e394]:
+                  - generic [ref=e397]: "30"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "30"
+                  - generic:
+                    - generic: Discount
+                    - generic: 11pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 18pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e398]: "-20.0% OFF"
+              - generic [ref=e399]: Logitech MX Master 3S Bluetooth Wireless Mouse 8K DPI Quiet Clicks Black
+              - generic [ref=e400]:
+                - generic [ref=e402]: Target
+                - generic [ref=e403]: Category Primary
+              - generic [ref=e404]:
+                - generic [ref=e405]: $79.99
+                - generic [ref=e406]: $99.99
+              - generic [ref=e407]: You save $20.00
+              - generic [ref=e408]:
+                - generic [ref=e409]: Match
+                - generic [ref=e412]: 52%
+              - generic [ref=e413]:
+                - link "View on Target ↗" [ref=e415] [cursor=pointer]:
+                  - /url: /open/discovery-result/267
+                - button "Track This" [ref=e417] [cursor=pointer]:
+                  - img [ref=e418]
+                  - text: Track This
+            - generic [ref=e419]:
+              - generic [ref=e420]:
+                - img [ref=e421]:
+                  - generic [ref=e424]: "28"
+                - generic:
+                  - generic:
+                    - text: Deal Score
+                    - generic: "28"
+                  - generic:
+                    - generic: Discount
+                    - generic: 7pts
+                  - generic:
+                    - generic: Relevance
+                    - generic: 23pts
+                  - generic:
+                    - generic: Cross-source
+                    - generic: 3pts
+                  - generic:
+                    - generic: Best price
+                    - generic: 10pts
+              - generic [ref=e425]: "-13.0% OFF"
+              - generic [ref=e426]: "Logitech Wireless Keyboard and Mouse: USB-A Full Size, Mechanical Switch, Business Use"
+              - generic [ref=e427]:
+                - generic [ref=e429]: Target
+                - generic [ref=e430]: Category Primary
+              - generic [ref=e431]:
+                - generic [ref=e432]: $19.99
+                - generic [ref=e433]: $22.99
+              - generic [ref=e434]: You save $3.00
+              - generic [ref=e435]:
+                - generic [ref=e436]: Match
+                - generic [ref=e439]: 65%
+              - generic [ref=e440]:
+                - link "View on Target ↗" [ref=e442] [cursor=pointer]:
+                  - /url: /open/discovery-result/268
+                - button "Track This" [ref=e444] [cursor=pointer]:
+                  - img [ref=e445]
+                  - text: Track This

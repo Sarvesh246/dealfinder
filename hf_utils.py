@@ -274,10 +274,21 @@ class SmartEngine:
                 results[idx]["is_best_in_group"] = (rank == 0)
                 results[idx]["group_size"] = len(group)
                 if len(group) > 1 and rank == 0:
-                    others = [
-                        results[g].get("source_name", "")
-                        for g in group if g != idx
-                    ]
+                    primary_source = (results[idx].get("source_name") or "").strip()
+                    seen_sources: set[str] = set()
+                    others = []
+                    for g in group:
+                        if g == idx:
+                            continue
+                        source_name = (results[g].get("source_name") or "").strip()
+                        if (
+                            not source_name
+                            or source_name == primary_source
+                            or source_name in seen_sources
+                        ):
+                            continue
+                        seen_sources.add(source_name)
+                        others.append(source_name)
                     results[idx]["also_available_at"] = [o for o in others if o]
 
         return results
