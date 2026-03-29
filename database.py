@@ -3,13 +3,13 @@ database.py — SQLite setup and all database access functions.
 Supports multi-source product discovery: products → product_sources → price_history.
 """
 
-import sqlite3
+import db_compat as sqlite3
 import os
 import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
-from config import SQLITE_BUSY_TIMEOUT_MS, SQLITE_CONNECT_TIMEOUT_SECONDS
+from config import DB_BACKEND, JOB_RUNNER_MODE, SQLITE_BUSY_TIMEOUT_MS, SQLITE_CONNECT_TIMEOUT_SECONDS
 from product_verifier import parse_product_spec, product_spec_to_fields
 
 _DEFAULT_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_tracker.db")
@@ -2356,6 +2356,8 @@ def requeue_manual_check_request(request_id: int) -> None:
 def get_runtime_diagnostics(stale_after_seconds: int = 120) -> dict[str, object]:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     diagnostics: dict[str, object] = {
+        "db_backend": DB_BACKEND,
+        "background_jobs_mode": JOB_RUNNER_MODE,
         "worker_online": False,
         "worker_id": None,
         "heartbeat_at": None,
@@ -2393,6 +2395,9 @@ def get_runtime_diagnostics(stale_after_seconds: int = 120) -> dict[str, object]
                     ).total_seconds() <= max(30, stale_after_seconds)
                 except ValueError:
                     diagnostics["worker_online"] = False
+        if JOB_RUNNER_MODE == "http":
+            diagnostics["worker_online"] = True
+            diagnostics["worker_id"] = diagnostics.get("worker_id") or "http-runner"
         queue_counts = conn.execute(
             """
             SELECT status, COUNT(*) AS count

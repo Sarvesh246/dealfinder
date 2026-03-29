@@ -63,3 +63,11 @@ def manual_check_authorized(secret_key, cron_secret: str) -> bool:
     if ui and secrets.compare_digest(ui, manual_check_ui_token(secret_key)):
         return True
     return False
+
+
+def internal_job_authorized(shared_secret: str) -> bool:
+    if not shared_secret:
+        return False
+    token = request.args.get("token", "")
+    header = request.headers.get("X-Internal-Job-Token", "")
+    return secrets.compare_digest(token, shared_secret) or secrets.compare_digest(header, shared_secret)

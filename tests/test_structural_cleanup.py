@@ -19,9 +19,11 @@ def _load_test_app(tmp_path, monkeypatch):
         "routes",
         "routes.core",
         "routes.discovery",
+        "routes.internal",
         "routes.tracking",
         "routes.settings",
         "routes.admin",
+        "job_runner",
         "route_support",
         "route_runtime",
         "template_utils",
@@ -50,6 +52,8 @@ def test_app_factory_registers_current_routes_and_endpoints(tmp_path, monkeypatc
         "discover_results",
         "discover_status",
         "discover_track",
+        "internal_dispatch_jobs",
+        "internal_backfill_job",
         "add_page",
         "add_product_route",
         "track_link_route",
@@ -125,6 +129,7 @@ def test_local_worker_autostart_can_be_disabled_explicitly(tmp_path, monkeypatch
     import config as config_module
 
     with monkeypatch.context() as m:
+        m.setenv("JOB_RUNNER_MODE", "worker")
         m.setenv("AUTO_START_LOCAL_WORKER", "0")
         importlib.reload(config_module)
 
@@ -134,6 +139,71 @@ def test_local_worker_autostart_can_be_disabled_explicitly(tmp_path, monkeypatch
             env={"RAILWAY_ENVIRONMENT": "production"},
             flask_debug=False,
         ) is False
+
+    importlib.reload(config_module)
+
+
+def test_http_job_runner_disables_local_worker_autostart(tmp_path, monkeypatch):
+    import config as config_module
+
+    with monkeypatch.context() as m:
+        m.setenv("JOB_RUNNER_MODE", "http")
+        importlib.reload(config_module)
+        app_module = _load_test_app(tmp_path, m)
+
+        assert app_module._should_autostart_local_worker(env={}, flask_debug=False) is False
+
+    importlib.reload(config_module)
+
+
+def test_internal_job_routes_require_secret_and_run_when_authorized(tmp_path, monkeypatch):
+    import config as config_module
+
+    with monkeypatch.context() as m:
+        m.setenv("JOB_RUNNER_MODE", "http")
+        m.setenv("INTERNAL_JOB_SECRET", "secret-123")
+        importlib.reload(config_module)
+        app_module = _load_test_app(tmp_path, m)
+
+        client = app_module.app.test_client()
+        denied = client.get("/internal/jobs/dispatch")
+        allowed = client.get(
+            "/internal/jobs/dispatch?mode=manual",
+            headers={"X-Internal-Job-Token": "secret-123"},
+        )
+
+        assert denied.status_code == 401
+        assert allowed.status_code == 200
+        assert allowed.get_json()["job_runner_mode"] == "http"
+
+    importlib.reload(config_module)
+
+
+def test_manual_check_uses_http_runner_when_configured(tmp_path, monkeypatch):
+    import config as config_module
+
+    with monkeypatch.context() as m:
+        m.setenv("JOB_RUNNER_MODE", "http")
+        m.setenv("APP_BASE_URL", "https://pricepulse.example")
+        importlib.reload(config_module)
+        app_module = _load_test_app(tmp_path, m)
+
+        captured = {}
+
+        def _fake_trigger(*, mode="manual", base_url=None):
+            captured["mode"] = mode
+            captured["base_url"] = base_url
+            return True
+
+        m.setattr("routes.tracking.trigger_internal_dispatch", _fake_trigger)
+        client = app_module.app.test_client()
+        response = client.get("/check", follow_redirects=True)
+        html = response.get_data(as_text=True)
+
+        assert response.status_code == 200
+        assert "background runner will start it shortly" in html
+        assert captured["mode"] == "manual"
+        assert captured["base_url"] == "https://pricepulse.example"
 
     importlib.reload(config_module)
 

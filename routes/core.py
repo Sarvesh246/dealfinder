@@ -46,6 +46,7 @@ def healthz():
             "checked_at": datetime.now().isoformat(),
             "sources_total": len(sources),
             "sources_enabled": enabled_sources,
+            "background_jobs_mode": runtime.get("background_jobs_mode"),
             "worker_online": runtime.get("worker_online", False),
             "queue_depth": runtime.get("queue_depth", 0),
         }
@@ -63,6 +64,7 @@ def readyz():
             "service": "pricepulse",
             "checked_at": datetime.now().isoformat(),
             "database_ready": True,
+            "background_jobs_mode": runtime.get("background_jobs_mode"),
             "worker_online": runtime.get("worker_online", False),
             "queue_depth": runtime.get("queue_depth", 0),
             "last_job_status": runtime.get("last_job_status"),

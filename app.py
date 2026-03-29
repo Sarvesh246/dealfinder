@@ -15,6 +15,7 @@ from config import (
     APP_DIR,
     AUTO_START_LOCAL_WORKER,
     FLASK_DEBUG,
+    JOB_RUNNER_MODE,
     PORT,
     SECRET_KEY,
     STATIC_DIR,
@@ -59,6 +60,8 @@ app = create_app()
 
 def _should_autostart_local_worker(*, env: dict[str, str] | None = None, flask_debug: bool = FLASK_DEBUG) -> bool:
     env = env or os.environ
+    if JOB_RUNNER_MODE != "worker":
+        return False
     if not AUTO_START_LOCAL_WORKER:
         return False
     if flask_debug and env.get("WERKZEUG_RUN_MAIN") != "true":

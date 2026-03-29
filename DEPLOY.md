@@ -18,6 +18,22 @@ worker: python worker.py
 
 On Railway, Render, a VM, or a self-hosted PC, run both processes with the same env vars and the same persistent `DB_PATH`.
 
+## Vercel setup
+
+Vercel should use the Postgres + HTTP job-runner path instead of the shared-SQLite worker model:
+
+1. Provision Postgres and set `DATABASE_URL`.
+2. Set `JOB_RUNNER_MODE=http`.
+3. Set `INTERNAL_JOB_SECRET` and `CHECK_CRON_SECRET`.
+4. Set `APP_BASE_URL` to the deployed app URL if you want `/check` to trigger an immediate internal dispatch.
+5. The included [vercel.json](vercel.json) wires a daily cron to `/internal/jobs/dispatch?mode=scheduled`.
+
+Notes:
+
+- Vercel Hobby cron cannot match the current 6-hour Railway cadence exactly.
+- The app keeps Railway/local worker support; Vercel should not rely on `python worker.py`.
+- Use [scripts/migrate_sqlite_to_postgres.py](scripts/migrate_sqlite_to_postgres.py) to move existing SQLite data into Postgres.
+
 ## Railway setup
 
 1. Create a **web** service from this repo.

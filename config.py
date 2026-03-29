@@ -38,6 +38,21 @@ SECRET_KEY = os.getenv("SECRET_KEY", "pricepulse-change-me-in-production")
 FLASK_DEBUG = _env_flag("FLASK_DEBUG", False)
 PORT = _env_int("PORT", 5000)
 CHECK_CRON_SECRET = os.getenv("CHECK_CRON_SECRET", "").strip()
+INTERNAL_JOB_SECRET = os.getenv("INTERNAL_JOB_SECRET", "").strip() or CHECK_CRON_SECRET
+DATABASE_URL = (
+    os.getenv("DATABASE_URL", "").strip()
+    or os.getenv("POSTGRES_URL", "").strip()
+    or os.getenv("POSTGRES_PRISMA_URL", "").strip()
+)
+DB_BACKEND = "postgres" if DATABASE_URL.startswith(("postgres://", "postgresql://")) else "sqlite"
+IS_VERCEL = any(
+    bool(os.getenv(name, "").strip())
+    for name in ("VERCEL", "VERCEL_ENV", "VERCEL_URL")
+)
+APP_BASE_URL = (
+    os.getenv("APP_BASE_URL", "").strip()
+    or (f"https://{os.getenv('VERCEL_URL', '').strip()}" if os.getenv("VERCEL_URL", "").strip() else "")
+)
 
 # SQLite (web + worker share one file): wait under lock instead of failing immediately.
 SQLITE_CONNECT_TIMEOUT_SECONDS = _env_int("SQLITE_CONNECT_TIMEOUT_SECONDS", 30)
@@ -116,9 +131,13 @@ WORKER_HEARTBEAT_SECONDS = _env_int("WORKER_HEARTBEAT_SECONDS", 20)
 MANUAL_CHECK_POLL_SECONDS = _env_int("MANUAL_CHECK_POLL_SECONDS", 10)
 CHECK_INTERVAL_HOURS = _env_int("CHECK_INTERVAL_HOURS", 6)
 ENABLE_STARTUP_BACKFILL = _env_flag("ENABLE_STARTUP_BACKFILL", True)
+JOB_RUNNER_MODE = os.getenv(
+    "JOB_RUNNER_MODE",
+    "http" if IS_VERCEL else "worker",
+).strip().lower() or ("http" if IS_VERCEL else "worker")
 AUTO_START_LOCAL_WORKER = _env_flag(
     "AUTO_START_LOCAL_WORKER",
-    True,
+    not IS_VERCEL,
 )
 
 QUERY_ENHANCE_MODEL = os.getenv(

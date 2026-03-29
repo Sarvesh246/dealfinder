@@ -12,10 +12,13 @@ from urllib.parse import urlparse
 from flask import current_app, flash, make_response, redirect, render_template, request, url_for
 
 from config import (
+    APP_BASE_URL,
     CHECK_COOLDOWN_SECONDS,
     CHECK_CRON_SECRET,
+    JOB_RUNNER_MODE,
     STRICT_SOURCE_WORKERS,
 )
+from job_runner import trigger_internal_dispatch
 from database import (
     add_price_history,
     add_product,
@@ -634,7 +637,16 @@ def manual_check():
             request_id=request_id,
             worker_online=runtime.get("worker_online", False),
         )
-        if runtime.get("worker_online"):
+        if JOB_RUNNER_MODE == "http":
+            kicked = trigger_internal_dispatch(
+                mode="manual",
+                base_url=APP_BASE_URL or request.url_root.rstrip("/"),
+            )
+            if kicked:
+                flash("Price check requested. The background runner will start it shortly.", "success")
+            else:
+                flash("Price check queued. The HTTP job runner is not fully configured yet.", "warning")
+        elif runtime.get("worker_online"):
             flash("Price check requested. The worker will pick it up shortly.", "success")
         else:
             flash(
